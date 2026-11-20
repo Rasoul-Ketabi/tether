@@ -1,0 +1,861 @@
+package app.tether.link
+
+import android.os.SystemClock
+import android.util.Log
+import app.tether.TetherApp
+import app.tether.adb.Adb
+import app.tether.audio.HelperBridge
+import app.tether.audio.OpusCodec
+import app.tether.audio.PcmuCodec
+import app.tether.audio.VoiceCodec
+import app.tether.core.AudioFrame
+import app.tether.core.CallInfo
+import app.tether.core.Message
+import app.tether.core.T
+import app.tether.core.idRanges
+import app.tether.core.paginate
+import app.tether.data.ContactsRepo
+import app.tether.telecom.CallRegistry
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import app.tether.core.Phone as PhoneEntry
+
+/** Routes everything between the iPhone link, the phone's data, calls and call audio. */
+class Hub(private val app: TetherApp) : ConnectionListener {
+    companion object {
+        const val TAG = "Tether"
+        const val PAGE_WEIGHT = 12_000
+        /** Debug flag (adb): validate send/dial/add without touching the radio or the provider. */
+        @Volatile var dryRun = false
+    }
+
+    /** Every connected client (the protocol allows several; today the iPhone). */
+    val conns = CopyOnWriteArrayList<Connection>()
+    /** The client call audio goes to, else any connected client (UI / notification). */
+    val conn: Connection? get() = audio.target ?: targets().firstOrNull()
+    val helper = HelperBridge(app)
+    /** "Share VPN" proxy on the tethering interfaces (see ShareProxy). */
+    val share = ShareProxy(app).apply { sharing = app.prefs.getBoolean("share_vpn", false) }
+    private val work = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "hub") }
+    /** Call-audio control runs apart from sync/status work so it is never queued behind a big sync. */
+    private val audioCtl = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "audio-ctl") }
+    private val smsRequests = ConcurrentHashMap<Int, Pair<Connection, Int>>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    val audio = AudioSession()
+    private val radioPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val endedSent = ConcurrentHashMap<String, Long>()
+    private val unreadPushPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var lastUnread = ""
+    /** Slow helper work (network switches up to ~50 s, self-test up to 40 s) runs here, not on the hub thread
+     *  that SMS sends, reads, deletes and sync share. */
+    private val slow = Executors.newSingleThreadExecutor { r -> Thread(r, "hub-slow") }
+    /** sms.unread: the Android phone's unread incoming ids; `all` false when capped (then only newer ones are known). */
+    private fun unreadMessage(ids: List<Long>) = Message(T.SMS_UNREAD, JSONObject().put("ids", JSONArray(ids)).put("all", ids.size < 3000))
+
+    private fun slowBg(block: () -> Unit) = slow.execute { try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) } }
+    @Volatile var lastSelftest: JSONObject? = null; private set
+
+    /** Runs on the hub thread; exceptions are logged instead of vanishing inside the executor. */
+    private fun bg(block: () -> Unit) = work.execute {
+        try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) }
+    }
+
+    fun addListener(l: () -> Unit) = listeners.add(l)
+    fun removeListener(l: () -> Unit) = listeners.remove(l)
+    fun refresh() = listeners.forEach { runCatching { it() } }
+
+    private val started = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** Once per process: a recreated LinkService must not add a second set of listeners and timers. */
+    fun startBackground() {
+        if (!started.compareAndSet(false, true)) return
+        helper.listen()
+        helper.onChange = { refresh(); bg { pushStatus() } }
+        // Airplane mode switched on from a client before a restart: keep the fail-safe running.
+        if (app.prefs.getBoolean("airplane_by_tether", false)) bg { airplaneFailSafe(true) }
+        // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
+        CallRegistry.addListener { info -> onCall(info) }
+        app.sms.observe { s -> if (forwardable(s)) targets().forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) } }
+        // Start from the newest row now, so the first call logged after a restart is pushed live too.
+        bg { if (lastCallId < 0) lastCallId = app.callLog.since(0, 1).lastOrNull()?.id ?: 0 }
+        app.callLog.observe { bg { pushRecentCalls() } }
+        // Read on the Android phone itself (or by its SMS app): the iPhone follows, at most every 2 s.
+        app.sms.changeListener = {
+            if (unreadPushPending.compareAndSet(false, true)) work.schedule({
+                unreadPushPending.set(false)
+                val ids = app.sms.unreadIds() ?: return@schedule
+                val key = ids.joinToString(",")
+                if (key != lastUnread) { lastUnread = key; broadcast(unreadMessage(ids)) }
+            }, 2, TimeUnit.SECONDS)
+        }
+        // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
+        app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
+        work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
+        audioCtl.scheduleWithFixedDelay({ runCatching { audio.reconcile() }.onFailure { Log.e(TAG, "audio reconcile", it) } }, 1, 1, TimeUnit.SECONDS)
+        audioCtl.execute { keepHelperWarm() }
+        // Follow the hotspot / Bluetooth PAN coming and going (the proxy and its PAC answer there only).
+        work.scheduleWithFixedDelay({ runCatching { share.refresh() }; runCatching { LinkService.running?.peripheral?.ensureAdvertising() } }, 2, 10, TimeUnit.SECONDS)
+        // JIT-compile the Opus encoder/decoder now: cold, the first seconds of a call cost 3-4× more per frame.
+        Thread({ runCatching { OpusCodec().apply { repeat(300) { i -> encode(ShortArray(320) { ((it * 37 + i) % 2000 - 1000).toShort() }).forEach { f -> decode(f) } } } } }, "opus-warmup")
+            .apply { priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    // ------------------------------------------------------------------ connection lifecycle
+
+    /** Set by on-device tests: only this transport may hold the link while it is set. */
+    @Volatile var exclusive: Transport? = null
+    /** Same for tests with several fake clients at once (call hand-over). */
+    @Volatile var exclusiveSet: Set<Transport>? = null
+
+    private val callControls = setOf(T.CALL_ANSWER, T.CALL_TAKE, T.CALL_REJECT, T.CALL_END, T.CALL_HOLD, T.CALL_DTMF, T.SELFTEST)
+
+    /** Dry run (debug) touches only the test session's connections, never a real client linked meanwhile. */
+    private fun dry(c: Connection) = c.transport.dry || (dryRun && admits(c))
+
+    override fun admits(c: Connection) = exclusive.let { it == null || it === c.transport } &&
+        exclusiveSet.let { it == null || c.transport in it }
+
+    /** Clients that get broadcasts; a test holding the link exclusively gets them alone (the iPhone never rings). */
+    fun targets(): List<Connection> = conns.filter { it.isUp && admits(it) && (onlyKind == null || it.kind == onlyKind) }
+
+    /** Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see calls and messages, so test calls never ring the iPhone. */
+    @Volatile var onlyKind: String? = null
+
+    fun broadcast(m: Message) = targets().forEach { it.send(m) }
+
+    fun onTransport(t: Transport) {
+        Connection(t, app.keys, this).start()
+    }
+
+    override fun onEstablished(c: Connection, newlyPaired: Boolean) {
+        if (!admits(c)) { c.close("link reserved by a test"); return }
+        // The same client reconnecting (new L2CAP channel) replaces its old link; other clients stay.
+        // A reconnecting client keeps its place: its last action, and the call audio if it had it. The new link
+        // is listed first, so closing the old one never sees "no client" (audio stop, advertising restart).
+        app.keys.central(c.peerKey)?.let { c.name = it.name; c.kind = it.kind }
+        val olds = conns.filter { it !== c && it.peerKey.contentEquals(c.peerKey) }
+        conns.add(c)
+        olds.forEach { old ->
+            c.lastAction = maxOf(c.lastAction, old.lastAction)
+            audio.handOver(old, c)
+            old.close("replaced")
+        }
+        lastClientSeen = SystemClock.elapsedRealtime()
+        LinkService.running?.peripheral?.setLinked(true)
+        LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
+        refresh()
+        c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
+        LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
+        audioCtl.execute { audio.reconcile() }
+        bg { pushStatus() }
+    }
+
+    override fun onClosed(c: Connection) {
+        lastClientSeen = SystemClock.elapsedRealtime()
+        if (conns.remove(c)) {
+            if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
+            // A reconnect replaces a link from the same address: its tuning belongs to the new link now.
+            if (conns.none { it.transport.address == c.transport.address }) LinkService.running?.peripheral?.untune(c.transport.address)
+            audioCtl.execute { audio.reconcile() }
+        }
+        refresh()
+    }
+
+    override fun onAudio(c: Connection, payload: ByteArray) { if (c === audio.target) audio.onUplink(payload) }
+
+    override fun onMessage(c: Connection, m: Message) {
+        // A test client (dry transport) may only touch calls on Tether's own test line, never a real call.
+        // Taking the audio (answer, take) or a self-test needs every live call to be on the test line.
+        if (c.transport.dry && m.t in callControls) {
+            val allTest = CallRegistry.active().let { l -> l.isNotEmpty() && l.all { CallRegistry.isTestCall(app, CallRegistry.cidOf(it)) } }
+            val ok = when (m.t) {
+                T.CALL_TAKE, T.CALL_ANSWER, T.SELFTEST -> allTest && (m.t != T.CALL_ANSWER || CallRegistry.isTestCall(app, m.b.optString("cid")))
+                else -> CallRegistry.isTestCall(app, m.b.optString("cid"))
+            }
+            if (!ok) { Log.w(TAG, "test client: ${m.t} for a call not on the test line ignored"); return }
+        }
+        when (m.t) {
+            T.PING -> c.send(Message(T.PONG, JSONObject().put("ts", m.b.optLong("ts")), re = m.id))
+            T.PONG -> Unit
+            T.SYNC -> {
+                m.b.optJSONArray("codecs")?.let { a -> c.codecs = (0 until a.length()).map { a.getString(it) } }
+                m.b.optJSONObject("client")?.let { cl ->
+                    c.kind = cl.optString("kind", c.kind); c.name = cl.optString("name", c.name).take(60)
+                    c.peerKey?.let { app.keys.updateCentral(it, c.name, c.kind) }
+                    refresh()
+                }
+                bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts")) }
+            }
+            T.SMS_SEND -> bg { sendSms(c, m) }
+            // A conversation was read on a client: mark it read here and tell the other devices.
+            T.SMS_READ -> bg {
+                val thread = m.b.optLong("thread", -1); val upTo = m.b.optLong("upTo", -1)
+                if (thread >= 0 && upTo > 0) {
+                    val pending = app.sms.unreadCount(thread, upTo)
+                    var n = if (dry(c) || pending == 0) 0 else app.sms.markRead(thread, upTo)
+                    // Without the WRITE_SMS app-op Android ignores the write silently (0 rows) or refuses it:
+                    // grant it through adb and retry once (fresh install, or the default SMS app changed).
+                    if (!dry(c) && pending > 0 && n <= 0) {
+                        Log.i(TAG, "sms.read: write ignored, granting WRITE_SMS: ${runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()}")
+                        n = app.sms.markRead(thread, upTo)
+                    }
+                    Log.i(TAG, "sms.read thread=$thread upTo=$upTo -> $n row(s)")
+                    targets().filter { it !== c }.forEach { it.send(Message(T.SMS_READ, JSONObject().put("thread", thread).put("upTo", upTo))) }
+                }
+            }
+            T.SMS_DELETE -> bg { deleteSms(c, m) }
+            T.CALLS_DELETE -> bg { deleteCalls(c, m) }
+            T.LISTS_SET -> bg { setLists(c, m) }
+            T.CONTACT_ADD -> bg { addContact(c, m) }
+            T.CONTACT_UPDATE -> bg { updateContact(c, m) }
+            // Favourites: star / unstar on the Android phone; the contacts version changes, so every client re-syncs them.
+            T.CONTACT_STAR -> bg {
+                val id = m.b.optLong("id", -1); val on = m.b.optBoolean("on")
+                val n = if (id < 0) -1 else app.contacts.setStarred(id, on, dry(c))
+                Log.i(TAG, "contact.star $id=$on -> $n")
+                c.send(Message(T.CONTACT_RESULT, JSONObject().put("ok", n >= 0).put("id", id).apply { if (n < 0) put("err", "Android refused the change") }, re = m.id))
+            }
+            T.CALL_ANSWER -> { audio.claim(c); CallRegistry.answer(m.b.optString("cid")) }
+            // "Move the call here": call audio switches to this client.
+            T.CALL_TAKE -> audio.claim(c)
+            T.CALL_REJECT -> CallRegistry.reject(m.b.optString("cid"))
+            T.CALL_END -> CallRegistry.end(m.b.optString("cid"))
+            T.CALL_HOLD -> CallRegistry.hold(m.b.optString("cid"), m.b.optBoolean("on"))
+            T.CALL_MUTE -> if (c === audio.target) audio.uplinkMuted = m.b.optBoolean("on")
+            T.CALL_DTMF -> m.b.optString("d").firstOrNull()?.let { CallRegistry.dtmf(m.b.optString("cid"), it) }
+            T.CALL_DIAL -> bg {
+                if (!dry(c)) audio.claim(c)
+                val sub = if (m.b.has("sub")) m.b.getInt("sub") else null
+                val err = CallRegistry.dial(app, m.b.optString("num"), sub, dry(c))
+                c.send(Message(T.CALL_DIALED, JSONObject().put("ok", err == null).apply { err?.let { put("err", it) } }, re = m.id))
+            }
+            // Link tab switches on the iPhone: mobile data, Wi-Fi hotspot, Bluetooth tethering (via the helper)
+            // and "Share VPN" (Tether's own proxy). The state also says whether a VPN is up on the Android phone.
+            T.NET_GET, T.NET_SET -> slowBg {
+                // A test client only reads: it never flips the Android phone's radios, airplane mode or sharing.
+                val what = if (m.t == T.NET_SET && !c.transport.dry) m.b.optString("what").takeIf { it in setOf("data", "hotspot", "bt", "dataSub", "share", "airplane", "rat") } else null
+                val on = m.b.optBoolean("on")
+                if (what == "share") {
+                    app.prefs.edit().putBoolean("share_vpn", on).apply()
+                    share.sharing = on
+                }
+                val err = helper.ensureRunning()
+                // "dataSub" picks the SIM that carries mobile data; only a currently active SIM is accepted.
+                val sub = if (what == "dataSub") m.b.optInt("sub", -1).takeIf { s -> app.sims.sims().any { it.optInt("sub") == s } } else null
+                val state = when {
+                    err != null -> null
+                    what == "dataSub" && sub == null -> JSONObject().put("err", "unknown SIM")
+                    what == "rat" && (m.b.optInt("slot", -1) !in 0..1 || m.b.optString("mode") !in setOf("2G", "3G", "4G", "5G")) ->
+                        JSONObject().put("err", "unknown network mode")
+                    what == "airplane" -> airplane(on)
+                    else -> helper.net(what?.takeIf { it != "share" }, on, sub,
+                        if (what == "rat") JSONObject().put("slot", m.b.optInt("slot")).put("mode", m.b.optString("mode")) else null)
+                }
+                if (what == "airplane") airplaneFailSafe(on)
+                share.refresh()
+                if (what != null) Log.i(TAG, "net.set $what=$on -> $state")
+                val body = (state ?: JSONObject().put("err", err ?: "helper did not answer")).put("share", share.sharing).put("proxy", share.json())
+                c.send(Message(T.NET_STATE, body, re = m.id))
+                // Sharing changes show on the other client's switch at once.
+                if (what == "share" || what == "airplane") targets().filter { it !== c }.forEach { it.send(Message(T.NET_STATE, body)) }
+            }
+            T.SELFTEST -> slowBg { c.send(Message(T.SELFTEST_RESULT, selftest(), re = m.id)) }
+            T.UNPAIR -> if (!c.transport.dry) {
+                c.peerKey?.let { app.keys.removeCentral(it) }
+                c.close("unpaired by ${c.name}")
+                refresh()
+            }
+            else -> Log.d(TAG, "ignored message ${m.t}")
+        }
+    }
+
+    // ------------------------------------------------------------------ sync
+
+    private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String) {
+        val t0 = SystemClock.elapsedRealtime()
+        val sms = app.sms.since(smsSince)
+        // During a call, small pages: a big record would hold the next audio frames up (one record goes out whole).
+        val weight = if (audio.running) 1500 else PAGE_WEIGHT
+        val smsPages = paginate(sms, weight) { 120 + it.body.length * 3 }
+        smsPages.forEachIndexed { i, p ->
+            c.send(Message(T.SMS_BATCH, JSONObject().put("items", JSONArray(p.map { it.json() })).put("more", i < smsPages.size - 1)))
+        }
+        val calls = app.callLog.since(callsSince)
+        val callPages = paginate(calls, weight) { 110 }
+        callPages.forEachIndexed { i, p ->
+            c.send(Message(T.CALLS_BATCH, JSONObject().put("items", JSONArray(p.map { it.json() })).put("more", i < callPages.size - 1)))
+        }
+        val version = app.contacts.version()
+        if (version != contactsVersion) {
+            val contacts = app.contacts.all()
+            val pages = paginate(contacts, weight) { it.weight() }
+            pages.forEachIndexed { i, p ->
+                c.send(Message(T.CONTACTS_BATCH, JSONObject().put("items", JSONArray(p.map { it.json() }))
+                    .put("more", i < pages.size - 1).put("version", version).put("full", true)))
+            }
+        }
+        // What still exists (rows deleted on the Android phone or by the other client disappear on this client too),
+        // and the block / mute lists.
+        // Paged so even a phone with thousands of gaps stays under the record limit (one page in the usual case).
+        val sr = idRanges(app.sms.allIds()); val cr = idRanges(app.callLog.allIds())
+        val per = 1400 // ≤ ~2 × 1400 × 18 bytes even with 8-digit ids: well under the 65,000-byte record cap
+        val pages = maxOf(1, (maxOf(sr.length(), cr.length()) + per - 1) / per)
+        for (i in 0 until pages) {
+            fun part(a: JSONArray) = JSONArray().apply { for (k in i * per until minOf(a.length(), (i + 1) * per)) put(a.get(k)) }
+            val b = JSONObject().put("sms", part(sr)).put("calls", part(cr))
+            if (pages > 1) b.put("more", i < pages - 1)
+            c.send(Message(T.SYNC_IDS, b))
+        }
+        c.send(Message(T.LISTS, app.lists.json()))
+        app.sms.unreadIds()?.let { c.send(unreadMessage(it)) }
+        Log.i(TAG, "sync: ${sms.size} sms, ${calls.size} calls, contacts ${if (version != contactsVersion) "sent" else "unchanged"} " +
+            "in ${SystemClock.elapsedRealtime() - t0} ms")
+    }
+
+    private var lastCallId = -1L
+
+    private fun pushRecentCalls() {
+        if (targets().isEmpty()) return
+        if (lastCallId < 0) lastCallId = app.callLog.since(0, 1).lastOrNull()?.id ?: 0
+        val news = app.callLog.since(lastCallId, 50)
+        if (news.isEmpty()) return
+        lastCallId = news.maxOf { it.id }
+        broadcast(Message(T.CALLS_BATCH, JSONObject().put("items", JSONArray(news.map { it.json() })).put("more", false)))
+    }
+
+    fun pollSms() = app.sms.poll { s -> if (forwardable(s)) broadcast(Message(T.SMS_NEW, JSONObject().put("item", s.json()))) }
+
+    /** A text from a blocked sender is not forwarded live (nor notified); it stays in the Android phone's history. */
+    private fun forwardable(s: app.tether.core.Sms) = s.box != 1 || !app.lists.isBlocked(s.addr)
+
+    private fun sendSms(c: Connection, m: Message) {
+        val req = m.id ?: 0
+        val localId = (System.nanoTime() and 0xffff).toInt() * 1000 + (req % 1000)
+        smsRequests[localId] = c to req
+        val sub = if (m.b.has("sub")) m.b.getInt("sub") else null
+        val err = app.sms.send(m.b.optString("to"), m.b.optString("body"), sub, localId, dry(c))
+        if (err != null || dry(c)) {
+            smsRequests.remove(localId)
+            c.send(Message(T.SMS_RESULT, JSONObject().put("ok", err == null).put("state", if (err == null) "sent" else "failed")
+                .apply { err?.let { put("err", it) } }, re = req))
+        }
+    }
+
+    fun smsResult(localId: Int, ok: Boolean, state: String, err: String?) {
+        val (c, re) = smsRequests[localId] ?: return
+        if (state != "sent") smsRequests.remove(localId)
+        // Many networks never send a delivery report: forget the request a while after "sent".
+        else work.schedule({ smsRequests.remove(localId) }, 10, TimeUnit.MINUTES)
+        c.send(Message(T.SMS_RESULT, JSONObject().put("ok", ok).put("state", state).apply { err?.let { put("err", it) } }, re = re))
+        pollSms()
+    }
+
+    // ------------------------------------------------------------------ airplane mode fail-safe
+
+    @Volatile private var airplaneCheck: java.util.concurrent.ScheduledFuture<*>? = null
+
+    /**
+     * Airplane mode switched on from a client keeps Bluetooth on, but if the link to every client is still
+     * gone 90 s later (Bluetooth went down after all, the iPhone cannot reconnect), airplane mode is switched
+     * off again by itself: otherwise nobody could ever switch it off from the iPhone.
+     */
+    private fun airplaneFailSafe(on: Boolean) {
+        airplaneCheck?.cancel(false)
+        app.prefs.edit().putBoolean("airplane_by_tether", on).apply()
+        if (!on) return
+        LinkLog.add("airplane mode on from a client; fail-safe armed")
+        airplaneCheck = work.scheduleWithFixedDelay({
+            if (!app.prefs.getBoolean("airplane_by_tether", false)) { airplaneCheck?.cancel(false); return@scheduleWithFixedDelay }
+            val live = targets().isNotEmpty()
+            val since = SystemClock.elapsedRealtime() - lastClientSeen
+            if (!live && since > 90_000) {
+                LinkLog.add("no client for ${since / 1000} s in airplane mode: switching it off (fail-safe)")
+                helper.ensureRunning()
+                airplane(false)
+                app.prefs.edit().putBoolean("airplane_by_tether", false).apply()
+                airplaneCheck?.cancel(false)
+            }
+        }, 15, 15, TimeUnit.SECONDS)
+    }
+
+    /**
+     * Airplane mode through the helper. Android switches the hotspot and Bluetooth tethering off with it and
+     * does not bring them back: remember what was on and switch it back on when airplane mode ends.
+     */
+    /** What a client's airplane switch does (also the adb test hook). */
+    fun setAirplane(on: Boolean): JSONObject? { val st = airplane(on); airplaneFailSafe(on); return st }
+
+    private fun airplane(on: Boolean): JSONObject? {
+        if (on) {
+            helper.net()?.let { st ->
+                app.prefs.edit().putBoolean("apm_restore_hotspot", st.optBoolean("hotspot"))
+                    .putBoolean("apm_restore_bt", st.optBoolean("bt"))
+                    // Wi-Fi too: the helper is (re)started over wireless debugging, which needs Wi-Fi.
+                    .putBoolean("apm_restore_wifi", android.provider.Settings.Global.getInt(app.contentResolver, "wifi_on", 0) != 0).apply()
+            }
+            return helper.net("airplane", true)
+        }
+        var st = helper.net("airplane", false)
+        if (app.prefs.getBoolean("apm_restore_wifi", false)) {
+            Thread.sleep(1000)
+            val wifiOn = android.provider.Settings.Global.getInt(app.contentResolver, "wifi_on", 0) != 0
+            if (!wifiOn) { runCatching { Adb.get(app).shell("svc wifi enable") }; LinkLog.add("after airplane mode: Wi-Fi back on") }
+        }
+        val restore = listOf("hotspot" to app.prefs.getBoolean("apm_restore_hotspot", false), "bt" to app.prefs.getBoolean("apm_restore_bt", false))
+        app.prefs.edit().remove("apm_restore_hotspot").remove("apm_restore_bt").remove("apm_restore_wifi").apply()
+        for ((what, was) in restore) if (was) {
+            Thread.sleep(1500)   // let the radios come back first
+            st = helper.net(what, true) ?: st
+            LinkLog.add("after airplane mode: $what back on")
+        }
+        return st
+    }
+
+    /** Last time any client link was up (for the airplane fail-safe). */
+    @Volatile private var lastClientSeen = SystemClock.elapsedRealtime()
+
+    // ------------------------------------------------------------------ delete, block, mute
+
+    private fun longs(a: JSONArray?): List<Long> = a?.let { (0 until it.length()).map { i -> it.getLong(i) } } ?: emptyList()
+
+    /** Deletes messages or a whole conversation; every client (the asking one included) gets sms.deleted. */
+    private fun deleteSms(c: Connection, m: Message) {
+        val body = applySmsDelete(longs(m.b.optJSONArray("ids")), if (m.b.has("thread")) m.b.getLong("thread") else null, dry(c))
+        c.send(Message(T.SMS_DELETED, body, re = m.id))
+        if (body.optBoolean("ok")) targets().filter { it !== c }.forEach { it.send(Message(T.SMS_DELETED, body)) }
+    }
+
+    /** The deletion itself (also used by the adb test hook); returns the sms.deleted body. */
+    fun applySmsDelete(ids: List<Long>, thread: Long?, dry: Boolean = dryRun): JSONObject {
+        var gone = if (dry) (if (thread != null) app.sms.idsIn(thread) else ids) else app.sms.delete(ids, thread)
+        if (gone == null) {
+            Log.i(TAG, "sms.delete refused, granting WRITE_SMS: ${runCatching { Adb.allowSmsWrite(app) }.getOrNull()?.trim()}")
+            gone = app.sms.delete(ids, thread)
+        }
+        Log.i(TAG, "sms.delete thread=$thread ids=${ids.size} -> ${gone?.size ?: "refused"}")
+        if (gone == null) return JSONObject().put("ok", false).put("ids", JSONArray()).put("err", "Android refused the deletion")
+        if (thread != null && !dry) app.lists.setMuted(thread, false)
+        return JSONObject().put("ok", true).put("ids", JSONArray(gone)).apply { thread?.let { put("thread", it) } }
+    }
+
+    private fun deleteCalls(c: Connection, m: Message) {
+        val all = m.b.optBoolean("all")
+        val body = applyCallsDelete(if (all) null else longs(m.b.optJSONArray("ids")), dry(c))
+        c.send(Message(T.CALLS_DELETED, body, re = m.id))
+        if (body.optBoolean("ok")) targets().filter { it !== c }.forEach { it.send(Message(T.CALLS_DELETED, body)) }
+    }
+
+    /** Deletes call-log rows (all when [ids] is null); returns the calls.deleted body. */
+    fun applyCallsDelete(ids: List<Long>?, dry: Boolean = dryRun): JSONObject {
+        val n = if (dry) (ids?.size ?: 0) else app.callLog.delete(ids)
+        Log.i(TAG, "calls.delete all=${ids == null} ids=${ids?.size} -> $n")
+        return if (n < 0) JSONObject().put("ok", false).put("ids", JSONArray()).put("err", "Android refused the deletion")
+        else JSONObject().put("ok", true).put("all", ids == null).put("ids", JSONArray(ids ?: emptyList<Long>()))
+    }
+
+    /** lists.set {what:"block", num, on} | {what:"mute", thread, on}; every client gets the new lists. */
+    private fun setLists(c: Connection, m: Message) {
+        val body = applyListsSet(m.b, dry(c))
+        c.send(Message(T.LISTS, body, re = m.id))
+        targets().filter { it !== c }.forEach { it.send(Message(T.LISTS, body)) }
+    }
+
+    fun applyListsSet(b: JSONObject, dry: Boolean = dryRun): JSONObject {
+        val on = b.optBoolean("on")
+        val where = when (b.optString("what")) {
+            "block" -> if (dry) "dry" else app.lists.setBlocked(b.optString("num"), on)
+            "mute" -> { if (!dry) app.lists.setMuted(b.optLong("thread", -1), on); "tether" }
+            else -> "error: unknown list"
+        }
+        Log.i(TAG, "lists.set ${b.optString("what")} on=$on -> $where")
+        return app.lists.json().put("where", where).apply { if (where.startsWith("error")) put("err", where) }
+    }
+
+    private fun addContact(c: Connection, m: Message) {
+        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile")) } } ?: emptyList()
+        val emails = m.b.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
+        val res = try {
+            val id = app.contacts.add(m.b.optString("name"), phones, emails, dry(c))
+            JSONObject().put("ok", id != -1L).put("id", id)
+        } catch (t: Throwable) {
+            JSONObject().put("ok", false).put("err", t.message ?: t.javaClass.simpleName)
+        }
+        c.send(Message(T.CONTACT_RESULT, res, re = m.id))
+    }
+
+    private fun updateContact(c: Connection, m: Message) {
+        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile")) } } ?: emptyList()
+        val emails = m.b.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
+        val res = try {
+            val err = app.contacts.update(m.b.optLong("id", -1), m.b.optString("name"), phones, emails, dry(c))
+            JSONObject().put("ok", err == null).put("id", m.b.optLong("id", -1)).apply { err?.let { put("err", it) } }
+        } catch (t: Throwable) {
+            JSONObject().put("ok", false).put("err", t.message ?: t.javaClass.simpleName)
+        }
+        Log.i(TAG, "contact.update ${m.b.optLong("id", -1)} -> $res")
+        c.send(Message(T.CONTACT_RESULT, res, re = m.id))
+    }
+
+    // ------------------------------------------------------------------ status, calls
+
+    fun statusJson(): JSONObject = app.sims.status(helper.state())
+
+    /** Status plus the list of connected clients (each client sees which one is itself). */
+    /** Synchronized: callers on other threads (battery, data SIM) must not send a stale status after a newer one. */
+    @Synchronized fun pushStatus() {
+        val live = targets()
+        if (live.isEmpty()) return
+        val base = statusJson().toString()
+        for (c in live) {
+            val clients = JSONArray(live.map { o -> JSONObject().put("name", o.name).put("kind", o.kind)
+                .put("self", o === c).put("audio", o === audio.target) })
+            val body = JSONObject(base).put("clients", clients)
+            // Only when something changed: every status wakes the iPhone app and makes it save.
+            val key = body.toString()
+            if (lastStatusSent[c] == key) continue
+            lastStatusSent[c] = key
+            c.send(Message(T.STATUS, body))
+        }
+        lastStatusSent.keys.retainAll(live.toSet())
+    }
+
+    private val lastStatusSent = ConcurrentHashMap<Connection, String>()
+
+    /**
+     * A suspended iPhone sends nothing for long stretches, so silence is normal: never drop the link for it.
+     * The BLE supervision timeout and L2CAP EOF tell us when the iPhone is really gone. We ping so a
+     * half-open session is noticed eventually (15 min), without waking the iPhone just for that.
+     */
+    private fun watchdog() {
+        audioCtl.execute { keepHelperWarm() }
+        if (targets().isNotEmpty()) lastClientSeen = SystemClock.elapsedRealtime()
+        for (c in conns) {
+            if (SystemClock.elapsedRealtime() - c.lastRx > 15 * 60_000L) { c.close("no traffic for 15 min"); continue }
+            c.send(Message(T.PING, JSONObject().put("ts", System.currentTimeMillis())))
+        }
+    }
+
+    /** The helper is started ahead of time so answering a call never waits for an ADB launch. */
+    private fun keepHelperWarm() {
+        if ((helper.connected || helper.tryConnect()) && !helper.isStale) return
+        if (app.prefs.getBoolean("adb_paired", false) || CallRegistry.wantsAudio()) helper.kick()
+    }
+
+    /** GATT notification on the wake characteristic: reliably wakes a suspended iPhone app. */
+    fun wake(c: Connection) = LinkService.running?.peripheral?.wake(c.transport.address)
+
+    /**
+     * Call info as one client sees it. `elsewhere` = the call's audio is on another client (it was answered
+     * or dialed there): this client stops ringing / shows "on <name>" with a button to move it here.
+     */
+    fun callJson(info: CallInfo, c: Connection): JSONObject {
+        val o = info.json()
+        val t = audio.owner
+        if (t != null && t !== c && info.state != "ringing" && info.state != "ended") o.put("elsewhere", true).put("where", t.name)
+        return o
+    }
+
+    private fun onCall(info: CallInfo) {
+        // Ownership first, so `elsewhere` is right in this very event (answer on another client → this one stops ringing).
+        // Never let audio control hold up a ring: wait for the audio lock briefly, then announce the call anyway.
+        if (!audio.updateOwner(300)) Log.w(TAG, "call ${info.cid}: audio lock busy, announcing without updating the owner")
+        // Telecom reports the end several times (disconnecting, disconnected, removed): send it once.
+        if (info.state == "ended") { if (endedSent.put(info.cid, SystemClock.elapsedRealtime()) != null) return }
+        endedSent.entries.removeIf { SystemClock.elapsedRealtime() - it.value > 60_000 }
+        Log.i(TAG, "call ${info.cid} ${info.state} → ${targets().size} client(s)")
+        for (c in targets()) {
+            c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
+            // Every call change wakes a suspended iPhone app (answered on the Android phone or elsewhere: stop ringing now).
+            wake(c)
+        }
+        audioCtl.execute { audio.reconcile() }
+        refresh()
+    }
+
+    /** Re-sends every call's state (after call audio moved between clients). */
+    private fun broadcastCalls() {
+        for (info in CallRegistry.list()) for (c in targets()) c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
+    }
+
+    fun selftest(): JSONObject {
+        val err = helper.ensureRunning()
+        val result = when {
+            err != null -> JSONObject().put("methods", JSONArray().put(JSONObject().put("name", "helper").put("ok", false).put("note", err)))
+            !CallRegistry.hasActiveCall() -> {
+                val probe = helper.request("probe")
+                JSONObject().put("methods", JSONArray().put(JSONObject().put("name", "live-call").put("ok", false)
+                    .put("note", "needs an active call; probe=${probe?.optBoolean("interceptable")}")))
+                    .apply { probe?.let { put("probe", it) } }
+            }
+            else -> {
+                audio.pause()
+                try {
+                    (helper.request("selftest", 40) ?: JSONObject().put("methods", JSONArray()))
+                        .also { r -> r.optString("chosen").takeIf { it.isNotEmpty() }?.let { app.prefs.edit().putString("inject", it).apply() } }
+                } finally {
+                    audio.resume()
+                }
+            }
+        }
+        lastSelftest = result
+        refresh()
+        return result
+    }
+
+    // ------------------------------------------------------------------ call audio
+
+    inner class AudioSession {
+        @Volatile private var codec: VoiceCodec? = null
+        /** Client the call audio currently flows to. */
+        @Volatile var target: Connection? = null; private set
+        /** Client that should have the call audio (answered / dialed / took it), null when there is no call. */
+        @Volatile var owner: Connection? = null; private set
+        @Volatile var uplinkMuted = false
+        @Volatile var running = false; private set
+        @Volatile private var paused = false
+        private var seq = 0
+        private var lastUpSeq = -1
+        private var backwards = 0
+        @Volatile var upLost = 0; private set
+        private var startedAt = 0L
+        private var restarts = 0
+        private var savedVolume = -1
+        private var lastNoHelperLog = 0L
+        private val am = app.getSystemService(android.media.AudioManager::class.java)
+
+        // Latency instrumentation (see README "Latency").
+        @Volatile var downFrames = 0L; private set
+        @Volatile var encodeNanos = 0L; private set
+        @Volatile var upFrames = 0L; private set
+        @Volatile var decodeNanos = 0L; private set
+        /** Echo instrumentation: when the far side echoes frame N back as uplink frame N (loopback test). */
+        private val sentAt = LongArray(1024)
+        @Volatile var echoNanos = 0L; private set
+        @Volatile var echoCount = 0; private set
+        fun resetStats() { downFrames = 0; encodeNanos = 0; upFrames = 0; decodeNanos = 0; echoNanos = 0; echoCount = 0; upLost = 0 }
+
+        /** A client reconnected (new link replacing its old one): the call audio follows it. */
+        fun handOver(old: Connection, new: Connection) {
+            lock.lock(); try { if (owner === old) owner = new } finally { lock.unlock() }
+        }
+
+        /** Audio control lock (a ReentrantLock so the ring path can give up waiting for it). */
+        private val lock = java.util.concurrent.locks.ReentrantLock()
+
+        /** A client answered, dialed or asked to move the call to itself. */
+        fun claim(c: Connection) {
+            c.lastAction = SystemClock.elapsedRealtime()
+            lock.lock(); try { owner = c } finally { lock.unlock() }
+            audioCtl.execute { reconcile() }
+        }
+
+        /**
+         * Keeps [owner] valid: dropped when the call or the client is gone; picked when a call needs audio
+         * but no client claimed it (answered on the Android phone itself): the client used last, else the iPhone.
+         */
+        /** [updateOwnerLocked] for callers outside audio control; false when the lock stayed busy for [waitMs]. */
+        fun updateOwner(waitMs: Long): Boolean {
+            if (!lock.tryLock(waitMs, TimeUnit.MILLISECONDS)) return false
+            try { updateOwnerLocked(); return true } finally { lock.unlock() }
+        }
+
+        private fun updateOwnerLocked(): Boolean {
+            val before = owner
+            val live = targets()
+            if (owner?.let { it !in live } == true) owner = null
+            if (!CallRegistry.wantsAudio() && !CallRegistry.list().any { it.state == "dialing" || it.state == "connecting" }) {
+                // Keep a claim made a moment ago (dial in flight, answer not yet active).
+                if (owner != null && SystemClock.elapsedRealtime() - owner!!.lastAction > 5000) owner = null
+            } else if (owner == null) {
+                owner = live.maxByOrNull { it.lastAction }?.takeIf { it.lastAction > 0 }
+                    ?: live.firstOrNull { it.kind == "iphone" } ?: live.firstOrNull()
+            }
+            return owner !== before
+        }
+
+        /** Called every second and on every call/link change, on the audio-ctl thread. */
+        /** Owner the clients were last told about (claim() changes [owner] directly). */
+        private var announcedOwner: Connection? = null
+
+        fun reconcile() {
+            val t0 = SystemClock.elapsedRealtime()
+            lock.lock()
+            try { reconcileLocked() } finally {
+                lock.unlock()
+                SystemClock.elapsedRealtime().minus(t0).takeIf { it > 300 }?.let { Log.w(TAG, "audio reconcile held the lock $it ms") }
+            }
+        }
+
+        private fun reconcileLocked() {
+            updateOwnerLocked()
+            val o = owner
+            val changed = o !== announcedOwner
+            announcedOwner = o
+            val want = o != null && o.isUp && CallRegistry.wantsAudio() && !paused
+            if (want && !running) start(o!!)
+            else if (!want && running) stop()
+            else if (running && o != null && target !== o) retarget(o)
+            else if (running) { checkMethods(); muteLocalMic(true) }
+            if (changed) broadcastCalls()
+            // Keep the helper alive between calls too, so answering never waits for a launch.
+            if (!helper.connected && app.prefs.getBoolean("adb_paired", false)) helper.kick()
+        }
+
+        fun pause() { paused = true; audioCtl.submit { reconcile() }.get() }
+        fun resume() { paused = false; audioCtl.execute { reconcile() } }
+
+        private fun codecFor(c: Connection): VoiceCodec = try {
+            if ("opus" in c.codecs && OpusCodec.available()) OpusCodec() else PcmuCodec()
+        } catch (t: Throwable) {
+            Log.w(TAG, "opus init failed, using pcmu", t); PcmuCodec()
+        }
+
+        private fun startMessage(k: VoiceCodec) = Message(T.AUDIO_START, JSONObject().put("codec", k.name).put("rate", k.rate)
+            .put("ms", 20).put("up", true).put("bitrate", (k as? OpusCodec)?.bitrate ?: 64000))
+
+        private fun start(c: Connection) {
+            // Never wait for the helper here (this holds the audio lock): kick it; it attaches in the background
+            // and the next 1 s reconcile starts the audio.
+            if (!helper.connected || helper.isStale) {
+                helper.kick()
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastNoHelperLog > 5000) { lastNoHelperLog = now; Log.w(TAG, "no call audio yet: helper not running, starting it") }
+                return
+            }
+            val k = codecFor(c)
+            codec = k
+            target = c
+            seq = 0
+            lastUpSeq = -1
+            restarts = 0
+            running = true
+            uplinkMuted = false
+            startedAt = SystemClock.elapsedRealtime()
+            helper.onDown = { pcm ->
+                val cc = target
+                val kk = codec
+                if (cc != null && kk != null && running) {
+                    val t0 = System.nanoTime()
+                    val frames = kk.encode(pcm)
+                    encodeNanos += System.nanoTime() - t0
+                    downFrames++
+                    for (f in frames) {
+                        val sq = seq++ and 0xffff
+                        sentAt[sq and 1023] = t0
+                        cc.sendAudio(AudioFrame(kk.id, sq, f).encoded())
+                    }
+                }
+            }
+            quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
+            helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto")
+            c.sendUrgent(startMessage(k))
+            muteLocalMic(true)
+            LinkService.running?.peripheral?.tune(c.transport.address, high = true)
+            Log.i(TAG, "call audio started: ${k.name} @ ${k.rate} to ${c.name}")
+        }
+
+        /** Moves running call audio to another client; the helper (and the Android phone's muting) keep running. */
+        private fun retarget(c: Connection) {
+            val old = target
+            val k = codecFor(c)
+            val oldCodec = codec
+            target = c
+            codec = k
+            seq = 0
+            lastUpSeq = -1
+            uplinkMuted = false
+            oldCodec?.release()
+            old?.sendUrgent(Message(T.AUDIO_STOP))
+            old?.let { LinkService.running?.peripheral?.tune(it.transport.address, high = false) }
+            c.sendUrgent(startMessage(k))
+            LinkService.running?.peripheral?.tune(c.transport.address, high = true)
+            Log.i(TAG, "call audio moved from ${old?.name} to ${c.name}")
+            refresh()
+        }
+
+        /** If the helper had to fall back from the interception API (e.g. started a moment too early), retry. */
+        private fun checkMethods() {
+            val info = helper.lastInfo ?: return
+            val capture = info.optString("capture"); val inject = info.optString("inject")
+            if (capture == "intercept" && inject == "intercept") return
+            if (restarts >= 3 || SystemClock.elapsedRealtime() - startedAt < 1500) return
+            restarts++
+            Log.w(TAG, "helper using capture=$capture inject=$inject; retry $restarts")
+            startedAt = SystemClock.elapsedRealtime()
+            helper.start(codec?.rate ?: 16000, "auto", "auto")
+        }
+
+        fun stop(sendStop: Boolean = true) { lock.lock(); try { stopLocked(sendStop) } finally { lock.unlock() } }
+
+        private fun stopLocked(sendStop: Boolean) {
+            if (!running) return
+            running = false
+            helper.onDown = null
+            helper.stop()
+            val t = target
+            if (sendStop) t?.sendUrgent(Message(T.AUDIO_STOP))
+            codec?.release()
+            codec = null
+            target = null
+            muteLocalMic(false)
+            quietLocalEarpiece(false)
+            t?.let { LinkService.running?.peripheral?.tune(it.transport.address, high = false) }
+            Log.i(TAG, "call audio stopped (down $downFrames frames, avg encode ${if (downFrames > 0) encodeNanos / downFrames / 1000 else 0} µs; " +
+                "up $upFrames frames, avg decode ${if (upFrames > 0) decodeNanos / upFrames / 1000 else 0} µs)")
+        }
+
+        /**
+         * While bridged, only the iPhone's microphone may reach the call: mute the Android phone's own mic through
+         * Telecom. The iPhone's mute button is separate (it silences the injected uplink).
+         */
+        private fun muteLocalMic(on: Boolean) {
+            if (!app.prefs.getBoolean("mute_local_mic", true)) return
+            if (CallRegistry.isMuted() != on && CallRegistry.mute(on)) Log.i(TAG, "Android phone mic ${if (on) "muted" else "unmuted"} for bridged call")
+        }
+
+        /** While the call is bridged to the iPhone, the Android phone's own earpiece goes to its lowest volume. */
+        private fun quietLocalEarpiece(on: Boolean) {
+            try {
+                val s = android.media.AudioManager.STREAM_VOICE_CALL
+                if (on) {
+                    if (savedVolume < 0) savedVolume = am.getStreamVolume(s)
+                    am.setStreamVolume(s, am.getStreamMinVolume(s), 0)
+                } else if (savedVolume >= 0) {
+                    am.setStreamVolume(s, savedVolume, 0)
+                    savedVolume = -1
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "volume change refused: ${t.message}")
+            }
+        }
+
+        fun onUplink(payload: ByteArray) {
+            val k = codec ?: return
+            val f = AudioFrame.parse(payload) ?: return
+            if (f.codec != k.id) return
+            val t0 = System.nanoTime()
+            // A gap in the sequence (frames dropped for lateness): conceal up to 2 frames instead of a hard gap.
+            val gap = if (lastUpSeq < 0) 1 else ((f.seq - lastUpSeq) and 0xffff)
+            if (gap == 0 || gap > 0x8000) {
+                // Duplicate / late. Several "late" frames in a row mean the client restarted its counter (its audio
+                // engine restarted after a route change): follow it instead of dropping its voice until it catches up.
+                if (gap == 0 || ++backwards < 3) return
+                Log.i(TAG, "uplink sequence restarted (${lastUpSeq} → ${f.seq}): following it")
+            }
+            backwards = 0
+            lastUpSeq = f.seq
+            if (gap in 2..3) repeat(gap - 1) { k.conceal()?.let { helper.up(if (uplinkMuted) ShortArray(it.size) else it) }; upLost++ }
+            val pcm = k.decode(f.payload) ?: return
+            val t1 = System.nanoTime()
+            decodeNanos += t1 - t0
+            upFrames++
+            val sent = sentAt[f.seq and 1023]
+            if (sent != 0L && t1 - sent < 1_000_000_000L) { echoNanos += t1 - sent; echoCount++ }
+            helper.up(if (uplinkMuted) ShortArray(pcm.size) else pcm)
+        }
+    }
+}

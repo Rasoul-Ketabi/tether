@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">تتر</string>
+    <string name="dialer_label">تلفن تتر</string>
+    <string name="channel_link">اتصال</string>
+    <string name="channel_calls">تماس‌ها</string>
+    <string name="channel_setup">راه‌اندازی</string>
+    <string name="notif_link_waiting">در انتظار آیفون</string>
+    <string name="notif_link_connected">به آیفون وصل است</string>
+    <string name="notif_link_unpaired">جفت نشده است. برای جفت کردن تتر را باز کنید.</string>
+    <string name="notif_bt_off">بلوتوث خاموش است</string>
+
+    <string name="section_link">اتصال آیفون</string>
+    <string name="section_setup">راه‌اندازی</string>
+    <string name="section_audio">صدای تماس</string>
+    <string name="state_connected">وصل</string>
+    <string name="state_waiting">در حال اعلام حضور، منتظر آیفون</string>
+    <string name="state_unpaired">جفت نشده</string>
+    <string name="state_bt_off">بلوتوث خاموش</string>
+    <string name="pair_iphone">جفت کردن آیفون</string>
+    <string name="pair_hint">در برنامهٔ Cellular روی آیفون «جفت کردن» را بزنید و این کد را اسکن کنید. یک بار کار می‌کند و پس از ۵ دقیقه منقضی می‌شود.</string>
+    <string name="pair_expires">%1$d ثانیه تا انقضا</string>
+    <string name="unpair">لغو جفت</string>
+
+    <string name="step_permissions">مجوزها</string>
+    <string name="step_dialer">برنامه پیش‌فرض تلفن</string>
+    <string name="step_battery">مصرف باتری بدون محدودیت</string>
+    <string name="step_adb">اشکال‌زدایی بی‌سیم</string>
+    <string name="step_helper">دستیار صدا</string>
+    <string name="action_grant">اعطا</string>
+    <string name="action_set">تنظیم</string>
+    <string name="action_pair">جفت کردن</string>
+    <string name="action_start">شروع</string>
+    <string name="action_selftest">آزمون صدای تماس</string>
+    <string name="done">انجام شد</string>
+    <string name="missing">لازم است</string>
+    <string name="helper_running">در حال اجرا (%1$s)</string>
+    <string name="helper_stopped">متوقف</string>
+    <string name="selftest_result">آزمون: %1$s</string>
+
+    <string name="adb_notif_title">جفت کردن اشکال‌زدایی بی‌سیم</string>
+    <string name="adb_notif_text">گزینه‌های برنامه‌نویس › اشکال‌زدایی بی‌سیم › جفت کردن دستگاه با کد را باز کنید و کد ۶ رقمی را اینجا وارد کنید.</string>
+    <string name="adb_notif_action">وارد کردن کد</string>
+    <string name="adb_notif_hint">کد جفت‌سازی</string>
+    <string name="adb_pairing">در حال جفت کردن…</string>
+    <string name="adb_paired">با اشکال‌زدایی بی‌سیم جفت شد. دستیار صدا در حال شروع است…</string>
+    <string name="adb_failed">جفت کردن ناموفق بود: %1$s</string>
+
+    <string name="call_incoming">تماس ورودی</string>
+    <string name="call_outgoing">در حال تماس…</string>
+    <string name="call_active">در تماس</string>
+    <string name="call_holding">در انتظار</string>
+    <string name="call_ended">تماس پایان یافت</string>
+    <string name="answer">پاسخ</string>
+    <string name="decline">رد</string>
+    <string name="end_call">پایان</string>
+    <string name="speaker">بلندگو</string>
+    <string name="unknown_caller">ناشناس</string>
+    <string name="dial">تماس</string>
+    <string name="dialer_hint">شماره</string>
+    <string name="unpair_confirm_named">%1$s فراموش شود؟ باید دوباره جفت شود.</string>
+    <string name="audio_needs_android13">صدای تماس به اندروید ۱۳ یا جدیدتر نیاز دارد. روی این گوشی تماس‌ها همچنان از آیفون پاسخ داده، گرفته و قطع می‌شوند، اما صدایشان روی همین گوشی می‌ماند.</string>
+    <string name="audio_local_stays_on">در تماسی که به آیفون وصل است، گوشی و میکروفون خود این گوشی ممکن است روشن بمانند (فقط گوشی‌های سامسونگ اجازهٔ بی‌صدا کردنشان را می‌دهند): آن را در کیف یا جیب نگه دارید.</string>
+</resources>
