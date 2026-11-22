@@ -77,7 +77,8 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     @Synchronized fun stop() {
         running = false
         advertising = false
-        runCatching { advSet?.let { adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(advCallback) } }
+        runCatching { adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(advCallback) }   // also a pending start's set
+        startPending = false
         advSet = null
         runCatching { l2cap?.close() }
         l2cap = null
@@ -148,9 +149,10 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     /** "ok" when nothing in the service asks for link encryption (shown by the state hook). */
     @Volatile var securityCheck = "not started"; private set
 
-    private fun startAdvertising() {
-        val adv = adapter!!.bluetoothLeAdvertiser ?: throw IOException("no advertiser")
-        val params = AdvertisingSetParameters.Builder()
+    /** A start was requested and its callback has not come yet: never start (or stop) another one meanwhile. */
+    @Volatile private var startPending = false
+
+    private fun advParams() = AdvertisingSetParameters.Builder()
             .setLegacyMode(true)
             .setConnectable(true)
             .setScannable(true)
@@ -159,23 +161,40 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
             .setInterval(if (linked) AdvertisingSetParameters.INTERVAL_MEDIUM else AdvertisingSetParameters.INTERVAL_LOW)
             .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
             .build()
+
+    /**
+     * One advertising set for the life of the service. Stopping and starting sets on every link change (to switch
+     * the interval) leaked them: a stop while a start was still pending orphaned that set, it kept its slot, and
+     * after enough link changes Android refused all advertising ("too many advertisers", seen 2026-11-22), so the
+     * iPhone could not find the phone. Interval changes now go to the same set.
+     */
+    private fun startAdvertising() {
+        if (advSet != null || startPending) return
+        val adv = adapter!!.bluetoothLeAdvertiser ?: throw IOException("no advertiser")
+        val params = advParams()
         val data = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(SERVICE))
             .setIncludeDeviceName(false)
             .build()
-        adv.startAdvertisingSet(params, data, AdvertiseData.Builder().build(), null, null, advCallback)
+        startPending = true
+        try { adv.startAdvertisingSet(params, data, AdvertiseData.Builder().build(), null, null, advCallback) }
+        catch (t: Throwable) { startPending = false; throw t }
     }
 
     private val advCallback = object : AdvertisingSetCallback() {
         override fun onAdvertisingSetStarted(set: AdvertisingSet?, txPower: Int, status: Int) {
+            startPending = false
             advSet = set
             advertising = status == ADVERTISE_SUCCESS
+            // The link changed while the start was pending: give the set the interval wanted now.
+            if (status == ADVERTISE_SUCCESS && set != null && linked != startedLinked) applyInterval(set)
             Log.i(TAG, "advertising started status=$status txPower=$txPower")
             if (status != ADVERTISE_SUCCESS) LinkLog.add("advertising failed to start: status=$status")
         }
 
         override fun onAdvertisingSetStopped(set: AdvertisingSet?) {
             advertising = false
+            if (set === advSet) advSet = null
             if (!stoppingOurselves) LinkLog.add("advertising stopped by the system")
             stoppingOurselves = false
         }
@@ -189,22 +208,35 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     @Volatile private var stoppingOurselves = false
 
     /** A client linked / the last one left: restart advertising at the matching interval. */
+    /** The interval the running set was last given (see [applyInterval]). */
+    @Volatile private var startedLinked = false
+
+    /** Pause, change the interval, resume: the same set, so nothing leaks. */
+    private fun applyInterval(set: AdvertisingSet) {
+        startedLinked = linked
+        runCatching {
+            set.enableAdvertising(false, 0, 0)
+            set.setAdvertisingParameters(advParams())
+            set.enableAdvertising(true, 0, 0)
+        }.onFailure { LinkLog.add("advertising interval not changed: ${it.message}") }
+    }
+
     @Synchronized fun setLinked(on: Boolean) {
         if (linked == on || !running) { linked = on; return }
         linked = on
-        stoppingOurselves = advSet != null
-        runCatching { advSet?.let { adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(advCallback) } }
-        advSet = null
-        advertising = false
-        runCatching { startAdvertising() }.onFailure { LinkLog.add("advertising restart failed: ${it.message}") }
+        advSet?.let { applyInterval(it) }   // no set yet: onAdvertisingSetStarted applies it
     }
 
     @Synchronized fun ensureAdvertising() {
-        if (!running || !enabled || advertising) return
-        LinkLog.add("advertising was off: restarting it")
-        runCatching { advSet?.let { adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(advCallback) } }
-        advSet = null
-        runCatching { startAdvertising() }.onFailure { LinkLog.add("advertising restart failed: ${it.message}") }
+        if (!running || !enabled || advertising || startPending) return
+        val set = advSet
+        if (set != null) {
+            LinkLog.add("advertising was off: enabling it again")
+            runCatching { set.enableAdvertising(true, 0, 0) }
+            return
+        }
+        LinkLog.add("advertising was off: starting it")
+        runCatching { startAdvertising() }.onFailure { LinkLog.add("advertising start failed: ${it.message}") }
     }
 
     /** Sends a 1-byte notification on the wake characteristic (wakes the iPhone app from suspension). */
@@ -271,13 +303,26 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
 
     /** Paired, no session: bring an LE link up briefly, then drop it unless a session came up meanwhile. */
     fun pulseLe(address: String) {
-        if (!LinkPolicy.pulseLeLink(paired = true, sessionUp = address in held, linkOpen = keepers.containsKey(address))) return
+        if (!LinkPolicy.pulseLeLink(paired = true, sessionUp = address in held, linkOpen = keepers.containsKey(address) || address in leLinks)) return
         openLe(address) { _ ->
             LinkLog.add("LE pulse to ${LinkLog.short(address)}")
             pulseTimer.schedule({ if (address !in held) releaseLe(address) }, LinkPolicy.PULSE_UP_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         }
         // Not even connected after a while (out of range): give the attempt up, the next pulse tries again.
         pulseTimer.schedule({ if (address !in held && address !in keeperUp) releaseLe(address) }, 10_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    /**
+     * Close the central's LE connection (we have no session on it any more). iOS keeps the connection of an app that
+     * died for up to ~40 s, and while any LE link to us exists it does not complete the reopened app's new connect
+     * (seen 2026-11-22); closing it lets the next pulse bring a fresh link up, which completes it.
+     */
+    fun closeLeConnection(address: String) {
+        val s = server ?: return
+        val d = devices[address] ?: return
+        if (address !in leLinks) return
+        runCatching { s.cancelConnection(d) }
+        LinkLog.add("closed the idle LE connection to ${LinkLog.short(address)}")
     }
 
     /** Nothing is paired any more: no link is held or pulsed. */

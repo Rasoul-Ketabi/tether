@@ -175,6 +175,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 // iOS never completes it once the link goes. Pulses soon after the linger complete such a stuck connect
                 // (then the regular 30 s pulse; none at all once a session is back).
                 pulseBurst()
+                // An LE session ended and no new one came within 3 s (the app died, or will not restart on this
+                // connection): close the connection iOS keeps open, so a fresh link can come up for the next connect.
+                if (c.transport.label == "l2cap") {
+                    val addr = c.transport.address
+                    work.schedule({
+                        if (conns.none { it.transport.address == addr }) LinkService.running?.peripheral?.closeLeConnection(addr)
+                    }, 3, TimeUnit.SECONDS)
+                }
             }
             if (!app.keys.isPaired) { LinkService.running?.peripheral?.dropKeepers(); app.prefs.edit().remove("central_bt_address").apply() }
             audioCtl.execute { audio.reconcile() }
@@ -549,7 +557,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      */
     /** Pulses soon after a session ended or the service started, while the iPhone is most likely to be reconnecting. */
     private fun pulseBurst() {
-        for (d in LinkPolicy.PULSE_BURST_S) work.schedule({ runCatching { lePulse() } }, d, TimeUnit.SECONDS)
+        for (d in LinkPolicy.PULSE_SOON_EVERY_S..LinkPolicy.PULSE_SOON_FOR_S step LinkPolicy.PULSE_SOON_EVERY_S)
+            work.schedule({ runCatching { lePulse() } }, d, TimeUnit.SECONDS)
     }
 
     /** Paired but no session with the iPhone: a short LE link pulse (BlePeripheral.pulseLe); unpaired: none at all. */

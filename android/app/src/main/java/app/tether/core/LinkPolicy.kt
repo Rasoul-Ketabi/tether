@@ -17,12 +17,19 @@ object LinkPolicy {
      * paired without a session, pulsed (up briefly, then dropped): a link coming up completes a waiting connect.
      */
     fun holdLeLink(sessionUp: Boolean) = sessionUp
+    /**
+     * [linkOpen]: any LE link to the iPhone exists, ours or a lingering one. Only a link coming *up* completes the
+     * app's waiting connect; a pulse into an existing link just keeps it alive, and back-to-back pulses held one
+     * link open forever so the reopened app never connected (seen 2026-11-22). So: pulse only when there is none.
+     */
     fun pulseLeLink(paired: Boolean, sessionUp: Boolean, linkOpen: Boolean) = paired && !sessionUp && !linkOpen
 
-    /** Seconds after a session ended or the service started: pulses while the iPhone is likely reconnecting. */
-    val PULSE_BURST_S = longArrayOf(3, 10, 17, 25)
+    /** After a session ended or the service started: try a pulse every [PULSE_SOON_EVERY_S] s for [PULSE_SOON_FOR_S] s. */
+    const val PULSE_SOON_EVERY_S = 5L
+    const val PULSE_SOON_FOR_S = 60L
     const val PULSE_EVERY_S = 30L
-    const val PULSE_UP_MS = 5_000L
+    /** Short, so the link (plus Android's ~4 s linger after release) is gone before the next pulse. */
+    const val PULSE_UP_MS = 3_000L
 }
 
 /**

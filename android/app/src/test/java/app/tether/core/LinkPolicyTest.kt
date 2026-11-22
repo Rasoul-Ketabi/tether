@@ -114,14 +114,16 @@ class LinkPolicyTest {
         assertTrue(LinkPolicy.pulseLeLink(paired = true, sessionUp = false, linkOpen = false))
         assertFalse(LinkPolicy.pulseLeLink(paired = true, sessionUp = true, linkOpen = false))   // suspended app: no wake-ups
         assertFalse(LinkPolicy.pulseLeLink(paired = false, sessionUp = false, linkOpen = false)) // unpaired: nothing
-        assertFalse(LinkPolicy.pulseLeLink(paired = true, sessionUp = false, linkOpen = true))   // one at a time
+        assertFalse("never into an existing (lingering) link", LinkPolicy.pulseLeLink(paired = true, sessionUp = false, linkOpen = true))
     }
 
     @Test fun pulseScheduleCoversTheLingerAndStaysCheap() {
         // The first pulse comes after Android's ~4 s linger of a released link would have started, and the burst is
         // over before the regular period takes over; a pulse is short against its period.
-        assertTrue(LinkPolicy.PULSE_BURST_S.first() >= 3 && LinkPolicy.PULSE_BURST_S.last() < LinkPolicy.PULSE_EVERY_S)
-        assertTrue(LinkPolicy.PULSE_BURST_S.toList().zipWithNext().all { (a, b) -> b - a >= LinkPolicy.PULSE_UP_MS / 1000 })
+        // A pulse plus Android's ~4 s linger after release is over before a check could start the next one only when
+        // the check sees no link (pulseLeLink's linkOpen); checks are frequent at first, then every 30 s.
+        assertTrue(LinkPolicy.PULSE_UP_MS <= 3_000)
+        assertTrue(LinkPolicy.PULSE_SOON_EVERY_S in 3..10 && LinkPolicy.PULSE_SOON_FOR_S >= 30)
         assertTrue(LinkPolicy.PULSE_UP_MS * 5 <= LinkPolicy.PULSE_EVERY_S * 1000)
     }
 }
