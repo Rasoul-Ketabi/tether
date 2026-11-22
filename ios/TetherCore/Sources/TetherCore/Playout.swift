@@ -50,7 +50,7 @@ public final class SampleRing: @unchecked Sendable {
 ///   re-buffering; only ~100 ms without audio un-primes it.
 /// - Clock drift and bursts are drained in quiet frames (a quiet frame is written short: inaudible) back to `target`, so the
 ///   delay never creeps up and is never cut in the middle of speech; a hard trim only catches a huge burst.
-/// - `target` grows a little after a real underrun and shrinks again after ~3 s of clean playout.
+/// - `target` grows by 5 ms with every concealed gap (more after a real underrun) and shrinks after ~3 s clean.
 public final class PlayoutBuffer: @unchecked Sendable {
     private let ring: SampleRing
     private var lock = os_unfair_lock()
@@ -125,6 +125,14 @@ public final class PlayoutBuffer: @unchecked Sendable {
             return n
         }
         // Shortfall: continue the last 10 ms, fading out over ~60 ms, instead of a hard gap.
+        // A new gap also deepens the buffer a little: frames over Bluetooth arrive in bursts (gaps of 60-77 ms
+        // against a 40 ms target were concealed every few seconds on a real iPhone, 2026-11-22), and only a full
+        // 100 ms dropout used to grow the target. It shrinks again after ~3 s without a gap.
+        if concealRun == 0 {
+            os_unfair_lock_lock(&lock)
+            target = min(maxTarget, target + rate / 200)
+            os_unfair_lock_unlock(&lock)
+        }
         let fadeLen = Float(rate) * 0.06
         for i in n..<count {
             let g = max(0, 1 - Float(concealRun) / fadeLen)

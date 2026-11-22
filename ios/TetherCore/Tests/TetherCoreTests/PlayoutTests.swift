@@ -59,4 +59,19 @@ final class PlayoutTests: XCTestCase {
         b.push(tone(320))                                   // now 30 ms queued
         XCTAssertEqual(pull(b, 160).real, 160)
     }
+
+    func testShortGapsDeepenTheBufferAndCleanPlayoutShrinksIt() {
+        let b = PlayoutBuffer(rate: 16000)
+        b.push(tone(640)); _ = pull(b, 640)
+        let start = b.target
+        for _ in 0..<4 {                        // four short gaps, each followed by enough audio to play again
+            _ = pull(b, 160)
+            b.push(tone(1600)); _ = pull(b, 1600)
+        }
+        XCTAssertGreaterThan(b.target, start, "bursty arrival deepens the buffer")
+        XCTAssertLessThanOrEqual(b.target, b.maxTarget)
+        let deep = b.target
+        for _ in 0..<700 { b.push(tone(160)); _ = pull(b, 160) }   // ~7 s without a gap
+        XCTAssertLessThan(b.target, deep, "and it shrinks back once arrival is smooth")
+    }
 }
