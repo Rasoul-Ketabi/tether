@@ -430,6 +430,8 @@ final class CallController: NSObject {
 
     /// Answers a ringing call by its Android phone id (debug auto-answer).
     func answer(cid: String) { if let u = uuids[cid] { answer(u) } }
+    /// Ends a call by its Android-side id (debug auto hang-up).
+    func end(cid: String) { if let u = uuids[cid] { end(u) } }
 
     func setSpeaker(_ on: Bool) {
         speakerWanted = on

@@ -74,6 +74,10 @@ final class AppModel {
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
     var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
+    #if DEBUG
+    /// Calls the -TetherAutoHangup debug option already scheduled to end.
+    @ObservationIgnored var autoHangupArmed = Set<String>()
+    #endif
     var activeCalls: [String: CallInfo] = [:]
     /// The in-app call screen (CallKit shows system UI only for incoming calls).
     var callScreen: CallScreen? { didSet { if oldValue?.uuid != callScreen?.uuid || oldValue?.state != callScreen?.state || oldValue?.speaker != callScreen?.speaker { calls.updateProximity() } } }

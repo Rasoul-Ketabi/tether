@@ -60,8 +60,14 @@ class DebugReceiver : BroadcastReceiver() {
             }).put("calls", CallRegistry.list().size).toString()
         "pair_code" -> app.keys.openPairing().encode()
         // Never rings the user's iPhone by accident: with an iPhone connected it refuses (use loopback_call instead).
-        "fake_incoming" -> if (app.hub.targets().any { it.kind == "iphone" }) "refused: an iPhone would ring; use loopback_call, or 'only none' and a fake ring on purpose"
+        // A test-line ring reaches a linked iPhone only when asked for (--es allow iphone).
+        "fake_incoming" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+                "refused: an iPhone would ring; add --es allow iphone to ring it on purpose, or use loopback_call"
             else { TestConnectionService.ringIn(app, intent.getStringExtra("num") ?: "5550100"); "ringing" }
+        // fake_outgoing: an outgoing call on the self-managed test line (never a SIM), shown on a linked iPhone.
+        "fake_outgoing" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+                "refused: an iPhone would show it; add --es allow iphone"
+            else { TestConnectionService.dialOut(app, "+10000000009"); "dialing on the test line" }
         "fake_end" -> { TestConnectionService.endCurrent(); "ended" }
         "dryrun_on" -> { Hub.dryRun = true; "dry run on" }
         "dryrun_off" -> { Hub.dryRun = false; "dry run off" }

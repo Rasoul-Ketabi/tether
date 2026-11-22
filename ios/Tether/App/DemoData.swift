@@ -101,7 +101,17 @@ extension AppModel {
     }
 
     func debugAutoAnswer(_ c: CallInfo) {
-        guard ProcessInfo.processInfo.arguments.contains("-TetherAutoAnswer"), c.state == "ringing", c.isIncoming else { return }
+        let args = ProcessInfo.processInfo.arguments
+        // -TetherAutoHangup N: an active call is ended from this iPhone after N seconds (tests without a tap).
+        if c.state == "active", let i = args.firstIndex(of: "-TetherAutoHangup"), i + 1 < args.count, let n = Double(args[i + 1]),
+           !autoHangupArmed.contains(c.cid) {
+            autoHangupArmed.insert(c.cid)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(n))
+                self.calls.end(cid: c.cid)
+            }
+        }
+        guard args.contains("-TetherAutoAnswer"), c.state == "ringing", c.isIncoming else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1))
             self.calls.answer(cid: c.cid)
