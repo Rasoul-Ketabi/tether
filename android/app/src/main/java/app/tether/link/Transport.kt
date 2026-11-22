@@ -82,6 +82,11 @@ class GattTransport(
     @Volatile var mtu = 23
     private val chunks = LinkedBlockingQueue<ByteArray>()
     private val sent = java.util.concurrent.Semaphore(1)
+    val isClosed get() = closed
+
+    /** Set by the peripheral: the central started a new session on this GATT connection (its first record). */
+    var onPeerRestart: ((ByteArray) -> Unit)? = null
+    fun peerRestarted(firstRecord: ByteArray) { onPeerRestart?.invoke(firstRecord) }
     private var onBytes: ((ByteArray, Int) -> Unit)? = null
     private var onClosed: (() -> Unit)? = null
     @Volatile private var closed = false

@@ -256,6 +256,20 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         tuners.remove(address)?.let { runCatching { it.disconnect(); it.close() } }
     }
 
+    private val txSubscribers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** A new GATT pipe (and session) for this central; an older pipe of the same central is closed first. */
+    private fun openPipe(s: BluetoothGattServer, device: BluetoothDevice): GattTransport {
+        gattPipes.remove(device.address)?.close()
+        val t = GattTransport(s, device, txChar!!)
+        t.mtu = mtus[device.address] ?: 23
+        t.onPeerRestart = { first -> openPipe(s, device).received(first) }
+        gattPipes[device.address] = t
+        Log.i(TAG, "gatt fallback pipe opened for ${device.address}")
+        onTransport(t)
+        return t
+    }
+
     private val gattCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             Log.i(TAG, "gatt ${device.address} state=$newState status=$status bond=${device.bondState}")
@@ -266,6 +280,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
             }
             if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
                 gattPipes.remove(device.address)?.close()
+                txSubscribers.remove(device.address)
                 mtus.remove(device.address)
                 wakeSubscribers.remove(device.address)
                 devices.remove(device.address)
@@ -309,22 +324,21 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                 Log.i(TAG, "wake notifications ${if (on) "on" else "off"} for ${device.address}")
             } else if (descriptor.uuid == CCCD && descriptor.characteristic.uuid == TX_CHAR) {
                 val on = value != null && value.isNotEmpty() && value[0].toInt() and 1 == 1
-                if (on && !gattPipes.containsKey(device.address)) {
-                    val t = GattTransport(s, device, txChar!!)
-                    t.mtu = mtus[device.address] ?: 23
-                    gattPipes[device.address] = t
-                    Log.i(TAG, "gatt fallback pipe opened for ${device.address}")
-                    onTransport(t)
-                } else if (!on) {
-                    gattPipes.remove(device.address)?.close()
-                }
+                // A (re)subscription always starts a fresh pipe: the central is setting up a new session.
+                if (on) { txSubscribers.add(device.address); openPipe(s, device) }
+                else { txSubscribers.remove(device.address); gattPipes.remove(device.address)?.close() }
             }
             if (responseNeeded) s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
         }
 
         override fun onCharacteristicWriteRequest(device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
                                                   preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
-            if (characteristic.uuid == RX_CHAR && value != null) gattPipes[device.address]?.received(value)
+            if (characteristic.uuid == RX_CHAR && value != null) {
+                // A pipe whose session ended is never reused; a subscribed central writing again gets a fresh one.
+                val p = gattPipes[device.address]?.takeIf { !it.isClosed }
+                    ?: server?.takeIf { device.address in txSubscribers }?.let { openPipe(it, device) }
+                p?.received(value)
+            }
             if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
         }
 

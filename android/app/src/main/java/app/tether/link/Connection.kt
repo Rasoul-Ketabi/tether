@@ -168,6 +168,15 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
                 listener.onEstablished(this, pairing)
             }
             State.UP -> {
+                // A central that dropped its side (and kept the GATT connection, as iOS does over classic
+                // Bluetooth) starts again with a HELLO on the same pipe: end this session and hand the HELLO to a
+                // new one, instead of failing "not sealed" and leaving the central waiting for an answer.
+                if (r.kind == Kind.HELLO && transport is GattTransport) {
+                    val t = transport
+                    close("peer started a new session")
+                    t.peerRestarted(r.encoded())
+                    return
+                }
                 val (ch, payload) = session!!.open(r)
                 when (ch) {
                     Proto.CH_CONTROL -> listener.onMessage(this, Message.parse(payload))
