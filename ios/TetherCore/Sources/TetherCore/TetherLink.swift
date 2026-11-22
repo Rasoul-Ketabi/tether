@@ -184,10 +184,14 @@ public final class TetherLink: NSObject {
     /// A connect still pending after 10 s while the app runs is renewed (the timer does not run while suspended).
     private var connectWatchdog: DispatchWorkItem?
 
+    /// didConnect came for the current connect (a nil-error disconnect before it is our own cancellation).
+    private var connectedThisAttempt = false
+
     private func connect(_ p: CBPeripheral) {
         peripheral = p
         p.delegate = self
         state = .connecting
+        if p.state != .connected { connectedThisAttempt = false }
         connectWatchdog?.cancel()
         let w = DispatchWorkItem { [weak self] in
             guard let self, let cur = self.peripheral, cur.state == .connecting, !self.settingUp, self.session == nil else { return }
@@ -481,6 +485,7 @@ extension TetherLink: CBCentralManagerDelegate {
             log("restored peripheral \(p.identifier) state \(p.state.rawValue)")
             peripheral = p
             p.delegate = self
+            connectedThisAttempt = p.state == .connected
         }
     }
 
@@ -499,6 +504,7 @@ extension TetherLink: CBCentralManagerDelegate {
 
     public func centralManager(_ central: CBCentralManager, didConnect p: CBPeripheral) {
         connectWatchdog?.cancel(); connectWatchdog = nil
+        connectedThisAttempt = true
         log("connected \(p.identifier)")
         cancelledByUs = nil
         state = .connecting
@@ -522,6 +528,10 @@ extension TetherLink: CBCentralManagerDelegate {
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral p: CBPeripheral, error: Error?) {
         // The disconnect we caused ourselves (failAndRetry already reconnected): not a second failure.
         if cancelledByUs == p.identifier { cancelledByUs = nil; log("disconnected (by us)"); return }
+        // A connect that never connected and ends without an error was cancelled by us (opening the app, the connect
+        // watchdog): not a failure. Treating it as one tore down the connect that replaced it and, after three, put
+        // the app into back-off right when it should connect (seen 2026-11-22 after closing and reopening the app).
+        if error == nil && !connectedThisAttempt { log("pending connect cancelled"); return }
         guard p == peripheral || peripheral == nil else { return }
         log("disconnected: \(Self.describe(error))")
         disconnect(reason: "peripheral disconnected")
