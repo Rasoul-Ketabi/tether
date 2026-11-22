@@ -1,9 +1,23 @@
+import UserNotifications
 import Observation
 import SwiftUI
 import TetherCore
 import UIKit
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    /// The app is being terminated while it still ran (swiped away from the foreground or a running background):
+    /// calls stop reaching this iPhone until it is opened again, so say so.
+    func applicationWillTerminate(_ application: UIApplication) {
+        MainActor.assumeIsolated {
+            guard AppModel.shared.link.isPaired else { return }
+            let c = UNMutableNotificationContent()
+            c.title = String(localized: "Calls paused")
+            c.body = String(localized: "The app was closed. Open it again to keep receiving calls and messages from your Android phone.")
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "app-closed", content: c,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+        }
+    }
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Create the model (and with it the CBCentralManager) right away: when iOS relaunches us in the

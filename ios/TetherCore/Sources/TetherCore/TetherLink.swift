@@ -169,10 +169,12 @@ public final class TetherLink: NSObject {
     /// The app came to the foreground. Without a session, start over: a pending connect iOS has not completed (for
     /// example issued while the Android phone held its own LE link) is cancelled and issued again, with a scan, and
     /// the back-off from earlier failures is forgotten: opening the app must link within seconds.
-    public func appBecameActive() {
+    public func appBecameActive() { connectAfresh("app active without a session: connecting afresh") }
+
+    private func connectAfresh(_ why: String) {
         queue.async {
             guard self.isPaired, self.session == nil, !self.settingUp else { return }
-            self.log("app active without a session: connecting afresh")
+            self.log(why)
             self.failures.removeAll(); self.retryItem?.cancel(); self.retryItem = nil
             if let p = self.peripheral, p.state == .connecting { self.central.cancelPeripheralConnection(p) }
             self.startIfReady()
@@ -202,13 +204,23 @@ public final class TetherLink: NSObject {
     }
 
     private func disconnect(reason: String) {
+        resetSession(reason: reason)
+        log("disconnect: \(reason)")
+        if let p = peripheral {
+            if p.state == .connected { cancelledByUs = p.identifier }   // a connected link reports its end
+            central.cancelPeripheralConnection(p)
+        }
+        peripheral = nil
+    }
+
+    /// Ends the session (channel, keys, buffers, timers) but not the Bluetooth connection.
+    private func resetSession(reason: String) {
         // Link statistics: every session's transport, length and end reason (Link › Link log).
         if let since = sessionSince {
             log("session over \(transport) ended after \(Int(Date().timeIntervalSince(since))) s: \(reason)")
             sessionSince = nil
         }
         partialSince = nil
-        log("disconnect: \(reason)")
         keepalive?.cancel(); keepalive = nil
         setupWatchdog?.cancel(); setupWatchdog = nil
         l2capTimer?.cancel(); l2capTimer = nil
@@ -225,15 +237,30 @@ public final class TetherLink: NSObject {
         audioBacklog = 0
         transport = "none"
         settingUp = false
-        if let p = peripheral {
-            if p.state == .connected { cancelledByUs = p.identifier }   // a connected link reports its end
-            central.cancelPeripheralConnection(p)
-        }
-        peripheral = nil
     }
+
+    /// Sessions restarted in a row on a connection that stayed up (reset when a session comes up).
+    private var restartsOnOpenConnection = 0
 
     private func failAndRetry(_ reason: String) {
         delegate?.link(self, didFail: reason)
+        // The session ended but the Bluetooth connection is still up (the Android phone closed the channel, a stalled
+        // stream, a protocol error): start a new session on it. Cancelling and connecting again does not work then:
+        // iOS does not complete a new connect while an LE link to the Android phone still exists, and that link
+        // stays up for tens of seconds (seen 2026-11-22: relinks of 15 s to over a minute). Twice in a row at most.
+        if let p = peripheral, p.state == .connected, restartsOnOpenConnection < 2, pairing == nil,
+           !reason.hasPrefix("setup timed out"), central.state == .poweredOn {
+            restartsOnOpenConnection += 1
+            resetSession(reason: reason)
+            log("restarting the session on the open connection (\(reason))")
+            settingUp = true
+            state = .connecting
+            p.delegate = self
+            armSetupWatchdog()
+            p.discoverServices([TetherUUID.service])
+            return
+        }
+        restartsOnOpenConnection = 0
         disconnect(reason: reason)
         reconnectSoon()
     }
@@ -394,6 +421,7 @@ public final class TetherLink: NSObject {
             central.stopScan()
             state = .connected(transport: transport)
             sessionSince = Date()
+            restartsOnOpenConnection = 0
             log("session up over \(transport)")
             settingUp = false
             setupWatchdog?.cancel(); setupWatchdog = nil
@@ -606,6 +634,9 @@ extension TetherLink: StreamDelegate {
         case .hasSpaceAvailable:
             flush()
         case .errorOccurred, .endEncountered:
+            // Only the current channel's streams count (both of them report the end; a closed channel's late events
+            // must not end the session that replaced it).
+            guard let ch = channel, s === (ch.inputStream as Stream?) || s === (ch.outputStream as Stream?) else { return }
             failAndRetry("L2CAP stream ended")
         default:
             break

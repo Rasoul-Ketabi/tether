@@ -190,3 +190,6 @@
 "Missed Call" = "تماس بی‌پاسخ";
 "End" = "پایان";
 "Answer" = "پاسخ";
+
+"Calls paused" = "تماس‌ها متوقف شد";
+"The app was closed. Open it again to keep receiving calls and messages from your Android phone." = "برنامه بسته شد. برای دریافت تماس‌ها و پیام‌های گوشی اندرویدتان دوباره بازش کنید.";
