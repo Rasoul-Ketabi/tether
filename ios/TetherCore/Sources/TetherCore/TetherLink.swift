@@ -177,6 +177,12 @@ public final class TetherLink: NSObject {
     }
 
     private func disconnect(reason: String) {
+        // Link statistics: every session's transport, length and end reason (Link › Link log).
+        if let since = sessionSince {
+            log("session over \(transport) ended after \(Int(Date().timeIntervalSince(since))) s: \(reason)")
+            sessionSince = nil
+        }
+        partialSince = nil
         log("disconnect: \(reason)")
         keepalive?.cancel(); keepalive = nil
         setupWatchdog?.cancel(); setupWatchdog = nil
@@ -302,8 +308,15 @@ public final class TetherLink: NSObject {
             while let r = try reader.next() { try handle(r) }
         } catch {
             failAndRetry("protocol error: \(error)")
+            return
         }
+        // A record left half received (a lost GATT chunk) never completes: the keep-alive ends such a session.
+        partialSince = reader.pendingBytes == 0 ? nil : (partialSince ?? Date())
     }
+
+    /// When the current session started (link statistics) and since when a record has been half received.
+    private var sessionSince: Date?
+    private var partialSince: Date?
 
     private func handle(_ r: Record) throws {
         if let hs = handshake, session == nil {
@@ -355,6 +368,8 @@ public final class TetherLink: NSObject {
             if let p = peripheral { store.peripheralID = p.identifier }
             central.stopScan()
             state = .connected(transport: transport)
+            sessionSince = Date()
+            log("session up over \(transport)")
             settingUp = false
             setupWatchdog?.cancel(); setupWatchdog = nil
             failures.removeAll()
@@ -388,7 +403,9 @@ public final class TetherLink: NSObject {
         // Only a ping: no client-side timeout. While suspended this timer does not run, so on wake-up
         // a receive timestamp could look stale even though the link is fine. CoreBluetooth reports real disconnects.
         t.setEventHandler { [weak self] in
-            self?.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000)))
+            guard let self else { return }
+            if let p = self.partialSince, Date().timeIntervalSince(p) > 10 { self.failAndRetry("stream stalled mid-record"); return }
+            self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000)))
         }
         t.resume()
         keepalive = t
