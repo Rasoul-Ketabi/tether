@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Stable link while the phones are also paired for Bluetooth tethering (the Android phone holds an LE link during a
+  session, so the session runs over LE / L2CAP and does not move between links).
+- Reconnects after the app is closed and reopened (within ~1-3 s), after a link drop while the app is in the
+  background (under 1 s), and after the Android app restarts.
+- The Android phone kept failing to advertise after many link changes ("too many advertisers"): fixed.
+- Calls: the fast Bluetooth connection interval is requested at the first ring, and the iPhone's playout buffer
+  adapts to bursty arrival (about 1 % of a call concealed instead of 4-6 %).
+- A "Calls paused" notification when the app is closed while running; docs on what happens when it is swiped away.
+
 ## 1.0.0 — first public release
 
 - Calls on the iPhone through CallKit with two-way call audio (Opus 16 kHz) on Android phones that allow call-audio

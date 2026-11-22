@@ -31,9 +31,13 @@ Android's L2CAP channel is LE only: when iOS reaches the service over BR/EDR (th
 Bluetooth tethering), the channel cannot open and the GATT transport is used. A failed PSM read also goes straight
 to the GATT transport.
 
-The peripheral holds an LE link to its paired central at all times (a GATT client connection with autoConnect), so
-iOS uses LE and L2CAP from the start even when the phones are also linked over classic Bluetooth, instead of running
-GATT over classic Bluetooth and moving it (and dropping the session) when LE appears. A GATT session ends when the
+The peripheral holds an LE link to its paired central (a GATT client connection) while a session is up, so iOS keeps
+the session on LE and L2CAP even when the phones are also linked over classic Bluetooth, instead of moving GATT
+between links and dropping the session. It never holds one otherwise: iOS does not complete an app's new connect
+while an LE link to the peripheral exists. Without a session it pulses an LE link (up 3 s, only when no LE link
+exists: every 5 s for a minute after a session ended, then every 30 s), because a link coming up completes the
+central's waiting connect; and 3 s after an LE session ended without a new one it closes the idle connection iOS
+keeps for a dead app. A GATT session ends when the
 ACL it runs on goes or the central's LE link appears under a classic-link session; a pair-mode HELLO repeated by the
 same central within 10 minutes of a completed pairing is accepted (it may have lost the FIN); a stream left mid-record
 for 10 s ends the session on either side.

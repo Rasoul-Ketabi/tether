@@ -42,9 +42,10 @@
 The primary transport is one L2CAP channel (LE credit-based). If it cannot be opened (for example when iOS reaches
 the phone over classic Bluetooth because the phones are also paired for tethering), the same byte stream runs over
 two GATT characteristics. Bluetooth link security is never used; security is end-to-end (see
-[SECURITY.md](../SECURITY.md)). The Android app holds an LE link to the paired iPhone at all times, so iOS uses LE and
-L2CAP from the start even when the phones are also connected over classic Bluetooth for tethering (iOS would
-otherwise run GATT over the classic link and move it to LE later, dropping the session).
+[SECURITY.md](../SECURITY.md)). During a session the Android app holds an LE link to the iPhone, so the session stays on LE
+and L2CAP even when the phones are also connected over classic Bluetooth for tethering (iOS would otherwise move
+GATT between the links and drop the session). Between sessions it only pulses an LE link now and then, which lets
+a waiting iPhone app connect (see protocol/PROTOCOL.md §1).
 
 ## Background behaviour
 

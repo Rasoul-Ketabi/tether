@@ -69,6 +69,12 @@ conversations you do not want notified. There are two build variants:
 | Communication Notifications | Signed with a paid Apple developer account | The sender's picture, as in Messages |
 | Plain | Free Apple account (`tools/reinstall-ios.sh` falls back to it automatically) | The app icon |
 
+## Keep the app running
+
+Leave Tether in the background; do not swipe it away in the app switcher. iOS does not start a swiped-away app
+for Bluetooth, so calls and texts stop reaching the iPhone until you open it again (it links within a few seconds
+then). Calls still ring on the Android phone meanwhile. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#after-closing-the-app).
+
 ## Both phones in your hand
 
 The Android phone stays a normal phone: you can call and text on it as usual and the iPhone follows. A call

@@ -18,8 +18,8 @@ Start with the logs: on the iPhone, **Link › Link log**; on the Android phone,
 Bluetooth tethering pairs the two phones over classic Bluetooth. iOS then runs Tether's GATT connection over that
 classic link whenever it is the only one, where Tether's fast L2CAP channel cannot open, and moves it to Bluetooth LE
 as soon as an LE link appears, which ends the session running at that moment. To keep one stable session, the Android
-app holds an LE link to the paired iPhone at all times (link log: *LE link held*), so iOS uses LE and L2CAP from the
-start and nothing moves underneath a session. If a session does start over the classic link, the first LE link ends it
+app holds an LE link to the iPhone while a session is up (link log: *LE link held*), so iOS keeps it on LE and
+L2CAP and nothing moves underneath it. If a session does start over the classic link, the first LE link ends it
 once and the iPhone sets up again over LE within seconds.
 
 Tether never uses Bluetooth's own encryption or pairing, so the pairing made for tethering cannot break it. Older
@@ -32,17 +32,19 @@ touch Bluetooth at all and is faster.
 
 ### After closing the app
 
-- **Opened again**, the app links within a few seconds (it starts a fresh connect and scan every time it comes to the
-  foreground).
-- **Swiped away in the app switcher** (force quit): iOS does not start the app again for Bluetooth until you open it
-  yourself, so calls and texts do not reach the iPhone meanwhile. No app can change this. Leave Tether in the
-  background instead of swiping it away; it uses almost no battery while it waits.
-- **Stopped by iOS** in the background (memory pressure): iOS starts it again when the Android phone's link comes
-  up, which the Android app brings about every 30 s while it has no session. This can take from seconds to about
-  a minute and a half.
+- **Opened again**: the app links within a few seconds (about 1-3 s in tests): it starts a fresh connect every time
+  it comes to the foreground.
+- **Swiped away in the app switcher** (force quit): iOS does not start the app again for Bluetooth until you open
+  it yourself, so calls and texts do not reach the iPhone meanwhile (calls still ring on the Android phone, and
+  show on the iPhone as missed once it links). No app can change this. When iOS lets it, the app posts a
+  "Calls paused" notification as it closes. Leave Tether in the background instead of swiping it away; it uses
+  almost no battery while it waits.
+- **Stopped by iOS** in the background (low memory): iOS starts it again when the Android phone brings a Bluetooth
+  link up, which it tries every 5 s for a minute after the link was lost, then every 30 s. Usually seconds, but
+  not guaranteed: open the app if calls stop arriving.
 - **In the background**: the session stays up; nothing to do.
 
-
+## No call audio
 
 1. In Tether on the Android phone, the **Audio helper** must say *Running*. If not, see the next section.
 2. During a call, tap **Run call-audio self-test**: it lists each capture and inject path and whether it works.
