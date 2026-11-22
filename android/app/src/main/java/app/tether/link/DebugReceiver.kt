@@ -184,6 +184,8 @@ class DebugReceiver : BroadcastReceiver() {
         "audio_reset" -> { app.hub.audio.resetStats(); "reset" }
         // loopback_call [--es mode answer|decline|remote|outgoing]: answer = ring, answer, audio, keypad, end here;
         // decline = reject while ringing; remote = the far side hangs up; outgoing = a call placed on the test line.
+        // drop: close every live session from this side (as a lost link would), to test the iPhone's reconnect.
+        "drop" -> app.hub.conns.filter { it.isUp }.let { l -> l.forEach { it.close("dropped by test") }; "dropped ${l.size}" }
         "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full", intent.getStringExtra("mode") ?: "answer")
         "loopback_handover" -> loopbackHandover(app)
         "adb_pair" -> {

@@ -102,4 +102,26 @@ class LinkPolicyTest {
         val fresh = byteArrayOf(7)
         assertArrayEquals("an open code always wins", fresh, p.tokenFor(iphone, open = fresh))
     }
+
+    // ------------------------------------------------------------------ our own LE link (close / reopen, 2026-11-22)
+
+    @Test fun ourLeLinkIsHeldOnlyDuringASession() {
+        assertTrue(LinkPolicy.holdLeLink(sessionUp = true))
+        assertFalse("a held link blocks the reopened app's connect", LinkPolicy.holdLeLink(sessionUp = false))
+    }
+
+    @Test fun pulsesOnlyWhilePairedWithoutASession() {
+        assertTrue(LinkPolicy.pulseLeLink(paired = true, sessionUp = false, linkOpen = false))
+        assertFalse(LinkPolicy.pulseLeLink(paired = true, sessionUp = true, linkOpen = false))   // suspended app: no wake-ups
+        assertFalse(LinkPolicy.pulseLeLink(paired = false, sessionUp = false, linkOpen = false)) // unpaired: nothing
+        assertFalse(LinkPolicy.pulseLeLink(paired = true, sessionUp = false, linkOpen = true))   // one at a time
+    }
+
+    @Test fun pulseScheduleCoversTheLingerAndStaysCheap() {
+        // The first pulse comes after Android's ~4 s linger of a released link would have started, and the burst is
+        // over before the regular period takes over; a pulse is short against its period.
+        assertTrue(LinkPolicy.PULSE_BURST_S.first() >= 3 && LinkPolicy.PULSE_BURST_S.last() < LinkPolicy.PULSE_EVERY_S)
+        assertTrue(LinkPolicy.PULSE_BURST_S.toList().zipWithNext().all { (a, b) -> b - a >= LinkPolicy.PULSE_UP_MS / 1000 })
+        assertTrue(LinkPolicy.PULSE_UP_MS * 5 <= LinkPolicy.PULSE_EVERY_S * 1000)
+    }
 }

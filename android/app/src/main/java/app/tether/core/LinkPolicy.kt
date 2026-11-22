@@ -10,6 +10,19 @@ object LinkPolicy {
      */
     fun gattPipeEnds(pipeOnLe: Boolean, aclIsLe: Boolean, aclUp: Boolean): Boolean =
         if (aclIsLe) (aclUp && !pipeOnLe) || (!aclUp && pipeOnLe) else (!aclUp && !pipeOnLe)
+
+    /**
+     * Our own LE link to the paired iPhone. Held only while a session is up (keeps iOS on LE under Bluetooth
+     * tethering); never otherwise, because iOS does not complete an app's new connect over a link we hold. While
+     * paired without a session, pulsed (up briefly, then dropped): a link coming up completes a waiting connect.
+     */
+    fun holdLeLink(sessionUp: Boolean) = sessionUp
+    fun pulseLeLink(paired: Boolean, sessionUp: Boolean, linkOpen: Boolean) = paired && !sessionUp && !linkOpen
+
+    /** Seconds after a session ended or the service started: pulses while the iPhone is likely reconnecting. */
+    val PULSE_BURST_S = longArrayOf(3, 10, 17, 25)
+    const val PULSE_EVERY_S = 30L
+    const val PULSE_UP_MS = 5_000L
 }
 
 /**

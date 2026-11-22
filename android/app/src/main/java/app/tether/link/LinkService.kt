@@ -72,8 +72,9 @@ class LinkService : Service() {
     private fun startBle() {
         try {
             ble?.start()
-            // Hold the LE link to the paired iPhone from the start (BlePeripheral.keepLe).
-            if (app.keys.isPaired) (app.prefs.getString("central_bt_address", null) ?: guessPairedIphone())?.let { ble?.keepLe(it) }
+            // Where the paired iPhone is, for the LE pulses (Hub.lePulse); learned at the first session otherwise.
+            if (app.keys.isPaired && app.prefs.getString("central_bt_address", null) == null)
+                guessPairedIphone()?.let { app.prefs.edit().putString("central_bt_address", it).apply() }
         } catch (e: SecurityException) {
             Log.w(TAG, "missing Bluetooth permission")
         }

@@ -5,6 +5,7 @@
 #   tools/dbg.sh loopback_call [answer|decline|remote|outgoing|during-sync] | loopback_handover   (test line only)
 #   tools/dbg.sh adb_pair <code> | adb_shell "<cmd>"
 #   tools/dbg.sh net [data|hotspot|bt on|off] | airplane on|off | share on|off|loopback|noloopback|state
+#   tools/dbg.sh drop (close live sessions from the Android side)
 #   tools/dbg.sh linklog [n] | only none|off | forget_kind <kind> | contact_test | test_contact +1000000000x | star <id> on|off
 #   tools/dbg.sh test_sms +10000000001 "text" | test_sms_delete <id|thread:N> | test_call +10000000001 | test_call_delete <id>
 #   tools/dbg.sh block +10000000001 on|off | mute <thread> on|off | lists      (test numbers +1000000000x only)

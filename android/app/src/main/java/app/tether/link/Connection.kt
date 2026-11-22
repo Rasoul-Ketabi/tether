@@ -201,9 +201,13 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
             val wasUp = state == State.UP
             state = State.CLOSED
             Log.i(TAG, "link closed (${transport.label}): $reason")
-            LinkLog.add("link down ($name, ${transport.label}) after ${(SystemClock.elapsedRealtime() - upAt) / 1000} s: $reason")
+            val lasted = if (upAt > 0) " after ${(SystemClock.elapsedRealtime() - upAt) / 1000} s" else ""
+            LinkLog.add("link down ($name, ${transport.label})$lasted: $reason")
             if (!wasUp) { transport.close(); return }
         }
+        // We end it (not the iPhone, not a dead link): wake the iPhone app first. A suspended app is not woken for its
+        // closed channel and only noticed ~30 s later, when iOS dropped the idle connection (seen 2026-11-22).
+        if (reason != "transport closed" && transport.label != "memory") LinkService.running?.peripheral?.wake(transport.address)
         transport.close()
         listener.onClosed(this)
     }

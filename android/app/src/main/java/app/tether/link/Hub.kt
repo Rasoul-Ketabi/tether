@@ -1,5 +1,6 @@
 package app.tether.link
 
+import app.tether.core.LinkPolicy
 import android.os.SystemClock
 import android.util.Log
 import app.tether.TetherApp
@@ -96,6 +97,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
         work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
         work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { lePulse() } }, LinkPolicy.PULSE_EVERY_S, LinkPolicy.PULSE_EVERY_S, TimeUnit.SECONDS)
+        pulseBurst()   // a restart drops the iPhone's session like an app close does
         audioCtl.scheduleWithFixedDelay({ runCatching { audio.reconcile() }.onFailure { Log.e(TAG, "audio reconcile", it) } }, 1, 1, TimeUnit.SECONDS)
         audioCtl.execute { keepHelperWarm() }
         // Follow the hotspot / Bluetooth PAN coming and going (the proxy and its PAC answer there only).
@@ -150,10 +153,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
-        // Remember where this central is, so an LE link to it is held from now on (see BlePeripheral.keepLe).
+        // Remember where this central is (LE pulses while it is away), and hold LE during the session (BlePeripheral.holdLe).
         if (c.transport.label != "memory" && c.kind == "iphone" && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address)) {
             app.prefs.edit().putString("central_bt_address", c.transport.address).apply()
-            LinkService.running?.peripheral?.keepLe(c.transport.address)
+            LinkService.running?.peripheral?.holdLe(c.transport.address)
         }
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
@@ -165,7 +168,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (conns.remove(c)) {
             if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
             // A reconnect replaces a link from the same address: its tuning belongs to the new link now.
-            if (conns.none { it.transport.address == c.transport.address }) LinkService.running?.peripheral?.untune(c.transport.address)
+            if (conns.none { it.transport.address == c.transport.address }) {
+                LinkService.running?.peripheral?.untune(c.transport.address)
+                LinkService.running?.peripheral?.releaseLe(c.transport.address)   // a held link blocks the app's next connect
+                // Android keeps the released LE link ~4 s; an app reopened in that window attaches its connect to it and
+                // iOS never completes it once the link goes. Pulses soon after the linger complete such a stuck connect
+                // (then the regular 30 s pulse; none at all once a session is back).
+                pulseBurst()
+            }
             if (!app.keys.isPaired) { LinkService.running?.peripheral?.dropKeepers(); app.prefs.edit().remove("central_bt_address").apply() }
             audioCtl.execute { audio.reconcile() }
         }
@@ -537,6 +547,20 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      * The BLE supervision timeout and L2CAP EOF tell us when the iPhone is really gone. We ping so a
      * half-open session is noticed eventually (15 min), without waking the iPhone just for that.
      */
+    /** Pulses soon after a session ended or the service started, while the iPhone is most likely to be reconnecting. */
+    private fun pulseBurst() {
+        for (d in LinkPolicy.PULSE_BURST_S) work.schedule({ runCatching { lePulse() } }, d, TimeUnit.SECONDS)
+    }
+
+    /** Paired but no session with the iPhone: a short LE link pulse (BlePeripheral.pulseLe); unpaired: none at all. */
+    private fun lePulse() {
+        val p = LinkService.running?.peripheral ?: return
+        if (!app.keys.isPaired) { p.dropKeepers(); return }
+        val addr = app.prefs.getString("central_bt_address", null) ?: return
+        if (!LinkPolicy.pulseLeLink(paired = true, sessionUp = conns.any { it.isUp && it.transport.address == addr }, linkOpen = false)) return
+        p.pulseLe(addr)
+    }
+
     /** A session whose stream is stuck mid-record (a GATT chunk lost when iOS moved the link) is ended at once. */
     private fun stallCheck() {
         for (c in conns) if (c.stalledMs() > 10_000) c.close("stream stalled mid-record")

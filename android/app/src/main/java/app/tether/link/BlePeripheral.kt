@@ -1,5 +1,6 @@
 package app.tether.link
 
+import app.tether.core.LinkPolicy
 import app.tether.core.LinkSecurity
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
@@ -216,54 +217,83 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     }
 
     /**
-     * LE keeper: one GATT *client* per paired central, connected over LE with autoConnect (Android reconnects it by
-     * itself whenever the central is in range), held for as long as the central is paired.
-     *
-     * Why: while the phones are also paired over classic Bluetooth (tethering), iOS runs GATT over the classic link
-     * when that is all there is, and L2CAP cannot open there; when an LE link appears later it moves GATT to it and
-     * drops the session. Holding an LE link before any session makes iOS use LE from the start (L2CAP works, and
-     * nothing changes underneath a session). It also lets iOS's pending connect complete when it cannot follow our
-     * rotating advertising address on its own. Connection priority is requested through it (the GATT server API
-     * cannot): HIGH during calls, BALANCED otherwise.
+     * LE link to the paired iPhone, opened by us (a GATT *client* over LE), in two modes:
+     *  - held for as long as a session with it is up: while the phones are also linked over classic Bluetooth
+     *    (tethering) iOS runs GATT over whichever link it has and moves it to LE when one appears, dropping the
+     *    session; holding LE keeps it there. Released the moment the session ends: a link we hold blocks a freshly
+     *    started app's connect on iOS (seen 2026-11-22: after the app was closed and reopened it never connected
+     *    while we held the link, and connected within 2 s once we let it go).
+     *  - pulsed while paired without a session: up for [PULSE_MS], then dropped. A link coming up completes the
+     *    pending connect of a suspended or relaunched app even when iOS cannot follow our rotating address.
+     * Connection priority is requested through the held link (the GATT server API cannot): HIGH during calls.
      */
     private val keepers = ConcurrentHashMap<String, BluetoothGatt>()
     private val keeperUp = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val held = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val wantedPriority = ConcurrentHashMap<String, Int>()
+    private val pulseTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "le-pulse").apply { isDaemon = true } }
 
-    fun keepLe(address: String) {
+    private fun openLe(address: String, onUp: (BluetoothGatt) -> Unit) {
         if (!running || !BluetoothAdapter.checkBluetoothAddress(address) || keepers.containsKey(address)) return
         val d = runCatching { adapter?.getRemoteDevice(address) }.getOrNull() ?: return
         runCatching {
-            keepers[address] = d.connectGatt(ctx, true, object : android.bluetooth.BluetoothGattCallback() {
+            keepers[address] = d.connectGatt(ctx, false, object : android.bluetooth.BluetoothGattCallback() {
                 override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-                    if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
-                        keeperUp.add(address)
-                        val p = wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED
-                        g.requestConnectionPriority(p)
-                        LinkLog.add("LE link held to ${LinkLog.short(address)}")
-                    } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
-                        keeperUp.remove(address)   // autoConnect brings it back by itself
+                    if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) { keeperUp.add(address); onUp(g) }
+                    else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                        keeperUp.remove(address)
+                        if (keepers[address] === g) keepers.remove(address)
+                        runCatching { g.close() }
                     }
                 }
             }, BluetoothDevice.TRANSPORT_LE)
-        }.onFailure { Log.w(TAG, "LE keeper not started: ${it.message}") }
+        }.onFailure { Log.w(TAG, "LE link not opened: ${it.message}") }
     }
 
-    /** Nothing is paired any more: no link is held. */
+    /** A session with this central is up: hold the LE link (see above). */
+    fun holdLe(address: String) {
+        held.add(address)
+        if (address in keeperUp) {
+            keepers[address]?.let { runCatching { it.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED) } }
+            return
+        }
+        openLe(address) { g ->
+            g.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+            LinkLog.add("LE link held to ${LinkLog.short(address)}")
+        }
+    }
+
+    /** The session ended: let the link go at once (a held link blocks the app's next connect). */
+    fun releaseLe(address: String) {
+        held.remove(address); wantedPriority.remove(address)
+        keepers.remove(address)?.let { g -> keeperUp.remove(address); runCatching { g.disconnect(); g.close() } }
+    }
+
+    /** Paired, no session: bring an LE link up briefly, then drop it unless a session came up meanwhile. */
+    fun pulseLe(address: String) {
+        if (!LinkPolicy.pulseLeLink(paired = true, sessionUp = address in held, linkOpen = keepers.containsKey(address))) return
+        openLe(address) { _ ->
+            LinkLog.add("LE pulse to ${LinkLog.short(address)}")
+            pulseTimer.schedule({ if (address !in held) releaseLe(address) }, LinkPolicy.PULSE_UP_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        // Not even connected after a while (out of range): give the attempt up, the next pulse tries again.
+        pulseTimer.schedule({ if (address !in held && address !in keeperUp) releaseLe(address) }, 10_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    /** Nothing is paired any more: no link is held or pulsed. */
     fun dropKeepers() {
-        keepers.values.forEach { runCatching { it.disconnect(); it.close() } }
-        keepers.clear(); keeperUp.clear(); wantedPriority.clear()
+        held.clear()
+        keepers.keys.toList().forEach { releaseLe(it) }
     }
 
     fun tune(address: String, high: Boolean) {
         val prio = if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
         wantedPriority[address] = prio
-        val g = keepers[address]?.takeIf { address in keeperUp } ?: return
+        val g = keepers[address]?.takeIf { address in keeperUp && address in held } ?: return
         runCatching { g.requestConnectionPriority(prio) }
         Log.i(TAG, "link priority ${if (high) "high" else "balanced"} requested")
     }
 
-    /** A session ended: back to balanced priority; the LE link itself stays held. */
     fun untune(address: String) = tune(address, high = false)
 
     private val txSubscribers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -282,7 +312,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         address ?: return
         if (le) { if (up) leLinks.add(address) else leLinks.remove(address) }
         val onLe = pipeOnLe[address] ?: return
-        if (app.tether.core.LinkPolicy.gattPipeEnds(onLe, le, up)) {
+        if (LinkPolicy.gattPipeEnds(onLe, le, up)) {
             Log.i(TAG, "gatt pipe for $address ends: ${if (le) "LE" else "classic"} link ${if (up) "up" else "down"}")
             pipeOnLe.remove(address)
             gattPipes.remove(address)?.close()
