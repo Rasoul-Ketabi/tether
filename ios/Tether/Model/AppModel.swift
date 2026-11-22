@@ -73,7 +73,7 @@ final class AppModel {
     var syncing = false
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
-    var appActive = true
+    var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
     var activeCalls: [String: CallInfo] = [:]
     /// The in-app call screen (CallKit shows system UI only for incoming calls).
     var callScreen: CallScreen? { didSet { if oldValue?.uuid != callScreen?.uuid || oldValue?.state != callScreen?.state || oldValue?.speaker != callScreen?.speaker { calls.updateProximity() } } }

@@ -166,10 +166,35 @@ public final class TetherLink: NSObject {
         central.scanForPeripherals(withServices: [TetherUUID.service], options: nil)
     }
 
+    /// The app came to the foreground. Without a session, start over: a pending connect iOS has not completed (for
+    /// example issued while the Android phone held its own LE link) is cancelled and issued again, with a scan, and
+    /// the back-off from earlier failures is forgotten: opening the app must link within seconds.
+    public func appBecameActive() {
+        queue.async {
+            guard self.isPaired, self.session == nil, !self.settingUp else { return }
+            self.log("app active without a session: connecting afresh")
+            self.failures.removeAll(); self.retryItem?.cancel(); self.retryItem = nil
+            if let p = self.peripheral, p.state == .connecting { self.central.cancelPeripheralConnection(p) }
+            self.startIfReady()
+        }
+    }
+
+    /// A connect still pending after 10 s while the app runs is renewed (the timer does not run while suspended).
+    private var connectWatchdog: DispatchWorkItem?
+
     private func connect(_ p: CBPeripheral) {
         peripheral = p
         p.delegate = self
         state = .connecting
+        connectWatchdog?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, let cur = self.peripheral, cur.state == .connecting, !self.settingUp, self.session == nil else { return }
+            self.log("connect still pending after 10 s: renewing")
+            self.central.cancelPeripheralConnection(cur)
+            self.startIfReady()
+        }
+        connectWatchdog = w
+        queue.asyncAfter(deadline: .now() + 10, execute: w)
         // Never times out: iOS keeps it pending until the Android phone is in range, also while we are suspended.
         // No CBConnectPeripheralOptionEnableAutoReconnect: without the isReconnecting delegate variant iOS
         // rejects the connect with "One or more parameters were invalid". Our own retry re-issues connect().
@@ -445,6 +470,7 @@ extension TetherLink: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect p: CBPeripheral) {
+        connectWatchdog?.cancel(); connectWatchdog = nil
         log("connected \(p.identifier)")
         cancelledByUs = nil
         state = .connecting
