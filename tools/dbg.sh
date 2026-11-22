@@ -2,6 +2,7 @@
 # Sends a debug command to the Tether app (adb-only hook) and prints its answer.
 #   tools/dbg.sh state | pair_code | loopback | probe | helper_start | helper_quit | helper_cmd
 #   tools/dbg.sh fake_incoming [num] | fake_end | dryrun_on | dryrun_off
+#   tools/dbg.sh loopback_call [answer|decline|remote|outgoing|during-sync] | loopback_handover   (test line only)
 #   tools/dbg.sh adb_pair <code> | adb_shell "<cmd>"
 #   tools/dbg.sh net [data|hotspot|bt on|off] | airplane on|off | share on|off|loopback|noloopback|state
 #   tools/dbg.sh linklog [n] | only none|off | forget_kind <kind> | contact_test | test_contact +1000000000x | star <id> on|off
@@ -23,7 +24,7 @@ case "$cmd" in
   test_call) extra="--es num $1";;
   block) extra="--es num $1 --es on ${2:-on}";;
   mute) extra="--es thread $1 --es on ${2:-on}";;
-  loopback_call) [ "$1" = "during-sync" ] && extra="--es sync full";;
+  loopback_call) if [ "$1" = "during-sync" ]; then extra="--es sync full"; elif [ -n "$1" ]; then extra="--es mode $1"; fi;;
   only) extra="--es kind ${1:-off}";;
   forget_kind) extra="--es kind $1";;
   linklog) extra="--es n ${1:-120}";;

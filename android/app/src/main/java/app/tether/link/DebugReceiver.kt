@@ -182,7 +182,9 @@ class DebugReceiver : BroadcastReceiver() {
             "encode=%.2f ms decode=%.2f ms ".format(app.hub.audio.encodeNanos / maxOf(1, app.hub.audio.downFrames) / 1e6, app.hub.audio.decodeNanos / maxOf(1, app.hub.audio.upFrames) / 1e6) +
             "echo=%.1f ms over %d; concealed=%d; helper=${app.hub.helper.lastInfo} stats=${app.hub.helper.lastStats}".format(app.hub.audio.echoNanos / maxOf(1, app.hub.audio.echoCount) / 1e6, app.hub.audio.echoCount, app.hub.audio.upLost)
         "audio_reset" -> { app.hub.audio.resetStats(); "reset" }
-        "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full")
+        // loopback_call [--es mode answer|decline|remote|outgoing]: answer = ring, answer, audio, keypad, end here;
+        // decline = reject while ringing; remote = the far side hangs up; outgoing = a call placed on the test line.
+        "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full", intent.getStringExtra("mode") ?: "answer")
         "loopback_handover" -> loopbackHandover(app)
         "adb_pair" -> {
             val code = intent.getStringExtra("code") ?: error("--es code required")
@@ -252,7 +254,7 @@ class DebugReceiver : BroadcastReceiver() {
      * Fake iPhone + fake line: ring, expect call.state ringing, answer from the "iPhone", expect active and
      * audio.start, exchange audio frames both ways, end from the "iPhone", expect ended and audio.stop.
      */
-    private fun loopbackCall(app: TetherApp, ringDuringSync: Boolean = false): String {
+    private fun loopbackCall(app: TetherApp, ringDuringSync: Boolean = false, mode: String = "answer"): String {
         val saved = app.keys.snapshot()
         val log = StringBuilder()
         val pipe = MemoryTransport()
@@ -274,7 +276,16 @@ class DebugReceiver : BroadcastReceiver() {
             app.hub.audio.resetStats()
             val tRing = System.nanoTime()
             var ringMs = -1.0
-            TestConnectionService.ringIn(app, "5550123")
+            if (mode == "outgoing") {
+                TestConnectionService.dialOut(app, "+10000000009")
+                // Never go on unless the call is the test line's own (a placed call must not reach a SIM).
+                Thread.sleep(800)
+                val real = CallRegistry.active().filterNot { CallRegistry.isTestCall(app, CallRegistry.cidOf(it)) }
+                if (real.isNotEmpty() || TestConnectionService.current == null) {
+                    real.forEach { it.disconnect() }
+                    error("outgoing test call did not land on the test line: aborted")
+                }
+            } else TestConnectionService.ringIn(app, "5550123")
             var cid: String? = null
             var codec = -1
             var downFrames = 0
@@ -305,13 +316,21 @@ class DebugReceiver : BroadcastReceiver() {
                         T.AUDIO_STOP -> log.append("audio.stop; ")
                     }
                 }
-                if (phase == 0 && states.lastOrNull() == "ringing") { send(Message(T.CALL_ANSWER, JSONObject().put("cid", cid))); phase = 1 }
-                if (phase == 1 && downFrames >= 250) { send(Message(T.CALL_DTMF, JSONObject().put("cid", cid).put("d", "5"))); tEnd = System.nanoTime(); send(Message(T.CALL_END, JSONObject().put("cid", cid))); phase = 2 }
+                if (phase == 0 && mode == "decline" && states.lastOrNull() == "ringing") {
+                    tEnd = System.nanoTime(); send(Message(T.CALL_REJECT, JSONObject().put("cid", cid))); phase = 2
+                }
+                if (phase == 0 && mode == "outgoing" && states.lastOrNull() == "active") phase = 1
+                if (phase == 0 && mode != "decline" && mode != "outgoing" && states.lastOrNull() == "ringing") { send(Message(T.CALL_ANSWER, JSONObject().put("cid", cid))); phase = 1 }
+                if (phase == 1 && downFrames >= 250) {
+                    send(Message(T.CALL_DTMF, JSONObject().put("cid", cid).put("d", "5"))); tEnd = System.nanoTime()
+                    if (mode == "remote") TestConnectionService.endCurrent() else send(Message(T.CALL_END, JSONObject().put("cid", cid)))
+                    phase = 2
+                }
                 if (phase == 2 && states.lastOrNull() == "ended") { endMs = (System.nanoTime() - tEnd) / 1e6; phase = 3; Thread.sleep(300) }
                 if (phase == 3 && r == null) break
             }
             val a = app.hub.audio
-            log.append("states=$states downFrames=$downFrames upFrames=$audioSeq codec=$codec ")
+            log.append("mode=$mode states=$states downFrames=$downFrames upFrames=$audioSeq codec=$codec ")
             log.append("ring→iPhone=%.1f ms; end→ended=%.1f ms; ".format(ringMs, endMs))
             if (a.downFrames > 0) log.append("encode avg %.2f ms; ".format(a.encodeNanos / a.downFrames / 1e6))
             if (a.upFrames > 0) log.append("decode avg %.2f ms; ".format(a.decodeNanos / a.upFrames / 1e6))

@@ -81,5 +81,16 @@ class TestConnectionService : ConnectionService() {
         }
 
         fun endCurrent() = current?.finish(DisconnectCause.REMOTE)
+
+        /**
+         * An outgoing call on the test line: placed with this self-managed account's handle, so Telecom hands it to
+         * this ConnectionService only (a self-managed account never reaches a SIM). Test-range numbers only.
+         */
+        fun dialOut(ctx: Context, num: String) {
+            require(Regex("\\+1000000000[1-9]").matches(num)) { "test numbers +1000000000x only" }
+            register(ctx)
+            val extras = Bundle().apply { putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle(ctx)) }
+            ctx.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", num, null), extras)
+        }
     }
 }
