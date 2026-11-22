@@ -617,6 +617,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             // Every call change wakes a suspended iPhone app (answered on the Android phone or elsewhere: stop ringing now).
             wake(c)
         }
+        // Fast link from the first ring / dial, not from audio start: the switch to a 15 ms interval takes ~1.7 s, and
+        // starting the call on the idle interval (45 ms, latency 5) made its first seconds bursty (gaps up to 77 ms
+        // concealed on the iPhone, measured 2026-11-22). A call that ends without audio goes back to balanced here.
+        val anyCall = CallRegistry.active().isNotEmpty()
+        if (info.state in setOf("ringing", "connecting", "dialing") || (info.state == "ended" && !anyCall && audio.target == null))
+            for (c in targets()) if (c.transport.label != "memory") LinkService.running?.peripheral?.tune(c.transport.address, high = info.state != "ended")
         audioCtl.execute { audio.reconcile() }
         refresh()
     }
