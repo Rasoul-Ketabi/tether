@@ -98,7 +98,7 @@ class GattTransport(
             try {
                 var retry: ByteArray? = null   // a chunk the stack refused: sent again first, so order is kept
                 while (!closed) {
-                    val c = retry ?: chunks.poll(1, TimeUnit.SECONDS) ?: continue
+                    val c = retry ?: chunks.poll(1, TimeUnit.SECONDS)?.also { queued.addAndGet(-it.size) } ?: continue
                     retry = null
                     val acquired = sent.tryAcquire(2, TimeUnit.SECONDS)
                     if (!acquired) Log.w(TAG, "gatt notify ack timeout")
@@ -124,12 +124,19 @@ class GattTransport(
     @Volatile private var awaitingAck = false
     fun notificationSent() { if (awaitingAck) { awaitingAck = false; sent.release() } }
 
+    /** Bytes queued but not yet notified: the writer waits above [MAX_QUEUED] (back-pressure, see write). */
+    private val queued = java.util.concurrent.atomic.AtomicInteger(0)
+
     override fun write(bytes: ByteArray) {
         if (closed) throw IOException("closed")
+        // Back-pressure: without it a sync put megabytes into this queue at once (a GATT pipe moves a few kB/s at a
+        // 23-byte MTU), the session could not answer anything for minutes, and a stale pipe kept sending for long.
+        while (queued.get() > MAX_QUEUED) { if (closed) throw IOException("closed"); Thread.sleep(5) }
         val step = (mtu - 3).coerceAtLeast(20)
         var i = 0
         while (i < bytes.size) {
             val end = minOf(bytes.size, i + step)
+            queued.addAndGet(end - i)
             chunks.put(bytes.copyOfRange(i, end))
             i = end
         }
@@ -142,5 +149,5 @@ class GattTransport(
         onClosed?.invoke()
     }
 
-    companion object { const val TAG = "Tether" }
+    companion object { const val TAG = "Tether"; const val MAX_QUEUED = 32 * 1024 }
 }

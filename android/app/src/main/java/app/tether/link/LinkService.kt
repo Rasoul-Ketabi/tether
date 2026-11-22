@@ -54,9 +54,26 @@ class LinkService : Service() {
         runCatching { TestConnectionService.register(this) }
     }
 
+    /**
+     * Before the first session of this version there is no remembered address: the only bonded iPhone / iPad with
+     * LE support, if there is exactly one (iOS names them so by default). Replaced by the real address at the first
+     * session (Hub.onEstablished).
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun guessPairedIphone(): String? = runCatching {
+        val bonded = getSystemService(android.bluetooth.BluetoothManager::class.java).adapter.bondedDevices
+        bonded.filter { d ->
+            d.type != android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC &&
+                d.bluetoothClass?.majorDeviceClass in setOf(android.bluetooth.BluetoothClass.Device.Major.PHONE, android.bluetooth.BluetoothClass.Device.Major.COMPUTER) &&
+                (d.name ?: "").let { it.contains("iPhone") || it.contains("iPad") }
+        }.singleOrNull()?.address.also { Log.i(TAG, "LE keeper guess: ${if (it == null) "none" else "one bonded iPhone"}") }
+    }.getOrNull()
+
     private fun startBle() {
         try {
             ble?.start()
+            // Hold the LE link to the paired iPhone from the start (BlePeripheral.keepLe).
+            if (app.keys.isPaired) (app.prefs.getString("central_bt_address", null) ?: guessPairedIphone())?.let { ble?.keepLe(it) }
         } catch (e: SecurityException) {
             Log.w(TAG, "missing Bluetooth permission")
         }
@@ -100,10 +117,16 @@ class LinkService : Service() {
             val d: android.bluetooth.BluetoothDevice? = i.getParcelableExtra(android.bluetooth.BluetoothDevice.EXTRA_DEVICE, android.bluetooth.BluetoothDevice::class.java)
             val transport = when (i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_TRANSPORT, -1)) { 1 -> "classic"; 2 -> "LE"; else -> "?" }
             val who = LinkLog.short(d?.address)
+            val t = i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_TRANSPORT, -1)
             when (i.action) {
-                android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED -> LinkLog.add("ACL up $who $transport")
-                android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED ->
+                android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                    LinkLog.add("ACL up $who $transport")
+                    if (t == 1 || t == 2) ble?.onAcl(d?.address, le = t == 2, up = true)
+                }
+                android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                     LinkLog.add("ACL down $who $transport reason=${i.getIntExtra("android.bluetooth.device.extra.REASON", -1)}")
+                    if (t == 1 || t == 2) ble?.onAcl(d?.address, le = t == 2, up = false)
+                }
                 android.bluetooth.BluetoothDevice.ACTION_BOND_STATE_CHANGED ->
                     LinkLog.add("bond $who ${i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, -1)}→${i.getIntExtra(android.bluetooth.BluetoothDevice.EXTRA_BOND_STATE, -1)}")
                 "android.bluetooth.pan.profile.action.CONNECTION_STATE_CHANGED" ->

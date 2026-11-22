@@ -204,7 +204,11 @@ class PeripheralHandshake(
         receiveHello(r, { k -> paired != null && paired.contentEquals(k) }, token)
 
     /** [isKnown] says whether a static key belongs to one of the paired centrals (iPhone, Mac…). */
-    fun receiveHello(r: Record, isKnown: (ByteArray) -> Boolean, token: ByteArray?): Record {
+    fun receiveHello(r: Record, isKnown: (ByteArray) -> Boolean, token: ByteArray?): Record =
+        receiveHello(r, isKnown) { token }
+
+    /** [tokenFor] gives the pairing token a pair-mode HELLO from that static key must prove (null: pairing closed). */
+    fun receiveHello(r: Record, isKnown: (ByteArray) -> Boolean, tokenFor: (ByteArray) -> ByteArray?): Record {
         if (r.kind != Kind.HELLO) throw HandshakeException("expected HELLO")
         val h = try {
             Hello.parse(r.body)
@@ -219,7 +223,7 @@ class PeripheralHandshake(
                 }
                 ByteArray(0)
             }
-            else -> token ?: return Record(Kind.REJECT, byteArrayOf(Reject.PAIRING_CLOSED.toByte()))
+            else -> tokenFor(h.staticKey) ?: return Record(Kind.REJECT, byteArrayOf(Reject.PAIRING_CLOSED.toByte()))
         }
         val ack = Bytes.concat(byteArrayOf(Proto.VERSION.toByte()), P256.encode(ephemeral.public), nonce)
         val dh1 = P256.ecdh(ephemeral.private, h.ephemeral)

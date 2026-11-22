@@ -95,6 +95,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         // Signal / network type changes reach the iPhone within ~2 s (several changes at once send one status).
         app.sims.watch { if (radioPushPending.compareAndSet(false, true)) work.schedule({ radioPushPending.set(false); runCatching { pushStatus() } }, 2, TimeUnit.SECONDS) }
         work.scheduleWithFixedDelay({ runCatching { pushStatus(); watchdog() }.onFailure { Log.e(TAG, "watchdog", it) } }, 60, 60, TimeUnit.SECONDS)
+        work.scheduleWithFixedDelay({ runCatching { stallCheck() } }, 5, 5, TimeUnit.SECONDS)
         audioCtl.scheduleWithFixedDelay({ runCatching { audio.reconcile() }.onFailure { Log.e(TAG, "audio reconcile", it) } }, 1, 1, TimeUnit.SECONDS)
         audioCtl.execute { keepHelperWarm() }
         // Follow the hotspot / Bluetooth PAN coming and going (the proxy and its PAC answer there only).
@@ -149,6 +150,11 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
+        // Remember where this central is, so an LE link to it is held from now on (see BlePeripheral.keepLe).
+        if (c.transport.label != "memory" && c.kind == "iphone" && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address)) {
+            app.prefs.edit().putString("central_bt_address", c.transport.address).apply()
+            LinkService.running?.peripheral?.keepLe(c.transport.address)
+        }
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
         bg { pushStatus() }
@@ -160,6 +166,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
             // A reconnect replaces a link from the same address: its tuning belongs to the new link now.
             if (conns.none { it.transport.address == c.transport.address }) LinkService.running?.peripheral?.untune(c.transport.address)
+            if (!app.keys.isPaired) { LinkService.running?.peripheral?.dropKeepers(); app.prefs.edit().remove("central_bt_address").apply() }
             audioCtl.execute { audio.reconcile() }
         }
         refresh()
@@ -530,6 +537,11 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      * The BLE supervision timeout and L2CAP EOF tell us when the iPhone is really gone. We ping so a
      * half-open session is noticed eventually (15 min), without waking the iPhone just for that.
      */
+    /** A session whose stream is stuck mid-record (a GATT chunk lost when iOS moved the link) is ended at once. */
+    private fun stallCheck() {
+        for (c in conns) if (c.stalledMs() > 10_000) c.close("stream stalled mid-record")
+    }
+
     private fun watchdog() {
         audioCtl.execute { keepHelperWarm() }
         if (targets().isNotEmpty()) lastClientSeen = SystemClock.elapsedRealtime()

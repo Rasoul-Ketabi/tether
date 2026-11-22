@@ -50,7 +50,6 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     private var wakeChar: BluetoothGattCharacteristic? = null
     private val wakeSubscribers = ConcurrentHashMap.newKeySet<String>()
     private val devices = ConcurrentHashMap<String, BluetoothDevice>()
-    private val tuners = ConcurrentHashMap<String, android.bluetooth.BluetoothGatt>()
     private val mtus = ConcurrentHashMap<String, Int>()
     /** Last connection parameters per link, for the latency report. */
     val linkParams = ConcurrentHashMap<String, String>()
@@ -85,6 +84,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         gattPipes.clear()
         runCatching { server?.close() }
         server = null
+        dropKeepers()
     }
 
     private fun startL2cap() {
@@ -216,53 +216,85 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     }
 
     /**
-     * Connection priority. The GATT server API cannot request it, so we open a GATT *client* on the same
-     * ACL link (to the iPhone's own GATT server) and use requestConnectionPriority, which applies to the link.
-     * HIGH during calls (≈15 ms interval if iOS accepts), BALANCED otherwise.
+     * LE keeper: one GATT *client* per paired central, connected over LE with autoConnect (Android reconnects it by
+     * itself whenever the central is in range), held for as long as the central is paired.
+     *
+     * Why: while the phones are also paired over classic Bluetooth (tethering), iOS runs GATT over the classic link
+     * when that is all there is, and L2CAP cannot open there; when an LE link appears later it moves GATT to it and
+     * drops the session. Holding an LE link before any session makes iOS use LE from the start (L2CAP works, and
+     * nothing changes underneath a session). It also lets iOS's pending connect complete when it cannot follow our
+     * rotating advertising address on its own. Connection priority is requested through it (the GATT server API
+     * cannot): HIGH during calls, BALANCED otherwise.
      */
-    fun tune(address: String, high: Boolean) {
-        if (!BluetoothAdapter.checkBluetoothAddress(address)) return
-        if (!devices.containsKey(address)) return   // that client is gone: never start a link to it ourselves
-        val d = devices[address] ?: runCatching { adapter?.getRemoteDevice(address) }.getOrNull() ?: return
-        val prio = if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
-        wantedPriority[address] = prio
-        val existing = tuners[address]
-        if (existing != null) {
-            runCatching { existing.requestConnectionPriority(prio) }
-            return
-        }
+    private val keepers = ConcurrentHashMap<String, BluetoothGatt>()
+    private val keeperUp = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val wantedPriority = ConcurrentHashMap<String, Int>()
+
+    fun keepLe(address: String) {
+        if (!running || !BluetoothAdapter.checkBluetoothAddress(address) || keepers.containsKey(address)) return
+        val d = runCatching { adapter?.getRemoteDevice(address) }.getOrNull() ?: return
         runCatching {
-            tuners[address] = d.connectGatt(ctx, false, object : android.bluetooth.BluetoothGattCallback() {
+            keepers[address] = d.connectGatt(ctx, true, object : android.bluetooth.BluetoothGattCallback() {
                 override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
                     if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
-                        // The priority wanted now (a call may have ended while this client was connecting).
-                        val p = wantedPriority[address] ?: prio
+                        keeperUp.add(address)
+                        val p = wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED
                         g.requestConnectionPriority(p)
-                        Log.i(TAG, "link priority ${if (p == BluetoothGatt.CONNECTION_PRIORITY_HIGH) "high" else "balanced"} requested")
+                        LinkLog.add("LE link held to ${LinkLog.short(address)}")
                     } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
-                        // A dead tuning client must not be reused for the next call.
-                        if (tuners[address] === g) tuners.remove(address)
-                        runCatching { g.close() }
+                        keeperUp.remove(address)   // autoConnect brings it back by itself
                     }
                 }
             }, BluetoothDevice.TRANSPORT_LE)
-        }
+        }.onFailure { Log.w(TAG, "LE keeper not started: ${it.message}") }
     }
 
-    private val wantedPriority = ConcurrentHashMap<String, Int>()
-
-    fun untune(address: String) {
-        wantedPriority.remove(address)
-        tuners.remove(address)?.let { runCatching { it.disconnect(); it.close() } }
+    /** Nothing is paired any more: no link is held. */
+    fun dropKeepers() {
+        keepers.values.forEach { runCatching { it.disconnect(); it.close() } }
+        keepers.clear(); keeperUp.clear(); wantedPriority.clear()
     }
+
+    fun tune(address: String, high: Boolean) {
+        val prio = if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
+        wantedPriority[address] = prio
+        val g = keepers[address]?.takeIf { address in keeperUp } ?: return
+        runCatching { g.requestConnectionPriority(prio) }
+        Log.i(TAG, "link priority ${if (high) "high" else "balanced"} requested")
+    }
+
+    /** A session ended: back to balanced priority; the LE link itself stays held. */
+    fun untune(address: String) = tune(address, high = false)
 
     private val txSubscribers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Centrals with an LE link right now (from the ACL broadcasts); a GATT pipe without one runs over classic. */
+    private val leLinks = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** Per GATT pipe: whether it was opened over LE (true) or classic Bluetooth (false). */
+    private val pipeOnLe = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * ACL up / down for a central. iOS runs GATT over whichever transport it has and moves it when the other one
+     * appears or goes; a session on a GATT pipe dies with its bearer, so end it at once (the central sets up again on
+     * the new bearer) instead of leaving a stale pipe that keeps sending its queue into the new one.
+     */
+    fun onAcl(address: String?, le: Boolean, up: Boolean) {
+        address ?: return
+        if (le) { if (up) leLinks.add(address) else leLinks.remove(address) }
+        val onLe = pipeOnLe[address] ?: return
+        if (app.tether.core.LinkPolicy.gattPipeEnds(onLe, le, up)) {
+            Log.i(TAG, "gatt pipe for $address ends: ${if (le) "LE" else "classic"} link ${if (up) "up" else "down"}")
+            pipeOnLe.remove(address)
+            gattPipes.remove(address)?.close()
+        }
+    }
 
     /** A new GATT pipe (and session) for this central; an older pipe of the same central is closed first. */
     private fun openPipe(s: BluetoothGattServer, device: BluetoothDevice): GattTransport {
         gattPipes.remove(device.address)?.close()
         val t = GattTransport(s, device, txChar!!)
         t.mtu = mtus[device.address] ?: 23
+        pipeOnLe[device.address] = device.address in leLinks
         t.onPeerRestart = { first -> openPipe(s, device).received(first) }
         gattPipes[device.address] = t
         Log.i(TAG, "gatt fallback pipe opened for ${device.address}")
@@ -284,7 +316,6 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                 mtus.remove(device.address)
                 wakeSubscribers.remove(device.address)
                 devices.remove(device.address)
-                tuners.remove(device.address)?.let { runCatching { it.close() } }
             }
         }
 
@@ -299,6 +330,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            Log.i(TAG, "mtu ${device.address} = $mtu")
             mtus[device.address] = mtu
             gattPipes[device.address]?.mtu = mtu
         }

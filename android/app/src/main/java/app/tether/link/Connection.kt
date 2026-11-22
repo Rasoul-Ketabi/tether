@@ -38,6 +38,11 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
     @Volatile var lastRx = SystemClock.elapsedRealtime(); private set
+    /** Since when a record has been half received (0: none). A live stream completes records within milliseconds. */
+    @Volatile private var partialSince = 0L
+    @Volatile private var upAt = 0L
+    /** How long a record has been half received: a lost or corrupted chunk leaves the stream stuck mid-record. */
+    fun stalledMs(now: Long = SystemClock.elapsedRealtime()) = partialSince.let { if (it == 0L) 0L else now - it }
     /** The client's static key once the handshake is done: identifies iPhone vs Mac across reconnects. */
     @Volatile var peerKey: ByteArray? = null; private set
     /** From the client's sync: "iphone" / "mac", its name, and the codecs it can decode. */
@@ -116,6 +121,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
                 handle(r)
                 if (state == State.CLOSED) return
             }
+            partialSince = if (reader.pendingBytes == 0) 0L else partialSince.takeIf { it != 0L } ?: lastRx
         } catch (e: FramingException) {
             close("framing: ${e.message}")
         } catch (e: HandshakeException) {
@@ -135,7 +141,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
                 val hs = PeripheralHandshake(keys.staticPrivate)
                 handshake = hs
                 val reply = if (!listener.admits(this)) Record(Kind.REJECT, byteArrayOf(app.tether.core.Reject.BUSY.toByte()))
-                    else hs.receiveHello(r, { k -> keys.isKnown(k) }, keys.currentToken())
+                    else hs.receiveHello(r, { k -> keys.isKnown(k) }) { k -> keys.tokenFor(k) }
                 sendRaw(reply)
                 if (reply.kind == Kind.REJECT) {
                     Log.i(TAG, "rejected hello: reason ${reply.body[0]}")
@@ -157,13 +163,14 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
                 } else if (pairing) {
                     // Name and kind arrive with the first sync; until then it is listed as a new device.
                     keys.addCentral(pendingStatic!!, keys.central(pendingStatic)?.name ?: "New device")
-                    keys.closePairing()
+                    keys.completePairing(pendingStatic!!)
                     Log.i(TAG, "paired with new central (${keys.centrals().size} paired)")
                 }
                 session = s
                 peerKey = pendingStatic
                 sendRaw(fin)
                 state = State.UP
+                upAt = SystemClock.elapsedRealtime()
                 Log.i(TAG, "link up via ${transport.label} (${if (pairing) "pair" else "resume"})")
                 listener.onEstablished(this, pairing)
             }
@@ -194,7 +201,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
             val wasUp = state == State.UP
             state = State.CLOSED
             Log.i(TAG, "link closed (${transport.label}): $reason")
-            LinkLog.add("link down ($name, ${transport.label}): $reason")
+            LinkLog.add("link down ($name, ${transport.label}) after ${(SystemClock.elapsedRealtime() - upAt) / 1000} s: $reason")
             if (!wasUp) { transport.close(); return }
         }
         transport.close()

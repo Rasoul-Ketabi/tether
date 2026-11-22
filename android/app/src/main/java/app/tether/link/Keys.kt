@@ -140,6 +140,21 @@ class Keys(private val ctx: Context) {
         pairingExpiry = 0
     }
 
+    private val repeatPairing = app.tether.core.PairingTokens(REPEAT_PAIR_MS)
+
+    /** A pairing completed: the code is closed, but the same central may repeat its pair hello for a while. */
+    fun completePairing(centralKey: ByteArray) {
+        currentToken()?.let { repeatPairing.completed(it, centralKey) }
+        closePairing()
+    }
+
+    /**
+     * The token a pair-mode HELLO from [centralKey] must prove: the open pairing code's, or, for 10 minutes after a
+     * pairing completed, that pairing's token for the same central only. The central may not have received our FIN
+     * (the link moved or dropped right then) and says hello in pair mode again; refusing it made it forget the pairing.
+     */
+    fun tokenFor(centralKey: ByteArray): ByteArray? = repeatPairing.tokenFor(centralKey, currentToken())
+
     fun deviceName(): String = android.provider.Settings.Global.getString(ctx.contentResolver, "device_name")
         ?: Build.MODEL
 
@@ -147,5 +162,6 @@ class Keys(private val ctx: Context) {
         const val TAG = "Tether"
         const val ALIAS = "tether_static_p256"
         const val PAIRING_TTL_MS = 5 * 60 * 1000L
+        const val REPEAT_PAIR_MS = 10 * 60_000L
     }
 }
