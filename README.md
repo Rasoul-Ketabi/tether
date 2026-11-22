@@ -35,7 +35,7 @@ with no server and no account.
 ## Quick start
 
 ```bash
-git clone <this repository> tether && cd tether
+git clone https://github.com/amirwmr/tether.git && cd tether
 cp ios/Config/Local.xcconfig.example ios/Config/Local.xcconfig   # set your team id and a unique bundle id
 cd android && ./gradlew :app:assembleRelease && adb install -r app/build/outputs/apk/release/app-release.apk && cd ..
 tools/reinstall-ios.sh                                            # builds, signs and installs on your iPhone
