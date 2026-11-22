@@ -1,0 +1,101 @@
+name: Publish tested CI artifacts as a prerelease
+
+on:
+  push:
+    branches:
+      - ci/android-ios-builds
+    paths:
+      - .github/workflows/publish-test-release.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish Android and unsigned iOS test builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN_ID: "45048249440"
+      SOURCE_COMMIT: "fc16d3c4b8fd9ed5a5696323bfdbc90d26956659"
+      RELEASE_TAG: "v1.0.0-test-ci.45048249440"
+    steps:
+      - name: Verify the original successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.conclusion')"
+          commit="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.head_sha')"
+          test "$result" = "success"
+          test "$commit" = "$SOURCE_COMMIT"
+
+      - name: Download exact artifacts from the successful run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45048249440
+          github-token: ${{ github.token }}
+          path: downloaded
+
+      - name: Check artifacts and prepare distinct asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d downloaded/tether-android-apks
+          test -d downloaded/tether-ios-unsigned
+          mkdir -p release-assets
+          copy_one() {
+            local dir="$1" filename="$2" target="$3"
+            local -a matches
+            mapfile -d '' matches < <(find "$dir" -type f -name "$filename" -print0)
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "Expected exactly one $filename under $dir, found ${#matches[@]}" >&2
+              exit 1
+            fi
+            cp -- "${matches[0]}" "release-assets/$target"
+            test -s "release-assets/$target"
+          }
+          copy_one downloaded/tether-android-apks app-debug.apk Tether-Android-Debug.apk
+          copy_one downloaded/tether-android-apks app-release.apk Tether-Android-Release-Temporary-Signing.apk
+          copy_one downloaded/tether-ios-unsigned Tether-UNSIGNED-NOT-INSTALLABLE.ipa Tether-iOS-UNSIGNED-NOT-INSTALLABLE.ipa
+          (cd release-assets && sha256sum *.apk *.ipa > SHA256SUMS.txt)
+          cat release-assets/SHA256SUMS.txt
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Test binaries from a successful CI run
+
+          Source: commit `fc16d3c4b8fd9ed5a5696323bfdbc90d26956659`, [GitHub Actions run 45048249440](https://github.com/Rasoul-Ketabi/tether/actions/runs/45048249440).
+
+          This is a **pre-release for testing**, not a production or security-certified build. Swift and Android unit tests and compilation passed; real-device Bluetooth, calls, SMS, and audio bridging have **not** been tested by CI.
+
+          - **Tether-Android-Debug.apk**: Android APK for a disposable test install.
+          - **Tether-Android-Release-Temporary-Signing.apk**: release configuration, but signed with the CI runner's temporary debug key. It is **not** a stable production signing identity, and a later build may not install as an update.
+          - **Tether-iOS-UNSIGNED-NOT-INSTALLABLE.ipa**: **unsigned** iOS compilation artifact. It **cannot be installed on an iPhone** until it is rebuilt/signed with valid Apple credentials/provisioning.
+          - **SHA256SUMS.txt**: asset checksums.
+
+          **Security caveats:** Original source audit found an unauthenticated optional Share VPN proxy and other outstanding risks. Keep Share VPN disabled and avoid using primary accounts/SIMs for initial testing. No production security certification is implied.
+
+          The CI workflow and this release originate from the `ci/android-ios-builds` work branch; the main branch is unchanged.
+          EOF
+
+      - name: Publish pre-release with existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to replace binary assets" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" release-assets/*.apk release-assets/*.ipa release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_COMMIT" \
+            --title "Tether v1.0.0 — Android / unsigned iOS (CI test build)" \
+            --notes-file release-notes.md \
+            --prerelease
