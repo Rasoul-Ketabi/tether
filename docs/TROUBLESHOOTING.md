@@ -30,7 +30,19 @@ If it still drops while tethering, send both link logs (each session ends with a
 it lasted and why it ended) and use the **Wi-Fi hotspot** instead of Bluetooth tethering meanwhile: it does not
 touch Bluetooth at all and is faster.
 
-## No call audio
+### After closing the app
+
+- **Opened again**, the app links within a few seconds (it starts a fresh connect and scan every time it comes to the
+  foreground).
+- **Swiped away in the app switcher** (force quit): iOS does not start the app again for Bluetooth until you open it
+  yourself, so calls and texts do not reach the iPhone meanwhile. No app can change this. Leave Tether in the
+  background instead of swiping it away; it uses almost no battery while it waits.
+- **Stopped by iOS** in the background (memory pressure): iOS starts it again when the Android phone's link comes
+  up, which the Android app brings about every 30 s while it has no session. This can take from seconds to about
+  a minute and a half.
+- **In the background**: the session stays up; nothing to do.
+
+
 
 1. In Tether on the Android phone, the **Audio helper** must say *Running*. If not, see the next section.
 2. During a call, tap **Run call-audio self-test**: it lists each capture and inject path and whether it works.
