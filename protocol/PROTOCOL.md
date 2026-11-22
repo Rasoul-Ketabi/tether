@@ -30,6 +30,13 @@ The primary transport is one L2CAP connection-oriented channel on the PSM.
 Android's L2CAP channel is LE only: when iOS reaches the service over BR/EDR (the phones are also linked for
 Bluetooth tethering), the channel cannot open and the GATT transport is used. A failed PSM read also goes straight
 to the GATT transport.
+
+The peripheral holds an LE link to its paired central at all times (a GATT client connection with autoConnect), so
+iOS uses LE and L2CAP from the start even when the phones are also linked over classic Bluetooth, instead of running
+GATT over classic Bluetooth and moving it (and dropping the session) when LE appears. A GATT session ends when the
+ACL it runs on goes or the central's LE link appears under a classic-link session; a pair-mode HELLO repeated by the
+same central within 10 minutes of a completed pairing is accepted (it may have lost the FIN); a stream left mid-record
+for 10 s ends the session on either side.
 If the channel cannot be opened, the central falls back to GATT: RX writes and
 TX notifications carry the *same byte stream* as the L2CAP channel, cut into
 chunks of at most `ATT_MTU - 3` bytes. Chunk boundaries carry no meaning.

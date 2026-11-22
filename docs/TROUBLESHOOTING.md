@@ -15,12 +15,20 @@ Start with the logs: on the iPhone, **Link › Link log**; on the Android phone,
 
 ### Bluetooth tethering
 
-When the two phones are also paired over classic Bluetooth (for Bluetooth tethering), iOS may reach Tether over
-that classic connection instead of Bluetooth LE. Tether then uses its GATT transport instead of an L2CAP channel
-(Android's L2CAP channels are LE only). It works the same, slightly slower. Tether never uses Bluetooth's own
-encryption or pairing, so a Bluetooth pairing made for tethering cannot break it. Older versions required link
-encryption and failed with *"PSM read failed: the encryption key size is insufficient"* in this situation: update
-both apps.
+Bluetooth tethering pairs the two phones over classic Bluetooth. iOS then runs Tether's GATT connection over that
+classic link whenever it is the only one, where Tether's fast L2CAP channel cannot open, and moves it to Bluetooth LE
+as soon as an LE link appears, which ends the session running at that moment. To keep one stable session, the Android
+app holds an LE link to the paired iPhone at all times (link log: *LE link held*), so iOS uses LE and L2CAP from the
+start and nothing moves underneath a session. If a session does start over the classic link, the first LE link ends it
+once and the iPhone sets up again over LE within seconds.
+
+Tether never uses Bluetooth's own encryption or pairing, so the pairing made for tethering cannot break it. Older
+versions failed in this setup with *"PSM read failed: the encryption key size is insufficient"*, or connected and
+dropped over and over: update both apps.
+
+If it still drops while tethering, send both link logs (each session ends with a line saying its transport, how long
+it lasted and why it ended) and use the **Wi-Fi hotspot** instead of Bluetooth tethering meanwhile: it does not
+touch Bluetooth at all and is faster.
 
 ## No call audio
 
