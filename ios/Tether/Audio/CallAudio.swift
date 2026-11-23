@@ -103,6 +103,10 @@ final class CallAudio: @unchecked Sendable {
     private var captureMono: AVAudioFormat?
     private var pump: DispatchSourceTimer?
     private var routeObserver: NSObjectProtocol?
+    private var sessionRouteObserver: NSObjectProtocol?
+    /// The I/O formats the running engine was built with (a hands-free route changes them).
+    private var builtFormat: EngineFormat?
+    private var rebuildRetries = 0
     private var captureFormat: AVAudioFormat?
     private var captureAcc: [Int16] = []
     private var seq: UInt16 = 0
@@ -149,7 +153,10 @@ final class CallAudio: @unchecked Sendable {
 
     static func configureSession() {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])   // hands-free route for calls (A2DP has no microphone)
+        // Hands-free (HFP) Bluetooth and car kits for calls; A2DP has no microphone. No .defaultToSpeaker: the
+        // receiver is the default and the speaker is an override the user picks.
+        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP]) }
+        catch { NSLog("[audio] category: %@", "\(error)") }
         try? s.setPreferredSampleRate(16000)
         try? s.setPreferredIOBufferDuration(0.01) // 10 ms I/O buffer
     }
@@ -177,12 +184,14 @@ final class CallAudio: @unchecked Sendable {
         q.async {
             self.noVoiceProcessing = false   // try echo cancellation again on every call
             self.sessionActive = true
+            self.rebuildRetries = 0
             self.startLocked()
+            self.observeSessionRoute()
         }
     }
 
     @MainActor func sessionDeactivated() {
-        q.async { self.sessionActive = false; self.stopLocked() }
+        q.async { self.sessionActive = false; self.unobserveSessionRoute(); self.stopLocked() }
     }
 
     @MainActor func remoteStopped() {
@@ -190,13 +199,15 @@ final class CallAudio: @unchecked Sendable {
     }
 
     @MainActor func stop() {
-        q.async { self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
+        q.async { self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
     }
 
     /// Voice processing (echo cancellation) could not start with the current devices: run without it.
     private var noVoiceProcessing = false
 
-    private func startLocked() {
+    /// `rebuild`: a route change on a running call; the playout buffer, ringback and statistics carry over so the
+    /// far end keeps playing after the switch (only the graph, its formats and converters are new).
+    private func startLocked(rebuild: Bool = false) {
         guard !running else { return }
         let rate = coder?.rate ?? 16000
         let input = engine.inputNode
@@ -209,8 +220,9 @@ final class CallAudio: @unchecked Sendable {
               let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false) else {
             NSLog("[audio] no input format"); return
         }
+        let keepPlayout = rebuild && playRate == rate
         playRate = rate
-        playout = PlayoutBuffer(rate: rate)
+        if !keepPlayout { playout = PlayoutBuffer(rate: rate) }
         captureFormat = codecFormat
         guard let mono = AVAudioFormat(standardFormatWithSampleRate: inFormat.sampleRate, channels: 1) else { return }
         captureMono = mono
@@ -255,30 +267,28 @@ final class CallAudio: @unchecked Sendable {
             if !noVoiceProcessing {
                 // The output unit would not initialize with voice processing: retry plainly.
                 noVoiceProcessing = true
-                engine.reset()
-                startLocked()
+                engine = AVAudioEngine()
+                startLocked(rebuild: rebuild)
             }
             return
         }
         captureAcc.removeAll()
         // `seq` keeps counting across engine restarts (route changes): the Android phone drops frames whose number goes back.
-        lastArrival = 0; jitterSum = 0
-        stats = Stats()
+        if !rebuild { lastArrival = 0; jitterSum = 0; stats = Stats() }
+        let outFormat = engine.outputNode.outputFormat(forBus: 0)
+        builtFormat = EngineFormat(inputRate: inFormat.sampleRate, inputChannels: Int(inFormat.channelCount),
+                                   outputRate: outFormat.sampleRate, outputChannels: Int(outFormat.channelCount))
+        rebuildRetries = 0
         running = true
         let p = DispatchSource.makeTimerSource(queue: q)
         p.schedule(deadline: .now() + 0.005, repeating: 0.005, leeway: .milliseconds(1))   // 5 ms: frames leave ≤ 5 ms after capture
         p.setEventHandler { [weak self] in self?.drainCapture() }
         p.resume()
         pump = p
-        // Speaker / AirPods / route changes reconfigure the engine and stop it: rebuild it.
+        // Speaker / headset / car route changes reconfigure the engine and stop it: build a fresh one.
         routeObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
             guard let self else { return }
-            self.q.async {
-                guard self.running else { return }
-                NSLog("[audio] engine configuration changed: restarting")
-                self.stopLocked()
-                self.startLocked()
-            }
+            self.q.async { self.routeEvent(configurationChanged: true) }
         }
         let s = AVAudioSession.sharedInstance()
         stats.ioBufferMs = s.ioBufferDuration * 1000
@@ -289,19 +299,63 @@ final class CallAudio: @unchecked Sendable {
               noVoiceProcessing ? "off" : "on", inFormat.sampleRate, Int(inFormat.channelCount))
     }
 
+    /// Route change or engine configuration change while a call's session is active (TetherCore decides).
+    private func routeEvent(configurationChanged: Bool) {
+        let s = AVAudioSession.sharedInstance()
+        let now = EngineFormat(inputRate: s.isInputAvailable ? s.sampleRate : 0, inputChannels: s.isInputAvailable ? max(1, s.inputNumberOfChannels) : 0,
+                               outputRate: s.sampleRate, outputChannels: s.outputNumberOfChannels)
+        switch EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
+                                           built: builtFormat, now: now) {
+        case .keep: return
+        case .rebuild:
+            NSLog("[audio] route / configuration changed: rebuilding the engine (%.0f Hz in)", now.inputRate)
+            stopLocked(rebuild: true)
+            engine = AVAudioEngine()   // a fresh graph: the old one keeps stale I/O formats after a hands-free switch
+            startLocked(rebuild: true)
+            if !running { retryLater() }
+        case .retryLater:
+            if running { stopLocked(rebuild: true) }
+            retryLater()
+        }
+    }
+
+    /// The new route has no input yet (Bluetooth hands-free takes a moment): try again shortly, ~2 s at most.
+    private func retryLater() {
+        guard rebuildRetries < 20 else { NSLog("[audio] no usable route after a change"); return }
+        rebuildRetries += 1
+        q.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self, self.sessionActive, !self.running else { return }
+            self.routeEvent(configurationChanged: false)
+        }
+    }
+
+    private func observeSessionRoute() {
+        guard sessionRouteObserver == nil else { return }
+        sessionRouteObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.q.async { self.routeEvent(configurationChanged: false) }
+        }
+    }
+
+    private func unobserveSessionRoute() {
+        if let o = sessionRouteObserver { NotificationCenter.default.removeObserver(o); sessionRouteObserver = nil }
+    }
+
     private func teardownNodes() {
         if let source { engine.detach(source) }
         if let sink { engine.detach(sink) }
         source = nil; sink = nil
     }
 
-    private func stopLocked() {
+    private func stopLocked(rebuild: Bool = false) {
         guard running else { return }
         running = false
         pump?.cancel(); pump = nil
         if let o = routeObserver { NotificationCenter.default.removeObserver(o); routeObserver = nil }
         engine.stop()
         teardownNodes()
+        builtFormat = nil
+        if rebuild { return }   // the call goes on: statistics are logged once, at its end
         stats.underruns = playout.underruns
         stats.trimmedMs = Double(playout.trimmed) / playRate * 1000
         stats.playoutMs = Double(playout.target) / playRate * 1000
