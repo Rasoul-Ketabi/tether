@@ -74,4 +74,6 @@
     <string name="adb_overlay_drag_hint">برای جابه‌جایی، عنوان کادر را بکشید.</string>
     <string name="adb_overlay_retry">جفت‌سازی ناموفق بود. کد را بررسی کنید و در حالی که پنجره تنظیمات باز است دوباره تلاش کنید.</string>
     <string name="adb_overlay_settings_unavailable">باز کردن گزینه‌های برنامه‌نویس ممکن نشد. تنظیمات اشکال‌زدایی بی‌سیم را دستی باز کنید و از کادر شناور یا اعلان استفاده کنید.</string>
+    <string name="adb_notif_stop">توقف جفت‌سازی</string>
+    <string name="adb_notif_subtext">نشست جفت‌سازی تتر</string>
 </resources>
