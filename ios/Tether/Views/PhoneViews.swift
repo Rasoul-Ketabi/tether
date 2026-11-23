@@ -130,7 +130,7 @@ struct KeypadView: View {
     var body: some View {
         VStack(spacing: 18) {
             Spacer()
-            Text(number.isEmpty ? " " : number)
+            Text(number.isEmpty ? " " : model.formatted(number))
                 .font(.system(size: 36, weight: .regular, design: .rounded))
                 .lineLimit(1).minimumScaleFactor(0.5)
                 .environment(\.layoutDirection, .leftToRight)
@@ -182,6 +182,13 @@ struct KeypadView: View {
             .environment(\.layoutDirection, .leftToRight)
             Spacer()
         }
-        .onAppear { if sub == nil { sub = model.status?.defaultSub } }
+        .onAppear {
+            if sub == nil { sub = model.status?.defaultSub }
+            #if DEBUG
+            // -TetherDemoKeypad <digits>: a typed number, to check the as-you-type grouping.
+            let args = ProcessInfo.processInfo.arguments
+            if number.isEmpty, let i = args.firstIndex(of: "-TetherDemoKeypad"), i + 1 < args.count { number = args[i + 1] }
+            #endif
+        }
     }
 }

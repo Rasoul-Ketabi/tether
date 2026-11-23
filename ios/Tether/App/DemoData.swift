@@ -47,7 +47,12 @@ extension AppModel {
             id += 1
         }
         let contacts = [Contact(id: 50, name: "Bank Mellat", phones: [Phone(n: "+15550105")])] + people.enumerated().map { Contact(id: Int64($0.offset), name: $0.element.0, phones: [Phone(n: $0.element.1)], starred: $0.offset < 2) }
+        // Unknown numbers (not in contacts) show grouped: a test number, a short code, a USSD code.
+        let unknown = ["+10000000001", "+10000000002", "*140#"]
         let recents = people.enumerated().map { CallEntry(id: Int64($0.offset), num: $0.element.1, date: now - Int64($0.offset) * 3_600_000, dur: 95, type: [1, 2, 3, 1][$0.offset], sub: $0.offset % 2 == 0 ? 3 : 2) }
+            + unknown.enumerated().map { CallEntry(id: Int64(10 + $0.offset), num: $0.element, date: now - Int64(5 + $0.offset) * 3_600_000, dur: 30, type: 2, sub: 3) }
+        sms.append(Sms(id: id, thread: 6, addr: "+10000000003", body: "Demo message from an unknown number", date: now - 30 * 60_000, box: 1, read: true, sub: 3))
+        id += 1
         injectDemo(sms: sms, contacts: contacts, recents: recents,
                    status: StatusBody(device: "Android phone", battery: 82, charging: false,
                                       sims: [SimInfo(slot: 0, sub: 3, name: "Personal", carrier: "Carrier A", signal: 4, net: "LTE", service: "in"),
@@ -62,6 +67,7 @@ extension AppModel {
             else if args.contains("-TetherDemoThread") { Router.shared.open(thread: 1) }
             else if args.contains("-TetherDemoMessages") { Router.shared.tab = .messages }
             else if args.contains("-TetherDemoContacts") { Router.shared.tab = .contacts }
+            else if args.contains("-TetherDemoKeypad") { Router.shared.tab = .keypad }
             else if args.contains("-TetherDemoRecents") { Router.shared.tab = .recents }
             else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") { Router.shared.tab = .link }
         }

@@ -141,7 +141,14 @@ final class AppModel {
     func name(for number: String) -> String? { nameIndex[PhoneNumber.matchKey(number)] }
     func photo(for number: String) -> String? { photoIndex[PhoneNumber.matchKey(number)] }
     /// A contact's name, else the number in a left-to-right isolate (so "+98…" keeps its plus sign in Persian layout).
-    func displayName(_ number: String) -> String { name(for: number) ?? (number.isEmpty ? String(localized: "Unknown") : "\u{2066}\(number)\u{2069}") }
+    func displayName(_ number: String) -> String { name(for: number) ?? (number.isEmpty ? String(localized: "Unknown") : "\u{2066}\(formatted(number))\u{2069}") }
+    /// Country national numbers belong to: the default SIM's (from the Android phone), else this iPhone's region.
+    var numberRegion: String? {
+        let sim = sims.first(where: { $0.sub == status?.defaultSub && $0.country != nil }) ?? sims.first(where: { $0.country != nil })
+        return sim?.country ?? Locale.current.region?.identifier
+    }
+    /// The number grouped for display ("+98 912 345 6789"); short codes, USSD and names unchanged. Display only.
+    func formatted(_ number: String) -> String { PhoneFormat.format(number, region: numberRegion) }
 
     // MARK: missed calls (the Recents badge, like Phone)
 

@@ -89,7 +89,7 @@ struct InCallView: View {
                 Text(typed).font(.system(size: 34, weight: .light)).lineLimit(1).minimumScaleFactor(0.5)
                     .environment(\.layoutDirection, .leftToRight)
             } else {
-                Text(call.name ?? call.number)
+                Text(call.name ?? model.formatted(call.number))
                     .font(.system(size: 34, weight: .regular))
                     .lineLimit(1).minimumScaleFactor(0.5)
             }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Phone numbers are shown grouped like phones show them ("+98 912 345 6789", "+1 (555) 010-0001"), on the
+  iPhone's keypad as you type, in Recents, Contacts, Messages, the call screen, CallKit and notifications, and on
+  the Android phone's call screen. National numbers follow the SIM's country (new optional `country` per SIM in
+  `status`). Short codes, USSD codes and names are left as they are; what is dialled, stored and searched is unchanged.
 - Stable link while the phones are also paired for Bluetooth tethering (the Android phone holds an LE link during a
   session, so the session runs over LE / L2CAP and does not move between links).
 - Reconnects after the app is closed and reopened (within ~1-3 s), after a link drop while the app is in the

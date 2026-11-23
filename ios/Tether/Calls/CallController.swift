@@ -207,7 +207,7 @@ final class CallController: NSObject {
                 let update = CXCallUpdate()
                 update.remoteHandle = handle
                 // CallKit has no line label: with two SIMs the SIM it rings on follows the name ("Sara · Work").
-                update.localizedCallerName = [name ?? c.num, model.simName(c.sub)].compactMap { $0 }.joined(separator: " · ")
+                update.localizedCallerName = [name ?? model.formatted(c.num), model.simName(c.sub)].compactMap { $0 }.joined(separator: " · ")
                 update.hasVideo = false
                 update.supportsHolding = c.hold
                 update.supportsDTMF = true
@@ -246,7 +246,7 @@ final class CallController: NSObject {
 
         let update = CXCallUpdate()
         update.remoteHandle = handle
-        update.localizedCallerName = [name ?? c.num, model.simName(c.sub)].compactMap { $0 }.joined(separator: " · ")
+        update.localizedCallerName = [name ?? model.formatted(c.num), model.simName(c.sub)].compactMap { $0 }.joined(separator: " · ")
         update.supportsHolding = c.hold
         update.supportsDTMF = true
         reportUpdated(uuid, update)

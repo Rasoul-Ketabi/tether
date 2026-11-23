@@ -107,7 +107,7 @@ struct ContactDetailView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(LocalizedStringKey(p.type.capitalized)).font(.caption).foregroundStyle(.secondary)
-                            Text(p.n).environment(\.layoutDirection, .leftToRight)
+                            Text(model.formatted(p.n)).environment(\.layoutDirection, .leftToRight)
                         }
                         Spacer()
                         Button { openThread(p.n) } label: { Image(systemName: "message.fill").accessibilityLabel(Text("Message")) }.buttonStyle(.borderless)

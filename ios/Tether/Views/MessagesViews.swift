@@ -485,7 +485,7 @@ struct ComposeView: View {
                     if !to.isEmpty {
                         ForEach(suggestions, id: \.1) { name, number in
                             Button { to = number; field = .message } label: {
-                                VStack(alignment: .leading) { Text(name); Text(number).font(.caption).foregroundStyle(.secondary) }
+                                VStack(alignment: .leading) { Text(name); Text(model.formatted(number)).font(.caption).foregroundStyle(.secondary) }
                             }
                         }
                     }
