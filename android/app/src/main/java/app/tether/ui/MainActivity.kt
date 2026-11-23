@@ -211,9 +211,7 @@ class MainActivity : Activity() {
         if (Settings.canDrawOverlays(this)) {
             runCatching { PairingOverlayService.show(this) }
         }
-        try {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-        } catch (_: Exception) {
+        if (!WirelessDebuggingSettings.open(this)) {
             AlertDialog.Builder(this).setMessage(R.string.adb_overlay_settings_unavailable)
                 .setPositiveButton(android.R.string.ok, null).show()
         }
