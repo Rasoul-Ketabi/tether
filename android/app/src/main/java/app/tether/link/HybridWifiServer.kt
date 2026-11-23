@@ -14,6 +14,9 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.SecureRandom
 import java.util.Collections
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import android.os.SystemClock
 import org.json.JSONObject
 
 /**
@@ -33,6 +36,9 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
     private val secret = ByteArray(32).also { SecureRandom().nextBytes(it) }
     private val lock = Any()
     private val writeLock = Any()
+    /** A blocked TCP writer must NEVER delay BLE call events and GATT wake notifications. */
+    private data class Pending(val channel: Int, val payload: ByteArray, val queuedAt: Long)
+    private val outbound = LinkedBlockingQueue<Pending>(512)
     @Volatile private var listener: ServerSocket? = null
     @Volatile private var client: Socket? = null
     @Volatile private var stream: DataOutputStream? = null
@@ -93,6 +99,7 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
             } finally {
                 synchronized(writeLock) {
                     if (client === incoming) {
+                        outbound.clear()
                         crypto = null
                         stream = null
                         isReady = false
@@ -132,6 +139,10 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
             output.flush()
             isReady = true
         }
+        // Encryption and socket writes happen OFF the BLE writer queue. A stalled Wi-Fi
+        // socket can only back up its own bounded queue; BLE always remains responsive.
+        Thread({ writeLoop(sock, session, output) }, "hybrid-wifi-tx")
+            .apply { isDaemon = true }.start()
         sock.soTimeout = 0
         val reader = RecordReader()
         val buf = ByteArray(8192)
@@ -152,25 +163,35 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
         }
     }
 
-    /** false means that the original BLE record should be sent instead. */
-    fun send(channel: Int, payload: ByteArray): Boolean = synchronized(writeLock) {
-        val s = crypto ?: return@synchronized false
-        val out = stream ?: return@synchronized false
-        if (!isReady || payload.size > 60_000) return@synchronized false
+    private fun writeLoop(sock: Socket, session: SecureSession, out: DataOutputStream) {
         try {
-            out.write(s.seal(channel, payload).encoded())
-            out.flush()
-            true
+            while (!closed && client === sock && !sock.isClosed) {
+                val item = outbound.poll(250, TimeUnit.MILLISECONDS) ?: continue
+                // Old audio hurts live speech; never play it seconds later.
+                if (item.channel == Proto.CH_AUDIO &&
+                    SystemClock.elapsedRealtime() - item.queuedAt > 100) continue
+                val bytes = session.seal(item.channel, item.payload).encoded()
+                out.write(bytes)
+                out.flush()
+            }
         } catch (e: Exception) {
-            Log.i(TAG, "wifi lane failed, reverting to BLE: " + e.message)
+            Log.i(TAG, "hybrid Wi-Fi TX stopped: " + e.javaClass.simpleName)
             isReady = false
-            runCatching { client?.close() }
-            false
+            runCatching { sock.close() }
         }
+    }
+
+    /** Fast, bounded enqueue. false means the existing BLE record must be sent. */
+    fun send(channel: Int, payload: ByteArray): Boolean {
+        if (!isReady || closed || payload.size > 60_000) return false
+        // A pressure spike must not let seconds of stale Wi-Fi voice accumulate.
+        if (channel == Proto.CH_AUDIO && outbound.size > 32) return false
+        return outbound.offer(Pending(channel, payload, SystemClock.elapsedRealtime()))
     }
 
     private fun shutdownSockets() {
         isReady = false
+        outbound.clear()
         runCatching { client?.close() }
         runCatching { listener?.close() }
         client = null
