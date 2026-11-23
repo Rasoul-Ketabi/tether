@@ -36,7 +36,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private var pairing = false
     @Volatile var session: SecureSession? = null; private set
     /** This optional channel belongs to this BLE connection; it is never a second Tether client. */
-    @Volatile var wifi: HybridWifiServer? = null
+    @Volatile internal var wifi: HybridWifiServer? = null
     /** Fixed for each sync request to avoid splitting a page sequence by normal lane selection. */
     @Volatile var bulkSync = false
     /** Normal lane (sync pages, status…) and priority lane (handshake, call events, audio). */
