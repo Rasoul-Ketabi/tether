@@ -61,4 +61,17 @@
     <string name="unpair_confirm_named">Forget %1$s? It will need to be paired again.</string>
     <string name="audio_needs_android13">Call audio needs Android 13 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="audio_local_stays_on">During a bridged call this phone\'s own earpiece and microphone may stay on (only Samsung phones let Tether mute them): keep it in a bag or pocket.</string>
+    <string name="adb_invalid_code">Enter exactly six digits from the Wireless debugging pairing dialog.</string>
+    <string name="adb_pairing_busy">A pairing attempt is already running.</string>
+    <string name="adb_overlay_permission_title">Show the pairing code field over Settings?</string>
+    <string name="adb_overlay_permission_message">Allow Tether to display a small movable code-entry card while Wireless debugging settings are open. If you decline, use the notification reply instead. The card closes after pairing or a short timeout.</string>
+    <string name="adb_overlay_permission_enable">Enable floating card</string>
+    <string name="adb_overlay_permission_skip">Use notification</string>
+    <string name="adb_overlay_title">Tether · Wireless pairing</string>
+    <string name="adb_overlay_close">Close</string>
+    <string name="adb_overlay_hint">Keep the system pairing dialog open. Enter its 6-digit code here.</string>
+    <string name="adb_overlay_code_hint">6-digit code</string>
+    <string name="adb_overlay_drag_hint">Drag this title to move the card.</string>
+    <string name="adb_overlay_retry">Pairing failed. Check the code and try again while the system dialog is open.</string>
+    <string name="adb_overlay_settings_unavailable">Could not open Developer options. Open Wireless debugging manually and use the code-entry card or notification.</string>
 </resources>
