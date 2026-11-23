@@ -163,10 +163,10 @@ public enum MessageText {
     static func dialable(_ s: String) -> String? {
         let digits = OTPExtractor.normalizeDigits(s).filter { $0.isNumber }
         let plus = s.trimmingCharacters(in: .whitespaces).hasPrefix("+")
-        guard (7...15).contains(digits.count) else { return nil }
+        guard (7...15).contains(digits.count), !NumberShape.isNotAPhoneNumber(s) else { return nil }
         // Card / account numbers are 16 digits; long digit runs without + or a leading 0 are not phone numbers.
         let first = digits.first!
-        guard plus || first == "0" || s.contains("(") || s.contains("-") || s.contains(" ") else { return nil }
+        guard plus || first == "0" || s.contains("(") || s.contains("-") || s.contains(" ") || s.contains(".") else { return nil }
         if s.contains("*") { return nil }
         return (plus ? "+" : "") + digits
     }

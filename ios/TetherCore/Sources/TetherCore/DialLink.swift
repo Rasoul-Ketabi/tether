@@ -83,11 +83,13 @@ public enum DialLink {
     public static func findNumber(in text: String) -> String? {
         if let r = text.range(of: #"(?i)\b(tel|telprompt):[^\s<>"']+"#, options: .regularExpression),
            let n = number(fromLink: String(text[r])) { return n }
-        let t = OTPExtractor.normalizeDigits(text)
+        let t = NumberShape.maskingNonPhones(OTPExtractor.normalizeDigits(text))
         let pattern = #"\+?\(?\d[\d \-.()/\u{00A0}]{3,}\d(\s*(;|,|ext\.?|x)\s*\d+)?"#
         var search = t.startIndex..<t.endIndex
         while let r = t.range(of: pattern, options: [.regularExpression, .caseInsensitive], range: search) {
-            if let n = dialable(String(t[r])), n.split(separator: ",").first.map({ $0.filter(\.isNumber).count >= 5 }) == true {
+            let found = String(t[r])
+            if !NumberShape.isNotAPhoneNumber(found), let n = dialable(found),
+               n.split(separator: ",").first.map({ $0.filter(\.isNumber).count >= 5 }) == true {
                 return n
             }
             search = r.upperBound..<t.endIndex

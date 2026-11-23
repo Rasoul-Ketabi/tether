@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Dates (also Persian calendar ones), version numbers, IP addresses and amounts in texts are no longer shown as
+  phone numbers on the iPhone or the Android client, or picked by "Call with"; numbers written with dots
+  (555.123.4567) now are.
 - Contacts: a number's custom kind ("Satellite") is shown on the iPhone and kept when a contact is edited there; the
   Android phone now stores labels sent with `contact.add` / `contact.update`, and an empty label clears one.
 - Tests for future changes: protocol fixtures read by both implementations (old and newer app variants), an iPhone

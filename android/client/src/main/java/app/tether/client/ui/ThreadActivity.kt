@@ -1,5 +1,6 @@
 package app.tether.client.ui
 
+import app.tether.client.model.NumberShape
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
@@ -95,7 +96,14 @@ class ThreadActivity : Activity() {
         val body = label(m.body, if (mine) R.color.background else R.color.text, 16f).apply {
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(col(if (mine) R.color.accent else R.color.surface)) }
-            autoLinkMask = Linkify.WEB_URLS or Linkify.PHONE_NUMBERS or Linkify.EMAIL_ADDRESSES
+            // Links, e-mail addresses and phone numbers, except "numbers" that are dates, versions or amounts.
+            text = android.text.SpannableString(m.body).also { sp ->
+                Linkify.addLinks(sp, Linkify.WEB_URLS or Linkify.PHONE_NUMBERS or Linkify.EMAIL_ADDRESSES)
+                for (link in sp.getSpans(0, sp.length, android.text.style.URLSpan::class.java)) {
+                    if (link.url.startsWith("tel:") && NumberShape.isNotAPhoneNumber(sp.substring(sp.getSpanStart(link), sp.getSpanEnd(link)))) sp.removeSpan(link)
+                }
+            }
+            movementMethod = android.text.method.LinkMovementMethod.getInstance()
             textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             maxWidth = (resources.displayMetrics.widthPixels * 0.78).toInt()
         }
