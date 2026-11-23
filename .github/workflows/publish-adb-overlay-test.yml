@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Verify exact successful CI run and commit
         env:
-          GH_TOKEN: GITHUB_TOKEN_PLACEHOLDER
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -35,7 +35,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: 45142071396
-          github-token: GITHUB_TOKEN_PLACEHOLDER
+          github-token: ${{ github.token }}
           path: downloaded
 
       - name: Prepare assets and checksums
