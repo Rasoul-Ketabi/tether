@@ -1,8 +1,44 @@
-# Tether
+<p align="center">
+  <img src="docs/images/logo.svg" width="112" alt="Tether logo">
+</p>
 
-Tether puts an Android phone's calls, text messages, contacts and call history on your iPhone or iPad, or on a
-second Android phone. The Android phone keeps the SIM cards and can stay in a bag; the two talk directly over an
-end-to-end encrypted Bluetooth link, with no server and no account.
+<h1 align="center">Tether</h1>
+
+<p align="center"><b>Your Android phone's calls, texts, contacts and call history on your iPhone, iPad or a second
+Android phone, over an end-to-end encrypted Bluetooth link. No server, no account.</b></p>
+
+<p align="center">
+  <a href="https://github.com/amirwmr/tether/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amirwmr/tether/ci.yml?branch=main&label=CI"></a>
+  <a href="https://github.com/amirwmr/tether/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amirwmr/tether?include_prereleases&sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="iOS 16+" src="https://img.shields.io/badge/iOS-16%2B-000000?logo=apple&logoColor=white">
+  <img alt="SDKs: macOS and Linux" src="https://img.shields.io/badge/SDKs-macOS%20%7C%20Linux-555555">
+  <br>
+  <a href="docs/SDK-swift.md"><img alt="Swift 5.9+ / SPM" src="https://img.shields.io/badge/Swift-5.9%2B%20%7C%20SPM-F05138?logo=swift&logoColor=white"></a>
+  <a href="docs/SDK-kotlin.md"><img alt="Kotlin/JVM 17 / JitPack" src="https://img.shields.io/badge/Kotlin%2FJVM-17%20%7C%20JitPack-7F52FF?logo=kotlin&logoColor=white"></a>
+  <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen"></a>
+  <img alt="English and Persian" src="https://img.shields.io/badge/i18n-English%20%7C%20Persian-informational">
+</p>
+
+<p align="center">
+  <a href="#download">Download</a> ·
+  <a href="docs/SETUP.md">Set up</a> ·
+  <a href="#build-on-tether">Build on Tether</a> ·
+  <a href="#documentation">Docs</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
+
+## What it is, and why
+
+Carry two SIMs but only want one phone in your hand? Tether makes an Android phone the SIM holder: it stays in a bag
+and becomes the default phone app, while your iPhone (or a second Android phone) rings, dials, texts and shows your
+contacts and history through its own native screens. The phones talk directly over Bluetooth LE, every session is
+end-to-end encrypted with keys exchanged by a QR code, and nothing goes through a server or an account.
+
+Under the apps sit reusable libraries in Swift and Kotlin and a documented, versioned protocol, so you can build
+other clients and tools on the same link.
 
 <table>
   <tr>
@@ -48,6 +84,38 @@ audio both ways, the keypad, Recents, Contacts and Favourites, Messages, notific
 switches, and "Call with" for `tel:` links in other apps. See [docs/ANDROID-CLIENT.md](docs/ANDROID-CLIENT.md); it is
 tested on the build machine only so far (against a simulated Android phone), not yet on a second phone.
 
+## How it fits together
+
+```mermaid
+flowchart LR
+  subgraph SIM["Android phone with the SIMs"]
+    APP["Tether app<br/>default phone app, BLE peripheral"]
+    HELPER["Shell helper<br/>call audio, network switches"]
+    APP <-->|"127.0.0.1, mutual HMAC"| HELPER
+  end
+  APP <==>|"Bluetooth LE (L2CAP / GATT)<br/>P-256 handshake + AES-GCM"| IOS["iPhone / iPad app<br/>CallKit, Opus"]
+  APP <==>|"same protocol"| CLIENT["Android client<br/>Telecom, Opus"]
+  SWIFT["Swift SDK: TetherCore"] -.-> IOS
+  KOTLIN["Kotlin SDK: core"] -.-> APP
+  KOTLIN -.-> CLIENT
+  EXT["Protocol extensions<br/>your own messages"] -.-> SWIFT
+  EXT -.-> KOTLIN
+```
+
+More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the wire format is [protocol/PROTOCOL.md](protocol/PROTOCOL.md).
+
+## Download
+
+Builds are published on [GitHub Releases](https://github.com/amirwmr/tether/releases):
+
+| File | For |
+| --- | --- |
+| Tether APK | The Android phone with the SIM cards (becomes its default phone app) |
+| Tether Client APK | A second Android phone used as a client |
+| Unsigned IPA | iPhone / iPad, for sideloading: sign it with your own Apple account (free accounts expire after 7 days) |
+
+Prefer to build it yourself? See [Quick start](#quick-start) and [docs/BUILD.md](docs/BUILD.md).
+
 ## What you need
 
 | | |
@@ -69,6 +137,24 @@ tools/reinstall-ios.sh                                            # builds, sign
 Then follow [docs/SETUP.md](docs/SETUP.md): open Tether on the Android phone, grant what it asks, make it the
 default phone app, pair Wireless debugging for call audio, and scan its QR code from the iPhone.
 
+## Build on Tether
+
+| | |
+| --- | --- |
+| [Swift SDK](docs/SDK-swift.md) | `TetherCore` as a Swift package: handshake, sealed records, messages, the CoreBluetooth link |
+| [Kotlin SDK](docs/SDK-kotlin.md) | The shared Kotlin core (crypto, records, messages, codecs) for Android and the JVM via JitPack |
+| [Extending the protocol](docs/EXTENDING.md) | Adding your own message types without breaking installed apps |
+| [Protocol](protocol/PROTOCOL.md) | The wire format, with test vectors and fixtures both implementations reproduce |
+| [Examples](examples/) | Small programs that use the SDKs |
+
+API reference (Swift DocC and Kotlin Dokka) is published with the [documentation site](https://amirwmr.github.io/tether/).
+
+### Who uses Tether
+
+Built something on Tether? Open a pull request that adds it here.
+
+- *Your project here*
+
 ## Documentation
 
 | | |
@@ -76,12 +162,16 @@ default phone app, pair Wireless debugging for call audio, and scan its QR code 
 | [BUILD.md](docs/BUILD.md) | Building and installing both apps; Apple accounts, the 7-day signature, team and bundle id |
 | [SETUP.md](docs/SETUP.md) | First run on both phones, permissions, Wireless debugging, pairing, the Link switches |
 | [USAGE.md](docs/USAGE.md) | Calls, messages, contacts, internet sharing, Share VPN, notifications |
-| [TESTING.md](docs/TESTING.md) | The automatic tests and what each protects, the one-command runner, on-device checks, rules for new code |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Not linking, no audio, helper not starting, expiry, which logs to collect |
 | [ANDROID-CLIENT.md](docs/ANDROID-CLIENT.md) | The Android client: what it does, building, first run, tests |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit together; the wire protocol is in [protocol/PROTOCOL.md](protocol/PROTOCOL.md) |
+| [TESTING.md](docs/TESTING.md) | The automatic tests and what each protects, the one-command runner, on-device checks, rules for new code |
+| [RELEASING.md](docs/RELEASING.md) | How versions and releases are made |
+| [SDK-swift.md](docs/SDK-swift.md) · [SDK-kotlin.md](docs/SDK-kotlin.md) | Using the libraries in your own app |
+| [EXTENDING.md](docs/EXTENDING.md) | Protocol extensions |
+| [ROADMAP.md](docs/ROADMAP.md) | What comes next |
 | [SECURITY.md](SECURITY.md) | Threat model and reporting a vulnerability |
-| [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) | |
+| [CONTRIBUTING.md](CONTRIBUTING.md) · [SUPPORT.md](SUPPORT.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [CHANGELOG.md](CHANGELOG.md) | |
 
 ## Compatibility
 
@@ -122,6 +212,24 @@ Bluetooth's own pairing is not used or trusted. Nothing leaves the two devices. 
 Use Tether only with your own phones and SIM cards, and follow your local law on recording and handling calls and
 messages. Tether does not record calls.
 
+## Contributing
+
+Compatibility reports from phones other than the tested pair are the most useful help right now
+([device report](https://github.com/amirwmr/tether/issues/new?template=device_report.yml)). Code, docs and
+translations are welcome too: start with [CONTRIBUTING.md](CONTRIBUTING.md) and issues labelled
+[good first issue](https://github.com/amirwmr/tether/labels/good%20first%20issue). Everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Community and support
+
+Questions and ideas go to [Discussions](https://github.com/amirwmr/tether/discussions), bugs to
+[Issues](https://github.com/amirwmr/tether/issues/new/choose); see [SUPPORT.md](SUPPORT.md) for what to include.
+Security problems: privately, as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Third-party components and their licences: [NOTICE](NOTICE).
+
+## Star history
+
+<a href="https://star-history.com/#amirwmr/tether&Date"><img src="https://api.star-history.com/svg?repos=amirwmr/tether&type=Date" alt="Star history chart" width="600"></a>
