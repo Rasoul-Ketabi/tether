@@ -45,7 +45,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     fun stalledMs(now: Long = SystemClock.elapsedRealtime()) = partialSince.let { if (it == 0L) 0L else now - it }
     /** The client's static key once the handshake is done: identifies iPhone vs Mac across reconnects. */
     @Volatile var peerKey: ByteArray? = null; private set
-    /** From the client's sync: "iphone" / "mac", its name, and the codecs it can decode. */
+    /** From the client's sync: "iphone" / "android" (the Android client), its name, and the codecs it can decode. */
     @Volatile var kind = "iphone"
     @Volatile var name = "iPhone"
     @Volatile var codecs: List<String> = listOf("pcmu")

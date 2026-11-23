@@ -153,17 +153,30 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
-        // Remember where this central is (LE pulses while it is away), and hold LE during the session (BlePeripheral.holdLe).
-        if (c.transport.label != "memory" && c.kind == "iphone" && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address)) {
-            app.prefs.edit().putString("central_bt_address", c.transport.address).apply()
-            LinkService.running?.peripheral?.holdLe(c.transport.address)
-        }
+        // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
+        if (newlyPaired) kindPending.add(c) else holdLeFor(c)
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
         bg { pushStatus() }
     }
 
+    /** Connections paired in this session whose kind is not known until their first sync. */
+    private val kindPending = java.util.concurrent.ConcurrentHashMap.newKeySet<Connection>()
+
+    /**
+     * Remember where the iPhone is (LE pulses while it is away), and hold LE during the session (BlePeripheral.holdLe).
+     * Only for an iPhone: an Android client keeps its own connection and is not reachable by a pulse, and its address
+     * must never replace the iPhone's.
+     */
+    private fun holdLeFor(c: Connection) {
+        if (c.transport.label != "memory" && c.kind == "iphone" && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address)) {
+            app.prefs.edit().putString("central_bt_address", c.transport.address).apply()
+            LinkService.running?.peripheral?.holdLe(c.transport.address)
+        }
+    }
+
     override fun onClosed(c: Connection) {
+        kindPending.remove(c)
         lastClientSeen = SystemClock.elapsedRealtime()
         if (conns.remove(c)) {
             if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
@@ -213,6 +226,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     c.peerKey?.let { app.keys.updateCentral(it, c.name, c.kind) }
                     refresh()
                 }
+                if (kindPending.remove(c) && c.isUp) holdLeFor(c)
                 bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts")) }
             }
             T.SMS_SEND -> bg { sendSms(c, m) }

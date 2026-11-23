@@ -164,7 +164,7 @@ stored on the Android phone.
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
 | `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change) |
-| `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone", name}}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list) |
+| `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
 | `sms.send` | C→P | `{to, body, sub?}` → `sms.result` `{ok, state: "sent"\|"delivered"\|"failed", err?}` (may arrive twice: sent, then delivered) |
@@ -212,7 +212,13 @@ Call      {cid, num, name?, state, dir, sub?, since?, cause?, hold, elsewhere?, 
 ### 5.1 Several clients
 
 The Android phone accepts more than one client (it did serve an iPhone and a Mac at once until the Mac client was removed
-on 2026-11-22; today the iPhone is the only client). The rules below stay in force.
+on 2026-11-22). Today's clients are the iPhone app (`kind` "iphone") and the Android client (`kind` "android", a second
+Android phone running `android/client`). The rules below stay in force.
+
+Only an iPhone gets the held / pulsed LE link of §1 and has its address remembered for it: an Android client keeps
+its own connection (it reconnects by scanning for the service) and is not woken by a pulse. A client paired in the
+current session has no kind until its first `sync`, so the Android phone decides this at that sync, never at the
+handshake.
 
 The peripheral keeps a list of paired clients (static keys + names) and accepts one link per client at
 the same time; a client reconnecting replaces only its own old link. Pairing a new client never forgets
