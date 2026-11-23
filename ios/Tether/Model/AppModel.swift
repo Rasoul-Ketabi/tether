@@ -627,7 +627,9 @@ final class AppModel {
                     incomingContacts = []
                     pendingIds = SyncIds(sms: [], calls: [])
                     syncing = false
-                    requestSync()
+                    // Full reconciliation is required: a previously received final
+                    // page may have advanced the incremental cursor after a gap.
+                    requestSync(full: true)
                 }
             case "wifi.ready":
                 wifiFastLane = true
