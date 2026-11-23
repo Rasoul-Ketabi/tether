@@ -5,13 +5,25 @@
     "full": {
       "methods": [
         {
-          "name": "intercept",
+          "name": "call-audio",
           "ok": true,
-          "note": "ok",
+          "note": "inject=intercept capture=intercept; phone mic not muted (setting off); the tests below run with the phone's mic unmuted, except the last"
+        },
+        {
+          "name": "inject:intercept",
+          "ok": true,
+          "note": "tone/base=85.0 routed=18:Telephony delay≈40 ms",
           "delayMs": 40
+        },
+        {
+          "name": "inject:intercept, phone mic muted",
+          "ok": false,
+          "note": "muting this phone's mic silences the iPhone's voice: Tether keeps the mic on; tone/base=1.2 routed=18:Telephony"
         }
       ],
-      "chosen": "intercept"
+      "chosen": "intercept",
+      "silence": "qualcomm",
+      "micByTelecom": true
     },
     "old": {
       "methods": [
@@ -21,6 +33,17 @@
           "note": "not running"
         }
       ]
+    },
+    "before-mute-row": {
+      "methods": [
+        {
+          "name": "intercept",
+          "ok": true,
+          "note": "ok",
+          "delayMs": 40
+        }
+      ],
+      "chosen": "intercept"
     }
   }
 }

@@ -22,12 +22,14 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import app.tether.R
 import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
+import app.tether.helper.LocalMutes
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -168,13 +170,38 @@ class MainActivity : Activity() {
             "unavailable" -> audio.addView(label(getString(R.string.audio_needs_android11), R.color.warn, 13f))
             "fallback" -> audio.addView(label(getString(R.string.audio_android11_12), R.color.muted, 13f))
         }
-        if (app.hub.helper.audioLevel() != "unavailable" && !android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)) audio.addView(label(getString(R.string.audio_local_stays_on), R.color.muted, 13f))
-        val h = app.hub.helper.state()
+        val h = app.hub.audio.helperStatus()
         val running = h.optString("state") == "running"
         audio.addView(step(getString(R.string.step_helper), running, getString(R.string.action_start),
-            if (running) getString(R.string.helper_running, h.optString("method", "auto")) else getString(R.string.helper_stopped)) {
+            if (running) getString(R.string.helper_running, h.optString("method", "auto")) +
+                (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped)) {
             Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
         })
+        // The phone's own microphone during bridged calls (issue #2): off by default, since on some phones muting it
+        // also mutes the iPhone's voice for the other side.
+        if (app.hub.helper.audioLevel() != "unavailable") {
+            val micOn = app.hub.audio.micSetting
+            audio.addView(Switch(this).apply {
+                text = getString(R.string.mic_mute_title); textSize = 16f; setTextColor(color(R.color.text))
+                isChecked = micOn; setPadding(0, dp(6), 0, dp(2))
+                setOnCheckedChangeListener { _, on -> Thread { app.hub.audio.setMicSetting(on); app.hub.pushStatus() }.start() }
+            })
+            val blocked = micOn && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
+            audio.addView(label(getString(when {
+                blocked -> R.string.mic_mute_blocked
+                micOn -> R.string.mic_mute_on
+                else -> R.string.audio_local_stays_on
+            }), if (blocked) R.color.warn else R.color.muted, 13f))
+            h.optString("uplink").takeIf { it.isNotEmpty() }?.let { u ->
+                audio.addView(label(getString(R.string.uplink_title) + ": " + getString(when (u) {
+                    "ok" -> R.string.uplink_ok
+                    "checking" -> R.string.uplink_checking
+                    "muted-locally-fixed" -> R.string.uplink_fixed
+                    "off" -> R.string.uplink_off
+                    else -> R.string.uplink_unverified
+                }), if (u == "muted-locally-fixed") R.color.warn else R.color.muted, 13f))
+            }
+        }
         app.hub.lastSelftest?.let { st ->
             val methods = st.optJSONArray("methods")
             val txt = (0 until (methods?.length() ?: 0)).joinToString("\n") {

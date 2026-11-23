@@ -35,9 +35,12 @@
       "helper": {
         "state": "running",
         "method": "intercept",
+        "capture": "intercept",
         "up": true,
         "down": true,
-        "silent": "full"
+        "silent": "earpiece",
+        "micMute": false,
+        "uplink": "ok"
       },
       "wifi": true,
       "adbWifi": true,
@@ -129,9 +132,12 @@
       "helper": {
         "state": "running",
         "method": "intercept",
+        "capture": "intercept",
         "up": true,
         "down": true,
-        "silent": "full"
+        "silent": "earpiece",
+        "micMute": false,
+        "uplink": "ok"
       },
       "wifi": true,
       "adbWifi": true,

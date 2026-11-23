@@ -23,7 +23,7 @@ class HelperBridge(private val ctx: Context) {
         const val TAG = "Tether"
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10
-        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14
+        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
 
@@ -53,7 +53,13 @@ class HelperBridge(private val ctx: Context) {
     @Volatile var lastInfo: JSONObject? = null; private set
     /** Standing-delay figures of the last bridged call (capture backlog, inject queue, drops). */
     @Volatile var lastStats: JSONObject? = null; private set
+    /** The helper's uplink report (mic mute, uplink check), from the start INFO or a later `{uplink}` INFO; null between calls. */
+    @Volatile var lastUplink: JSONObject? = null; private set
     @Volatile var onDown: ((ShortArray) -> Unit)? = null
+    /** A call's start INFO (methods, mutes, errors). */
+    @Volatile var onInfo: ((JSONObject) -> Unit)? = null
+    /** Every uplink report (also the one inside the start INFO). */
+    @Volatile var onUplink: ((JSONObject) -> Unit)? = null
     @Volatile var onChange: (() -> Unit)? = null
     @Volatile private var pending: Pair<String, CompletableFuture<JSONObject>>? = null
 
@@ -113,10 +119,19 @@ class HelperBridge(private val ctx: Context) {
                             pend.second.complete(o.getJSONObject(pend.first))
                         } else if (o.has("stats")) {
                             lastStats = o.getJSONObject("stats")
+                            lastUplink = null
                             Log.i(TAG, "helper call-audio stats: $lastStats")
                         } else if (o.has("capture") || o.has("inject")) {
                             lastInfo = o
+                            lastUplink = o.optJSONObject("uplink")
                             Log.i(TAG, "helper info: $o")
+                            onInfo?.invoke(o)
+                            lastUplink?.let { u -> onUplink?.invoke(u) }
+                            onChange?.invoke()
+                        } else if (o.has("uplink")) {
+                            lastUplink = o.getJSONObject("uplink")
+                            Log.i(TAG, "helper uplink: $lastUplink")
+                            onUplink?.invoke(lastUplink!!)
                             onChange?.invoke()
                         } else {
                             // A reply that came after its request timed out: never mistaken for the audio methods.
@@ -129,7 +144,7 @@ class HelperBridge(private val ctx: Context) {
             Log.i(TAG, "helper disconnected: ${e.message}")
         } finally {
             if (sock === c) {
-                sock = null; out = null; hello = null; lastInfo = null
+                sock = null; out = null; hello = null; lastInfo = null; lastUplink = null
                 // Whoever waits for an answer from this helper stops waiting now (not after its 20-25 s timeout).
                 pending?.second?.completeExceptionally(java.io.IOException("helper gone")); pending = null
             }
@@ -148,10 +163,18 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    /** [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener. */
-    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false) =
+    /**
+     * [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener.
+     * [micMute]: also mute the phone's own microphone (see LocalMutes); [micCheck]: then watch the uplink.
+     */
+    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false,
+              micMute: Boolean = false, micCheck: Boolean = true) =
         send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
-            .put("testLine", testLine).toString().toByteArray())
+            .put("testLine", testLine).put("micMute", micMute).put("micCheck", micCheck).toString().toByteArray())
+
+    /** The phone's mic mute changed during a bridged call. */
+    fun local(micMute: Boolean, micCheck: Boolean) =
+        send(LOCAL, JSONObject().put("micMute", micMute).put("micCheck", micCheck).toString().toByteArray())
 
     fun stop() = send(STOP)
 
@@ -180,12 +203,12 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    /** Sends PROBE / SELFTEST and waits for the matching INFO. */
-    fun request(kind: String, timeoutSec: Long = 20): JSONObject? {
+    /** Sends PROBE / SELFTEST (with [body], e.g. `{methods, micMute}`) and waits for the matching INFO. */
+    fun request(kind: String, timeoutSec: Long = 20, body: JSONObject? = null): JSONObject? {
         synchronized(requestLock) {
             val f = CompletableFuture<JSONObject>()
             pending = kind to f
-            if (!send(if (kind == "probe") PROBE else SELFTEST)) { pending = null; return null }
+            if (!send(if (kind == "probe") PROBE else SELFTEST, body?.toString()?.toByteArray() ?: ByteArray(0))) { pending = null; return null }
             return try { f.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { pending = null; null }
         }
     }
@@ -289,13 +312,16 @@ class HelperBridge(private val ctx: Context) {
 
     fun state(): JSONObject {
         val info = lastInfo
+        val u = lastUplink
         return JSONObject()
             .put("state", if (connected) "running" else "stopped")
             .apply { info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("method", it) } }
+            .apply { info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("capture", it) } }
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("down", info?.optString("capture")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("audio", audioLevel())
-            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", it) } }
+            // After the uplink check undid the mic mute, the phone is no longer fully silent.
+            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", if (it == "full" && u?.optBoolean("micMuted", true) == false) "earpiece" else it) } }
     }
 
     /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */

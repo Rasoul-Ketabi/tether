@@ -17,7 +17,7 @@ import kotlin.system.exitProcess
  *   CLASSPATH=$(pm path app.tether.android | cut -d: -f2) app_process / app.tether.helper.HelperMain <cmd>
  *
  * Commands: `serve <port> <token>` (talks to the app over 127.0.0.1), `probe`, `selftest`,
- * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off]`.
+ * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off [mic]]`.
  */
 object HelperMain {
     const val VERSION = 3   // 3: mutual challenge-response instead of a token on the wire
@@ -25,7 +25,7 @@ object HelperMain {
     object F {
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10; const val CHALLENGE = 12; const val PROOF = 14
-        const val NET = 11
+        const val NET = 11; const val LOCAL = 15
     }
 
     @JvmStatic
@@ -44,9 +44,9 @@ object HelperMain {
                         println("$k -> '${ShellEnv.audioManager.getParameters(k)}'")
                     }
                 }
-                "silence" -> { // silence [on|off] : the phone's own call silencing (CallAudio.Silence) without a call, for testing
+                "silence" -> { // silence [on|off [mic]] : the phone's own call silencing (CallAudio.Silence) without a call, for testing
                     println("silence mode: ${CallAudio.silence.name.lowercase()}")
-                    if (args.size >= 2) println(CallAudio.localCallAudio(args[1] == "on", JSONArray()))
+                    if (args.size >= 2) println(CallAudio.localCallAudio(args[1] == "on", args.getOrNull(2) == "mic", JSONArray()))
                 }
                 "net" -> { // net [data|hotspot|bt on|off] : flip a network switch, then print the state
                     if (args.size >= 3 && args[1] == "datasub") println("data SIM ${args[2]}: ${Net.setDataSub(args[2].toInt()) ?: "ok"}")
@@ -105,6 +105,14 @@ object HelperMain {
         @Volatile private var running = false
         private var threads = ArrayList<Thread>()
         @Volatile private var localMuted = false
+        /** How this call mutes the phone's microphone (see LocalMutes); the uplink check may undo it. */
+        @Volatile private var plan = LocalMutes.Plan.NONE
+        @Volatile private var check: UplinkCheck? = null
+        /** Bumped whenever a check is started or abandoned: an older check thread stops on its own. */
+        @Volatile private var checkGen = 0
+        private val meter = InjectMeter()
+        /** Guards [plan] changes from the check thread against the session thread (never the object's monitor, see sendLock). */
+        private val planLock = Any()
 
         @Volatile private var current: Socket? = null
 
@@ -181,7 +189,8 @@ object HelperMain {
                         up.push(sh, System.nanoTime(), inject?.pendingFrames() ?: 0)
                     }
                     F.PROBE -> { stop(); info(JSONObject().put("probe", CallAudio.probe())) }
-                    F.SELFTEST -> { stop(); info(JSONObject().put("selftest", CallAudio.selfTest())) }
+                    F.SELFTEST -> { stop(); info(JSONObject().put("selftest", selfTest(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())))) }
+                    F.LOCAL -> setMicMute(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject()))
                     F.NET -> {   // {"what": "data"|"hotspot"|"bt", "on": bool} or {} to just read the state
                         val req = runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())
                         Thread({
@@ -242,11 +251,14 @@ object HelperMain {
             up = UplinkBuffer(frame = rate / 50, rate = rate)
             running = true
             localMuted = true
-            // The call is bridged to the iPhone: silence the Android phone's own earpiece and microphone where the
-            // phone has a way to (per vendor; see CallAudio.Silence). The downlink is still captured and the
-            // injected uplink still goes out.
-            val local = CallAudio.localCallAudio(muted = true, errors = errors)
+            // The call is bridged to the iPhone: silence the Android phone's own earpiece always, its microphone only
+            // when the app asks (the user's setting; see LocalMutes). The downlink is still captured and the injected
+            // uplink still goes out.
+            plan = LocalMutes.plan(CallAudio.silence, cfg.optBoolean("micMute", false), cfg.optBoolean("micCheck", true))
+            val local = CallAudio.localCallAudio(muted = true, mic = plan.vendorMic, errors = errors)
+            localNote = local.note; localOk = local.ok
             stats.reset()
+            meter.take()
             capture?.let { c ->
                 threads.add(Thread({
                     audioPriority("down")
@@ -303,6 +315,9 @@ object HelperMain {
                         val s = buf.take(100) ?: continue
                         if (s.isEmpty()) continue   // a quiet frame cut whole
                         try { inj.write(s) } catch (e: Exception) { break }
+                        val level = CallAudio.rms(s, s.size)
+                        meter.add(level)
+                        if (level >= UplinkCheck.SPEECH_RMS) stats.speechFrames++
                         stats.injectClock.mark(System.nanoTime(), inj.playedFrames())
                         if (++writes % 10 == 0) inj.queuedFrames().takeIf { it >= 0 }?.let { stats.queued(it * 1000 / rate) }
                         if (writes == 50) stats.startUnderruns = inj.underruns()   // the first second: the path starting up
@@ -310,11 +325,105 @@ object HelperMain {
                     }
                 }, "up").apply { start() })
             }
+            // With the phone's mic muted, watch whether the iPhone's voice still reaches the call (best effort).
+            val checking = plan.micMuted && plan.check && inject != null
+            if (checking) startCheck(rate)
             info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL).put("testLineFarEnd", farEnd)
-                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", local.silent)
-                .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", local.telecomMicMute).put("errors", errors)
+                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", LocalMutes.silent(plan, local.ok))
+                .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", plan.telecomMic).put("errors", errors)
+                .put("uplink", uplinkJson(if (checking) null else if (inject == null) "no uplink injection" else if (!plan.micMuted) "the phone's mic is not muted" else "checked on this phone before"))
                 .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)
                     .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
+        }
+
+        @Volatile private var localNote = ""
+        @Volatile private var localOk = true
+
+        /**
+         * The uplink as far as the helper knows: `state` checking | ok | muted-locally-fixed | unverified | off (no local
+         * mic mute, nothing to check), `micMuted`, `telecomMicMute` (the app mutes the mic through Telecom), `unmuted`
+         * (the check undid the mute this call), `note`. [why]: the reason when no check runs.
+         */
+        private fun uplinkJson(why: String? = null): JSONObject {
+            val c = check
+            val state = when {
+                c != null -> c.state.wire
+                inject == null -> UplinkCheck.State.UNVERIFIED.wire
+                !plan.micMuted -> "off"
+                else -> UplinkCheck.State.OK.wire   // muted, and a check on this phone saw the uplink work before
+            }
+            return JSONObject().put("state", state).put("micMuted", plan.micMuted).put("telecomMicMute", plan.telecomMic)
+                .put("vendorMicMute", plan.vendorMic).put("unmuted", c?.unmuted == true).put("note", c?.note?.takeIf { it.isNotEmpty() } ?: why ?: "")
+                .put("local", localNote)
+        }
+
+        private fun reportUplink() = info(JSONObject().put("uplink", uplinkJson()))
+
+        /**
+         * Captures VOICE_UPLINK next to the call's own audio and feeds [UplinkCheck] once a second. Opened only while the
+         * phone's mic is muted locally (a second capture of the call is one more thing a HAL may mishandle).
+         */
+        private fun startCheck(rate: Int) {
+            val c = UplinkCheck()
+            check = c
+            val gen = ++checkGen
+            threads.add(Thread({
+                val cap = try { CallAudio.openCapture("voice_uplink", rate) } catch (t: Throwable) {
+                    c.fail("voice_uplink capture: ${CallAudio.describe(t)}"); reportUplink(); return@Thread
+                }
+                try {
+                    val buf = ShortArray(rate / 50)
+                    var frames = 0; var sum = 0.0
+                    meter.take()
+                    while (running && checkGen == gen && !c.done) {
+                        val n = cap.read(buf)
+                        if (n < 0) { c.fail("voice_uplink capture stopped ($n)"); break }
+                        if (n == 0) { Thread.sleep(2); continue }
+                        sum += CallAudio.rms(buf, n); frames++
+                        if (frames < 50) continue
+                        val (speech, speechRms) = meter.take()
+                        val act = c.window(UplinkCheck.Window(speech, speechRms, sum / frames))
+                        frames = 0; sum = 0.0
+                        if (act == UplinkCheck.Action.UNMUTE) synchronized(planLock) {
+                            if (checkGen != gen) return@synchronized
+                            val errs = JSONArray()
+                            if (plan.vendorMic) CallAudio.vendorMicMute(false, errs)?.let { localNote = it }
+                            plan = LocalMutes.undone(plan)
+                            ShellEnv.log("uplink check: ${c.note}")
+                            reportUplink()
+                        }
+                        if (c.done) { ShellEnv.log("uplink check: ${c.state.wire} (${c.note})"); reportUplink() }
+                    }
+                } finally { cap.stop() }
+            }, "uplink-check").apply { start() })
+        }
+
+        /** The user changed "mute the phone's mic" during a call: apply it now, and check again when it is on. */
+        private fun setMicMute(req: JSONObject) {
+            if (!running) return
+            val want = req.optBoolean("micMute", false)
+            synchronized(planLock) {
+                checkGen++   // whatever check runs stops
+                check = null
+                val next = LocalMutes.plan(CallAudio.silence, want, req.optBoolean("micCheck", true))
+                val errs = JSONArray()
+                if (next.vendorMic != plan.vendorMic) CallAudio.vendorMicMute(next.vendorMic, errs)?.let { localNote = it }
+                plan = next
+                if (plan.micMuted && plan.check && inject != null) startCheck(rate)
+            }
+            reportUplink()
+        }
+
+        /** SELFTEST `{methods?, micMute?}`: with micMute the vendor's mic key is on during the test (the app mutes Telecom). */
+        private fun selfTest(req: JSONObject): JSONObject {
+            val methods = req.optJSONArray("methods")?.let { a -> (0 until a.length()).map { a.getString(it) } }?.filter { it in CallAudio.injectMethods }
+                ?: CallAudio.injectMethods
+            val mic = req.optBoolean("micMute", false)
+            val errs = JSONArray()
+            if (mic) CallAudio.vendorMicMute(true, errs)
+            val r = try { CallAudio.selfTest(methods = methods, captures = !mic) } finally { if (mic) CallAudio.vendorMicMute(false, errs) }
+            return r.put("silence", CallAudio.silence.name.lowercase()).put("micByTelecom", !CallAudio.silence.vendorMicKeys)
+                .put("micMuted", mic).apply { if (errs.length() > 0) put("errors", errs) }
         }
 
         /** Standing-delay figures for one call (sent with INFO every 5 s and at stop). */
@@ -327,7 +436,9 @@ object HelperMain {
             /** The capture's and the track's sample clocks against the monotonic clock (a real call: the modem's). */
             val captureClock = ClockRate(); val injectClock = ClockRate()
             @Volatile var startUnderruns = -1
-            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1 }
+            /** Injected frames with speech in them: none in a whole call means the iPhone sent only silence. */
+            @Volatile var speechFrames = 0
+            fun reset() { speechFrames = 0; backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1 }
             fun trim(estimated: Int, dropped: Int) {
                 trims++; capDropped += dropped
                 if (dropped * 2 < estimated) trimMisses++
@@ -342,7 +453,7 @@ object HelperMain {
                     .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses)
                     // Uplink: frames lost to a full buffer (voice), and what the delay steering did (quiet frames cut /
                     // repeated, speech sped up / slowed down), the delay ahead of an arriving frame and its target.
-                    .put("uplinkFrames", up.arrived).put("uplinkDroppedFrames", up.overflowFrames)
+                    .put("uplinkFrames", up.arrived).put("uplinkDroppedFrames", up.overflowFrames).put("uplinkSpeechFrames", speechFrames)
                     .put("uplinkQuietCutMs", ms(up.quietCut)).put("uplinkQuietAddedMs", ms(up.inserted))
                     .put("uplinkSpedUpMs", ms(up.compressed)).put("uplinkSlowedMs", ms(up.stretched))
                     .put("uplinkAheadMs", ms(up.levelAvg)).put("uplinkAheadMaxMs", ms(up.levelMax)).put("uplinkTargetMs", ms(up.target)).put("uplinkSinkExtraMs", ms(up.sinkExtra))
@@ -365,13 +476,15 @@ object HelperMain {
 
         private fun stop() {
             if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
-                .put("injectBufferFrames", inject?.bufferFrames() ?: -1)))
+                .put("injectBufferFrames", inject?.bufferFrames() ?: -1).put("uplink", uplinkJson())))
             running = false
+            checkGen++
             threads.forEach { it.join(500) }
             threads.clear()
             capture?.stop(); capture = null
             inject?.stop(); inject = null
-            if (localMuted) { localMuted = false; CallAudio.localCallAudio(muted = false, errors = JSONArray()) }
+            if (localMuted) { localMuted = false; CallAudio.localCallAudio(muted = false, mic = false, errors = JSONArray()) }
+            plan = LocalMutes.Plan.NONE; check = null
         }
     }
 
