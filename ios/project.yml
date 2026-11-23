@@ -36,7 +36,8 @@ targets:
         INFOPLIST_FILE: Tether/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO
-        # Communication Notifications (sender's picture in notifications). tools/reinstall-ios.sh first builds with
+        # Paid-team entitlements: Communication Notifications (sender's picture in notifications) and Default Calling
+        # App (com.apple.developer.calling-app, iOS 18.2+: tel: links open this app). tools/reinstall-ios.sh first builds with
         # TETHER_ENTITLEMENTS=Tether/Resources/Tether.entitlements TETHER_COMM_NOTIFICATIONS=YES and falls back to
         # these defaults (no entitlement) when the signing service refuses it.
         TETHER_ENTITLEMENTS: ""
