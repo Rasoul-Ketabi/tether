@@ -43,3 +43,20 @@ recording `VOICE_UPLINK` and detects it with a Goertzel filter.
 
 Samsung-specific workaround needed: the fake `ActivityThread` needs a
 `ConfigurationController`, otherwise `CompatSandbox` crashes while creating the system context.
+
+## Call-audio measurements (2026-11-23, test line)
+
+The app's self-managed test line runs the interception API on its **VoIP path** (audio mode IN_COMMUNICATION: the
+record and track are remote-submix policy mixes), not the PSTN path a real call uses. Its capture comes in bursts
+(backlog up to 160 ms, average 40-55 ms), the inject track reports 256 ms of latency, and `VOICE_UPLINK` does not
+hear the injected tone (the self-test's inject checks fail there). So loopback figures for capture and inject do not
+carry over to real calls; codec, link and Telecom figures do:
+
+| Figure | Value |
+| --- | --- |
+| Ring → client (Telecom to the hub) | 160-250 ms |
+| End → ended | 13-19 ms |
+| Opus encode / decode, 20 ms frame (Concentus, complexity 3) | ~3 ms (~0.9 ms once the CPU has ramped up) / ~0.5 ms |
+| Inject buffer cap 40 ms (default) / 20 ms | 0 underruns / 60-70 underruns and ~95 dropped uplink frames per 5 s call: keep 40 |
+| LE PHY on the owner's link | 2M |
+| Voice-call stream mute as shell (`HelperMain silence on/off` with `TETHER_SILENCE=other`) | works (index 0, restored) |

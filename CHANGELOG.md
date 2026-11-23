@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Call audio: the Android phone no longer throws away far-end voice when its capture delivers in bursts (its delay
+  guard trims only standing delay and only audio already buffered: 1.3 s lost per 6.5 s test call before, 0.07 s
+  after). The iPhone's playout depth follows the spread of frame arrival times (periodic Bluetooth hold-ups are
+  absorbed instead of concealed: 1 s → 0.2 s concealed per minute on a simulated 30 ms link with 60-77 ms gaps), and
+  frames lost for lateness are filled with Opus concealment (libopus decoding).
+- During a bridged call the Android phone is silenced on more phones: Samsung (as before), Qualcomm (voice-call
+  stream mute plus microphone mute) and MediaTek (its speech mute controls; never Android's microphone mute, which
+  there also mutes the iPhone's voice); other phones get the earpiece muted. The Link tab shows "Android phone
+  silent".
+- Call statistics from the Android phone (frame spacing from the helper, link queue delay, uplink arrival, PHY,
+  helper figures) arrive in the iPhone's Link log after each call (`audio.stats`). The call-audio self-test measures
+  each uplink path's delay.
+- A suspended iPhone is woken after 15 minutes of silence instead of having its session dropped (it relinked,
+  handshook and synced every 15 minutes); a session is ended only if the woken iPhone still does not answer.
+- Debug: `only none` no longer stops `loopback_call`; `loopback_call selftest`, `inject_ms`.
+
 - TetherCore carries libopus 1.5.2 (`COpus` target) with `LibOpusDecoder` / `LibOpusEncoder`: Opus with packet-loss
   concealment and complexity control on the iPhone, checked against AudioToolbox's Opus both ways.
 - The iPhone app runs on iOS 16 (it needed 17): Observation comes from swift-perception, a few iOS 17 views have
