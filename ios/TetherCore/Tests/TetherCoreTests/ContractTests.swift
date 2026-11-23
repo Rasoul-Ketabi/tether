@@ -194,7 +194,7 @@ final class ContractTests: XCTestCase {
             let env = ContractFixtures.envelope("x.tether.echo", body)
             XCTAssertTrue(reg.route(try Control.header(env), env))
             let out = try port.lastBody()
-            let want = NSMutableDictionary(dictionary: reply)
+            let want = reply.mutableCopy() as! NSMutableDictionary   // portable: Linux has no NSDictionary-to-Swift bridging
             if (try JSONSerialization.jsonObject(with: body) as! NSDictionary)["data"] == nil { want.removeObject(forKey: "data") }
             XCTAssertEqual(out, want, "echo/\(name)")
             XCTAssertEqual(Self.shape(out), Self.shape(want))
