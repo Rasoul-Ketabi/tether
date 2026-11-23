@@ -34,6 +34,14 @@ final class HybridWifiClient {
               let key = Data(base64URL: offer.token), key.count == 32,
               !offer.host.isEmpty, offer.host.count < 64,
               let port = NWEndpoint.Port(rawValue: UInt16(offer.port)) else { return nil }
+        // An authenticated Android host only offers an RFC1918 address. Reject
+        // unexpected public/hostname destinations, never route sensitive traffic outside LAN.
+        let parts = offer.host.split(separator: ".", omittingEmptySubsequences: false)
+        let octets = parts.compactMap { UInt8($0) }
+        guard octets.count == 4,
+              octets[0] == 10 ||
+              (octets[0] == 172 && (16...31).contains(octets[1])) ||
+              (octets[0] == 192 && octets[1] == 168) else { return nil }
         self.queue = queue
         self.secret = key
         self.clientNonce = randomBytes(16)
@@ -52,13 +60,19 @@ final class HybridWifiClient {
                                      completion: .contentProcessed { [weak self] error in
                     if error != nil { self?.stop() }
                 })
-            case .failed, .cancelled:
+            case .waiting, .failed, .cancelled:
+                // A Wi-Fi path that becomes unavailable must not remain "ready"
+                // while silently queuing audio on an unusable socket.
                 self.stop()
             default: break
             }
         }
         connection.start(queue: queue)
         receive()
+        queue.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, !self.isReady else { return }
+            self.stop()  // no authenticated ready record in time: keep BLE
+        }
     }
 
     private func receive() {
