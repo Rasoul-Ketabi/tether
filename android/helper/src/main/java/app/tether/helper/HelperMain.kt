@@ -261,17 +261,25 @@ object HelperMain {
                     audioPriority("down")
                     val buf = ShortArray(rate / 50)
                     val bytes = ByteArray(buf.size * 2)
-                    var over = 0
+                    // Standing delay guard: the smallest backlog over a 1 s window is delay that never drains (a slow
+                    // start, a GC pause); when it is over one frame, drop down to half a frame. The minimum, not the
+                    // instant value: some capture paths deliver in bursts of 100+ ms (remote submix on the test line),
+                    // and right after a burst the backlog is high without any lasting delay — trimming then threw away
+                    // far-end voice (1.3 s of a 6.5 s call, 2026-11-23). Only audio already buffered is discarded
+                    // (non-blocking reads), since the estimate comes from timestamps and can be wrong.
+                    var windowMin = Int.MAX_VALUE
+                    var windowReads = 0
                     while (running) {
                         val n = c.read(buf)
-                        if (n <= 0) { if (n < 0) break else continue }
-                        // Standing delay guard, every read: when more than one frame has stayed unread for 5 reads
-                        // (a slow start, a GC pause), drop down to one frame instead of staying late for good.
+                        if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
                         val b = c.backlogFrames()
                         if (b >= 0) {
                             stats.backlog(b * 1000 / rate)
-                            if (b > rate / 50) { if (++over >= 5) { stats.capDropped += b - rate / 100; skip(c, b - rate / 100, buf.size); over = 0; continue } }
-                            else over = 0
+                            windowMin = minOf(windowMin, b)
+                            if (++windowReads >= 50) {
+                                if (windowMin > rate / 50) stats.trim(windowMin - rate / 100, c.drain(windowMin - rate / 100))
+                                windowMin = Int.MAX_VALUE; windowReads = 0
+                            }
                         }
                         for (i in 0 until n) { bytes[2 * i] = buf[i].toInt().toByte(); bytes[2 * i + 1] = (buf[i].toInt() shr 8).toByte() }
                         try { send(F.DOWN, bytes.copyOf(n * 2)) } catch (e: Exception) { break }
@@ -300,25 +308,24 @@ object HelperMain {
                     .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
         }
 
-        /** Reads and discards [frames] of captured audio. */
-        private fun skip(c: Capture, frames: Int, chunk: Int) {
-            val b = ShortArray(chunk)
-            var left = frames
-            while (left > 0) { val n = c.read(if (left >= chunk) b else ShortArray(left)); if (n <= 0) break; left -= n }
-        }
-
         /** Standing-delay figures for one call (sent with INFO every 5 s and at stop). */
         private class Stats {
             var backlogSum = 0L; var backlogN = 0; var backlogMax = 0
             var queuedSum = 0L; var queuedN = 0; var queuedMax = 0
             @Volatile var capDropped = 0; @Volatile var upDropped = 0; @Volatile var upTrimmed = 0
-            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; upDropped = 0; upTrimmed = 0 }
+            /** Capture trims: how often the guard fired, and how often its estimate found nothing buffered to drop. */
+            var trims = 0; var trimMisses = 0
+            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; upDropped = 0; upTrimmed = 0; trims = 0; trimMisses = 0 }
+            fun trim(estimated: Int, dropped: Int) {
+                trims++; capDropped += dropped
+                if (dropped * 2 < estimated) trimMisses++
+            }
             fun backlog(ms: Int) { backlogSum += ms; backlogN++; backlogMax = maxOf(backlogMax, ms) }
             fun queued(ms: Int) { queuedSum += ms; queuedN++; queuedMax = maxOf(queuedMax, ms) }
             fun json(rate: Int): JSONObject = JSONObject()
                 .put("captureBacklogMs", if (backlogN > 0) backlogSum / backlogN else -1).put("captureBacklogMaxMs", backlogMax)
                 .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
-                .put("captureDroppedMs", capDropped * 1000L / rate).put("uplinkDroppedFrames", upDropped).put("uplinkTrimmedFrames", upTrimmed)
+                .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses).put("uplinkDroppedFrames", upDropped).put("uplinkTrimmedFrames", upTrimmed)
         }
         private val stats = Stats()
         @Volatile private var rate = 16000

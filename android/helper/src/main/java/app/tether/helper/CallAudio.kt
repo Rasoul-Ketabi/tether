@@ -24,6 +24,8 @@ interface Capture {
     fun bufferFrames(): Int
     /** Audio captured by the system but not read by us yet, in frames (-1 if unknown). */
     fun backlogFrames(): Int = -1
+    /** Discards up to [max] frames that are already buffered, never waiting for new audio; returns how many. */
+    fun drain(max: Int): Int = 0
     fun stop()
 }
 
@@ -117,6 +119,16 @@ object CallAudio {
                 val now = System.nanoTime()
                 val captured = ts.framePosition + (now - ts.nanoTime) * rec.sampleRate / 1_000_000_000L
                 return (captured - readFrames).toInt()
+            }
+            override fun drain(max: Int): Int {
+                val b = ShortArray(minOf(maxOf(max, 1), 1024))
+                var left = max
+                while (left > 0) {
+                    val n = rec.read(b, 0, minOf(left, b.size), AudioRecord.READ_NON_BLOCKING)
+                    if (n <= 0) break
+                    readFrames += n; left -= n
+                }
+                return max - left
             }
             override fun stop() { runCatching { rec.stop() }; rec.release() }
         }
