@@ -27,7 +27,7 @@ starts a small helper as the shell user. Nothing leaves the phone.
    starts, not afterwards).
 3. In Tether, tap **Pair** next to Wireless debugging. Tether offers an **optional floating entry card**.
    If you select **Enable floating card**, allow **Display over other apps**, then return to Tether; Developer
-   options opens automatically. If you do not want that special permission, choose **Use notification** instead.
+   options opens automatically (the app first tries opening the **Wireless debugging** sub-page directly, when the phone exposes it; otherwise Developer options opens). If you do not want that special permission, choose **Use notification** instead.
 4. In Developer options › Wireless debugging, turn it on and tap **Pair device with pairing code**. Keep this
    six-digit-code dialog open and enter the code directly in the floating Tether card at the top of the screen;
    you can drag its title to move it away from the code. Press **Pair** on the card. The card closes on success
