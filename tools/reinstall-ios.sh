@@ -95,7 +95,7 @@ build() {   # $1 = comm | plain
   [[ "$1" == comm ]] && extra=(TETHER_ENTITLEMENTS=Tether/Resources/Tether.entitlements TETHER_COMM_NOTIFICATIONS=YES)
   [[ "$1" == plain ]] && extra=(TETHER_ENTITLEMENTS= TETHER_COMM_NOTIFICATIONS=NO)
   out=$(cd "$ROOT/ios" && xcodebuild -project Tether.xcodeproj -scheme Tether -configuration Debug \
-    -destination "id=$DEVICE" -destination-timeout 60 -derivedDataPath build -allowProvisioningUpdates \
+    -destination "id=$DEVICE" -destination-timeout 60 -derivedDataPath build -allowProvisioningUpdates -skipMacroValidation \
     "${extra[@]}" build 2>&1)
   [[ "$out" == *"BUILD SUCCEEDED"* ]]
 }

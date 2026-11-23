@@ -86,7 +86,7 @@ The Link tab shows how many days the current signature has left.
 
 ```bash
 cd ios && xcodegen generate
-xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO -skipMacroValidation build
 ```
 
 ## 5. Tests
@@ -103,8 +103,8 @@ Both implementations check themselves against `protocol/vectors.json` byte for b
 The iOS app runs in the simulator with demo data (no Bluetooth there):
 
 ```bash
-cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO build
+cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath build-sim CODE_SIGNING_ALLOWED=NO -skipMacroValidation build
 xcrun simctl install booted build-sim/Build/Products/Debug-iphonesimulator/Tether.app
 xcrun simctl launch booted <your bundle id> -TetherDemo -TetherDemoMessages
 ```
