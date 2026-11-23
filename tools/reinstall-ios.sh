@@ -74,7 +74,16 @@ BUNDLE=$(cd "$ROOT/ios" && xcodebuild -project Tether.xcodeproj -scheme Tether -
   | awk -F' = ' '/ PRODUCT_BUNDLE_IDENTIFIER = / { print $2; exit }')
 left=-999
 [[ -f "$APP/embedded.mobileprovision" ]] && left=$(days_left "$APP/embedded.mobileprovision")
-log "installed build's profile has $left day(s) left"
+# No previous build (its folder was cleaned up): judge by this app's newest saved profile instead of renewing,
+# since renewing needs the Apple account in Xcode and the saved profile usually still has days left.
+if [[ ! -f "$APP/embedded.mobileprovision" ]]; then
+  for p in "$PROFILES"/*.mobileprovision(N); do
+    appid=$(security cms -D -i "$p" 2>/dev/null | plutil -extract Entitlements.application-identifier raw - 2>/dev/null)
+    [[ -n "$BUNDLE" && "$appid" == *".$BUNDLE" ]] || continue
+    d=$(days_left "$p"); (( d > left )) && left=$d
+  done
+fi
+log "this app's signing profile has $left day(s) left"
 moved=()
 if (( force || left < RENEW_WHEN_DAYS_LEFT )); then
   mkdir -p "$PROFILES/old"
