@@ -57,9 +57,9 @@ struct RootView: View {
             let linked = model.linkState.isConnected
             let who = model.name(for: req.number)
             return Alert(
-                title: Text("Call \(who ?? req.number)?"),
+                title: Text("Call \(who ?? model.formatted(req.number))?"),
                 message: Text(linked
-                    ? (who == nil ? "The call goes through your Android phone." : "\(req.number) · through your Android phone.")
+                    ? (who == nil ? "The call goes through your Android phone." : "\(model.formatted(req.number)) · through your Android phone.")
                     : "The Android phone is not connected. Keep it nearby and open the Link tab, then call from the Keypad."),
                 primaryButton: .default(Text(linked ? "Call" : "Show in Keypad")) {
                     if linked { model.dial(req.number, sub: nil) } else { router.keypadNumber = req.number }

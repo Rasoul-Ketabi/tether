@@ -332,7 +332,6 @@ struct BlockedListView: View {
     }
 }
 
-/// How long this build's free signature still lasts (renewed by running tools/reinstall-ios.sh on the Mac).
 /// Calling numbers from other apps (tel: links, Shortcuts, the Phone app's Recents); docs/USAGE.md.
 struct PhoneLinksSection: View {
     @Environment(AppModel.self) private var model
@@ -350,6 +349,7 @@ struct PhoneLinksSection: View {
     }
 }
 
+/// How long this build's free signature still lasts (renewed by running tools/reinstall-ios.sh on the Mac).
 struct SigningSection: View {
     var body: some View {
         if let expiry = Signing.expiry, let days = Signing.daysLeft {
