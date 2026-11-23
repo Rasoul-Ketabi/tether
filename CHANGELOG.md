@@ -9,6 +9,13 @@
   `tools/release.sh <version>` updates it, the CHANGELOG and tags; a tag builds a GitHub Release with the A54 and
   client APKs, an unsigned iPhone IPA, SHA256SUMS and build provenance attestations. CI keeps debug-signed APKs of
   every push to main. See docs/RELEASING.md.
+- Extensions: developers can add features on top of the link without forking the apps (protocol §7,
+  docs/EXTENDING.md). Extension messages use the reserved `x.<reverse-dns>` namespace; each side announces what it
+  speaks in `caps` (in `sync` and `status`), the highest common major version is used, and older apps neither send nor
+  receive anything new. Registries in TetherCore and the shared Android core route only extension types (never a core
+  one), cap sizes (16 KiB, 2 KiB during a call) and rates (20/s), answer an unknown extension request with
+  `error {t, code}` and switch off an extension that keeps failing. Built in on every side: `x.tether.echo` (round
+  trip, clock offset, transport); `tools/dbg.sh ext` / `ext_echo`, and a Developer row in Debug iPhone builds.
 - Wireless debugging pairing from the notification no longer closes the app (#1): the work runs in a short foreground
   service instead of the notification's broadcast, a wrong or expired code is reported instead of being taken as
   success, and each failure (no Wi-Fi, pairing window closed, wrong code, connected later) says what to do, in English
