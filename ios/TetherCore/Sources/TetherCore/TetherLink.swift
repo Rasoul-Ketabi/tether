@@ -1,6 +1,7 @@
 import CoreBluetooth
 import CryptoKit
 import Foundation
+import os
 
 public enum TetherUUID {
     public static let service = CBUUID(string: "5ABF5C3C-2BF1-4B1C-9E8E-5D153F835BD5")
@@ -54,7 +55,9 @@ public final class TetherLink: NSObject {
     private var handshake: CentralHandshake?
     private var session: SecureSession?
     private var keys: SessionKeys?
-    private var nextId = 1
+    /// Request ids, taken from any thread without waiting for the link queue (`send` is called from the main thread,
+    /// and a `queue.sync` there waited behind whatever the link queue was doing, e.g. a big sync page).
+    private let ids = RequestIds()
     private var keepalive: DispatchSourceTimer?
     private var l2capTimer: DispatchWorkItem?
     private var audioBacklog = 0
@@ -109,7 +112,7 @@ public final class TetherLink: NSObject {
     /// Sends a control message; returns the request id (use it to match `re` in replies).
     @discardableResult
     public func send<B: Encodable>(_ type: String, _ body: B, expectReply: Bool = false) -> Int {
-        let id = queue.sync { () -> Int in nextId += 1; return nextId }
+        let id = ids.next()
         queue.async { self.sendNow(type, body, id: expectReply ? id : nil) }
         return id
     }
@@ -652,4 +655,11 @@ extension TetherLink: StreamDelegate {
             break
         }
     }
+}
+
+/// A counter shared across threads under an unfair lock held for one increment.
+final class RequestIds: @unchecked Sendable {
+    private var lock = os_unfair_lock()
+    private var last = 1
+    func next() -> Int { os_unfair_lock_lock(&lock); defer { os_unfair_lock_unlock(&lock) }; last += 1; return last }
 }
