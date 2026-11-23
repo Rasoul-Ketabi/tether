@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Kotlin/JVM library `com.github.amirwmr.tether:tether-core` (JitPack or `publishToMavenLocal`): the protocol
+  core now builds as a plain JVM 17 library for desktops, servers and Android, with Dokka API docs, a command-line
+  example (`examples/kotlin-jvm`) and docs/SDK-kotlin.md; MediaCodec Opus moved to `android/core-android`.
 - Wireless debugging pairing from the notification no longer closes the app (#1): the work runs in a short foreground
   service instead of the notification's broadcast, a wrong or expired code is reported instead of being taken as
   success, and each failure (no Wi-Fi, pairing window closed, wrong code, connected later) says what to do, in English
