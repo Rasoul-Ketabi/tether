@@ -10,7 +10,6 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Process
-import android.os.SystemClock
 import app.tether.audio.OpusCodec
 import app.tether.audio.PcmuCodec
 import app.tether.audio.VoiceCodec
@@ -19,6 +18,8 @@ import app.tether.core.AudioFrame
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
+import java.util.Locale
+import java.util.concurrent.Executors
 import kotlin.math.sqrt
 
 /**
@@ -41,6 +42,8 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
     private var playThread: Thread? = null
     private var recThread: Thread? = null
     private val lock = Any()
+    /** Decodes downlink frames off the link thread (the iPhone's audio queue); frames are stamped before they get here. */
+    private val decoder = Executors.newSingleThreadExecutor { Thread(it, "call-decode").apply { isDaemon = true } }
 
     // Statistics (logged at stop, in the Link log).
     @Volatile private var frames = 0
@@ -80,19 +83,33 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         ringbackOn = false; muted = false; seq = 0
     }
 
+    /** Link thread: the arrival is stamped as the frame comes off the link, not when the decode thread gets to it. */
     override fun frame(f: AudioFrame) {
+        if (!running) return
+        val at = System.nanoTime()
+        decoder.execute { synchronized(lock) { receive(f, at) } }
+    }
+
+    private fun receive(f: AudioFrame, now: Long) {
         val k = codec ?: return
         if (!running || f.codec != k.id) return
+        var missing = 0
         if (lastSeq >= 0) {
             val gap = ((f.seq - lastSeq) and 0xffff).let { if (it > 0x8000) it - 0x10000 else it }
             if (gap <= 0) return                  // late / duplicate: drop
-            if (gap > 1) lost += gap - 1
+            if (gap > 1) { lost += gap - 1; missing = minOf(gap - 1, 50) }
         }
         lastSeq = f.seq
-        val now = SystemClock.elapsedRealtimeNanos()
-        if (lastArrival != 0L) { val g = (now - lastArrival) / 1e6; jitterSum += abs(g - 20); worstGap = maxOf(worstGap, g) }
+        if (lastArrival != 0L && now > lastArrival) { val g = (now - lastArrival) / 1e6; jitterSum += abs(g - 20); worstGap = maxOf(worstGap, g) }
         lastArrival = now
         frames++
+        val buffer = playout
+        val sameRate = k.rate == playRate
+        // Frames the Android phone dropped for lateness: the decoder's concealment takes their place (up to two, as the
+        // Android phone does for the uplink). It runs before this frame is decoded: concealment continues from the last
+        // decoded frame, and the decoder then moves smoothly into this one.
+        var filled = 0
+        if (missing in 1..2) repeat(missing) { k.conceal()?.let { plc -> if (sameRate) buffer.push(plc, at = now, concealed = true); filled++ } }
         val pcm = k.decode(f.payload) ?: return
         if (ringback) {
             // Network ringback or the answer is audible: stop the local tone.
@@ -100,7 +117,8 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
             for (s in pcm) e += s.toDouble() * s
             if (sqrt(e / maxOf(1, pcm.size)) > 300) { heardRemote = true; ringbackOn = false; log("far end audible: local ringback off") }
         }
-        if (k.rate == playRate) playout.push(pcm)
+        // Arrival time and lost frames feed the playout's jitter statistics (its target follows the arrival spread).
+        if (sameRate) buffer.push(pcm, at = now, missing = missing - filled)
     }
 
     @SuppressLint("MissingPermission")
@@ -185,8 +203,11 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         playThread?.join(500); recThread?.join(500)
         playThread = null; recThread = null
         val b = playout
-        log("call audio: playout target ${b.target * 1000 / playRate} ms, concealed ${b.concealedSamples * 1000L / playRate} ms, " +
-            "underruns ${b.underruns}, drained ${b.trimmed * 1000L / playRate} ms, lost $lost of $frames frames, " +
-            "arrival jitter ${"%.1f".format(if (frames > 1) jitterSum / (frames - 1) else 0.0)} ms, worst gap ${"%.0f".format(worstGap)} ms")
+        val ms = 1000.0 / playRate
+        log(String.format(Locale.ROOT, "call audio: playout delay %.0f ms (target %.0f, arrival spread asks %.0f), underruns %d, " +
+            "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms, added %.0f ms, lost %d of %d frames, " +
+            "arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
+            b.meanBuffered * ms, b.target * ms, b.jitterFloor * ms, b.underruns, b.concealedSamples * ms, b.concealedFrames,
+            b.trimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
     }
 }
