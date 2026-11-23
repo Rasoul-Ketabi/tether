@@ -153,8 +153,10 @@ Audio is drop-late: the Android phone discards queued audio frames more than 60 
 counters stay contiguous). The receivers keep a playout / jitter buffer: the Android phone drops uplink frames whose
 `seq` goes back (but follows a client whose counter restarted after 3 such frames) and conceals 1–2 missing
 frames; the iPhone plays out from a 30–120 ms adaptive buffer whose depth follows the spread of frame arrival times over
-the last ~10 s, fills 1–2 lost frames with the Opus decoder's concealment, conceals short gaps (the last 10 ms
-faded out) and drains clock drift in quiet frames. `seq` keeps counting for the whole call.
+the last ~10 s (around the far clock's rate), fills 1–2 lost frames with the Opus decoder's concealment, conceals
+short gaps (the last 10 ms faded out) and drains clock drift in quiet frames. On the Android phone the uplink waits
+in a buffer of up to 1 s whose delay is corrected in quiet frames (cut or repeated; speech sped up or slowed by
+≤ 3 % only without a pause). `seq` keeps counting for the whole call.
 
 ## 5. Control messages
 

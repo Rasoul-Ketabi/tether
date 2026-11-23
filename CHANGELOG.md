@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Call audio, uplink (the iPhone's voice to the far end): no voice frames are thrown away any more. The Android
+  phone's helper kept 8 frames and dropped the oldest when full, plus a frame whenever 2 stayed queued for a second:
+  5-7 % of the iPhone's voice was lost on real-iPhone test calls (42-54 dropped and 13-17 trimmed of ~975 frames). It
+  now keeps up to 1 s, steers the delay ahead of each frame (queue plus inject track) to what the recent Bluetooth
+  hold-ups and the track's mixer need (5-60 ms), and corrects it where it cannot be heard: quiet frames are cut or
+  repeated, and only without a pause for 0.5 s is speech sped up or slowed down by at most 3 %. Clock drift of
+  ±2 % is absorbed the same way. Real-iPhone test calls: 0 frames lost; the call statistics show what was cut,
+  added, sped up or slowed, the delay ahead and its target, and the capture's and track's sample clocks.
+- The uplink starts when the Android phone's audio path is open: frames the iPhone sent before (0.3-1 s while the
+  interception API waited for the call's audio mode; it is now polled every 30 ms instead of 150 ms) only delayed the
+  first words; they are no longer forwarded.
+- The test line behaves like a real call: nothing read its injected uplink, and an unread remote submix plays it ~10 %
+  slower than real time (14.4 kHz for 16 kHz), which no network does; the helper now reads it as the far end would.
+- iPhone playout: the statistics show the playout delay the listener really had (the buffer's level: 44-46 ms on
+  the reference link, 0.3-1.1 % concealed) instead of the target (105-110 ms, which overstated it). The arrival
+  spread is measured around the far clock's own rate (a drift of 2 % used to hold the target at its maximum, or run
+  the buffer dry every few seconds), arrival times are taken when a frame comes off the link rather than when the
+  audio queue gets to it, and the first 2 s of a call no longer count (a ~260 ms hold-up while the connection
+  interval is shortened kept the target at its maximum for 10 s); a slow far clock is made up for in quiet frames.
 - Call audio: the Android phone no longer throws away far-end voice when its capture delivers in bursts (its delay
   guard trims only standing delay and only audio already buffered: 1.3 s lost per 6.5 s test call before, 0.07 s
   after). The iPhone's playout depth follows the spread of frame arrival times (periodic Bluetooth hold-ups are

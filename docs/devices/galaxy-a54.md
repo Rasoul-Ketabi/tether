@@ -60,3 +60,24 @@ carry over to real calls; codec, link and Telecom figures do:
 | Inject buffer cap 40 ms (default) / 20 ms | 0 underruns / 60-70 underruns and ~95 dropped uplink frames per 5 s call: keep 40 |
 | LE PHY on the owner's link | 2M |
 | Voice-call stream mute as shell (`HelperMain silence on/off` with `TETHER_SILENCE=other`) | works (index 0, restored) |
+| Inject track's sink on the test line, nothing reading it / read as the far end (the helper does since 2026-11-23) | 14.4 kHz for 16 kHz (10 % slow: the uplink backed up and frames were dropped) / 16.0 kHz |
+| Mixer period of the inject path: test line (remote submix) / real call (Telephony Tx, `dumpsys media.audio_flinger`) | 32 ms (512 frames at 16 kHz) / 20 ms (960 frames at 48 kHz, HAL 10 ms) |
+| Capture clock (interception record), test line | 16.0 kHz against the monotonic clock |
+| iPhone uplink that arrived before the interception path was open (it refuses until the audio mode switches) | 0.3-1 s polled every 150 ms; 0.15-0.3 s polled every 30 ms (no longer forwarded) |
+
+Real-iPhone test calls on the reference link (2026-11-23, 20 s, Bluetooth tethering on, room noise): connection
+interval 15 ms, latency 1, PHY 2M; 5-10 hold-ups of 60-77 ms per call in each direction (one of 119 ms); downlink
+arrival jitter ~15 ms, uplink ~10 ms. The iPhone's clock against the Android phone's capture: within ±100 ppm.
+
+| Uplink (A54 helper) | Before | After |
+| --- | --- | --- |
+| Voice frames lost (dropped / trimmed) of ~975 | 42-54 / 13-17 | 0 |
+| Delay ahead of a frame (queue + track) | queue held full by the slow test-line sink | 64-71 ms average (incl. the start), target 41-60 |
+| Inject track underruns | 0 (the queue never emptied) | 3-9 per call, about half in the first second |
+
+| Downlink (iPhone playout) | Before | After |
+| --- | --- | --- |
+| Reported target | 105-110 ms | 65-77 ms |
+| Playout delay (mean buffer level) | not measured | 44-46 ms |
+| Concealed / underruns | 0 / 0 (Link log) | 0.3-1.1 % / 0-1 |
+| Drained in quiet frames per call | 275-295 ms | 340-470 ms (start-up burst, gaps' leftovers) |
