@@ -143,7 +143,10 @@
 
         <receiver android:name=".data.SmsStatusReceiver" android:exported="false" />
         <receiver android:name=".adb.AdbPairingReceiver" android:exported="false" />
-        <service android:name=".adb.PairingOverlayService" android:exported="false" />
+        <service
+            android:name=".adb.PairingOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <!-- Debug hooks for adb only (the DUMP permission is held by the shell, not by apps). -->
         <receiver
