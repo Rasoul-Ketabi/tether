@@ -1,7 +1,6 @@
 package app.tether.client
 
 import app.tether.client.calls.HangUpGuard
-import app.tether.client.calls.PlayoutBuffer
 import app.tether.client.link.ClientLinkPolicy
 import app.tether.client.model.Call
 import app.tether.client.model.Search
@@ -14,77 +13,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
-import kotlin.math.sin
 
-/** The iPhone's hard-won rules, ported: the same cases as TetherCore's PlayoutTests and CallGuardTests, and more. */
+/** The iPhone's hard-won rules, ported: the same cases as TetherCore's CallGuardTests (PlayoutTests: PlayoutTest), and more. */
 class PortedRulesTest {
-    private fun tone(n: Int, amp: Double = 8000.0) = ShortArray(n) { (amp * sin(it * 0.2)).toInt().toShort() }
-    private fun pull(b: PlayoutBuffer, n: Int): Pair<Int, FloatArray> { val out = FloatArray(n); return b.pull(out, n) to out }
-
-    // ------------------------------------------------------------------ PlayoutBuffer (TetherCore PlayoutTests)
-
-    @Test fun shortGapIsConcealedNotSilent() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 640)
-        val (real, out) = pull(b, 160)
-        assertEquals(0, real)
-        assertTrue("the gap continues the last audio, faded", out.maxOf { abs(it) } > 0.05f)
-        assertEquals(0, b.underruns)
-    }
-
-    @Test fun longGapRebuffersDeeper() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 640)
-        val before = b.target
-        repeat(12) { pull(b, 160) }
-        assertEquals(1, b.underruns)
-        assertTrue(b.target > before)
-        assertEquals("un-primed until the target refills", 0, pull(b, 160).first)
-    }
-
-    @Test fun driftIsDrainedInSilenceButNotInSpeech() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 320)
-        repeat(3) { b.push(tone(320)) }
-        assertEquals(0, b.trimmed)
-        b.push(ShortArray(320))
-        assertTrue(b.trimmed > 0)
-    }
-
-    @Test fun drainNeverDropsQueuedSpeech() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 320)
-        repeat(3) { b.push(tone(320)) }
-        val queued = 320 + 3 * 320
-        b.push(ShortArray(320))
-        val (real, out) = pull(b, queued)
-        assertEquals(queued, real)
-        assertTrue(out.takeLast(320).maxOf { abs(it) } > 0.05f)
-    }
-
-    @Test fun afterAGapItRefillsBeforePlaying() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 640)
-        pull(b, 160)
-        b.push(tone(160))
-        assertEquals("keeps concealing while the buffer refills", 0, pull(b, 160).first)
-        b.push(tone(320))
-        assertEquals(160, pull(b, 160).first)
-    }
-
-    @Test fun shortGapsDeepenTheBufferAndCleanPlayoutShrinksIt() {
-        val b = PlayoutBuffer(16000)
-        b.push(tone(640)); pull(b, 640)
-        val start = b.target
-        repeat(4) { pull(b, 160); b.push(tone(1600)); pull(b, 1600) }
-        assertTrue(b.target > start)
-        assertTrue(b.target <= b.maxTarget)
-        val deep = b.target
-        repeat(700) { b.push(tone(160)); pull(b, 160) }
-        assertTrue(b.target < deep)
-    }
-
     // ------------------------------------------------------------------ HangUpGuard (TetherCore CallGuardTests)
 
     @Test fun guardNeverBlocksANewCall() {
