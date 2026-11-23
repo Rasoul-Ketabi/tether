@@ -132,14 +132,7 @@ class GattTransport(
         // Back-pressure: without it a sync put megabytes into this queue at once (a GATT pipe moves a few kB/s at a
         // 23-byte MTU), the session could not answer anything for minutes, and a stale pipe kept sending for long.
         while (queued.get() > MAX_QUEUED) { if (closed) throw IOException("closed"); Thread.sleep(5) }
-        val step = (mtu - 3).coerceAtLeast(20)
-        var i = 0
-        while (i < bytes.size) {
-            val end = minOf(bytes.size, i + step)
-            queued.addAndGet(end - i)
-            chunks.put(bytes.copyOfRange(i, end))
-            i = end
-        }
+        for (c in chunk(bytes, mtu)) { queued.addAndGet(c.size); chunks.put(c) }
     }
 
     override fun close() {
@@ -149,5 +142,12 @@ class GattTransport(
         onClosed?.invoke()
     }
 
-    companion object { const val TAG = "Tether"; const val MAX_QUEUED = 32 * 1024 }
+    companion object {
+        const val TAG = "Tether"; const val MAX_QUEUED = 32 * 1024
+        /** [bytes] cut into notification-sized pieces (MTU - 3, at least 20), in order. */
+        fun chunk(bytes: ByteArray, mtu: Int): List<ByteArray> {
+            val step = (mtu - 3).coerceAtLeast(20)
+            return (bytes.indices step step).map { bytes.copyOfRange(it, minOf(bytes.size, it + step)) }
+        }
+    }
 }
