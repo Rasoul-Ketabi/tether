@@ -16,8 +16,9 @@ struct SyncBodyV1: Encodable {
     var contacts: String
     var codecs: [String]
     var client: ClientHello
-    /// The current fast-lane state for this particular sync, not an earlier one.
-    var wifi: Bool
+    /// Optional extension for older clients/tests: omitted unless a caller
+    /// explicitly supplies the current Wi-Fi state. Android treats absent as BLE.
+    var wifi: Bool? = nil
     /// The extensions this app speaks (protocol §7.2); left out when there are none.
     var caps: [String]?
 }
