@@ -1,15 +1,19 @@
 package app.tether.adb
 
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -31,7 +35,12 @@ import kotlin.math.min
  */
 class PairingOverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
-    private val hideAfterTimeout = Runnable { stopSelf() }
+    private var cancelNotificationOnStop = false
+    private var foregroundSession = false
+    private val hideAfterTimeout = Runnable {
+        cancelNotificationOnStop = true
+        stopSelf()
+    }
     private lateinit var wm: WindowManager
     private var window: View? = null
     private var codeField: EditText? = null
@@ -47,15 +56,36 @@ class PairingOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action != ACTION_SHOW || !Settings.canDrawOverlays(this)) {
+        if (intent?.action == ACTION_STOP) {
+            cancelNotificationOnStop = true
+            stopSelf()
+            getSystemService(NotificationManager::class.java).cancel(Adb.NOTIF_ADB)
+            return START_NOT_STICKY
+        }
+        if (intent?.action != ACTION_SHOW) {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (window == null) {
+
+        // The pairing notification doubles as a short-lived foreground-service notification.
+        // A foreground service helps keep RemoteInput available while system Settings is on screen.
+        // It cannot force Android to pin a heads-up banner or bypass protected Settings overlays.
+        try {
+            startForeground(Adb.NOTIF_ADB, Adb.pairingNotification(this),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            foregroundSession = true
+        } catch (e: Exception) {
+            Log.w(Adb.TAG, "Pairing foreground session unavailable: " + e.javaClass.simpleName)
+            stopSelf() // The non-foreground ongoing notification is still available as fallback.
+            return START_NOT_STICKY
+        }
+
+        if (Settings.canDrawOverlays(this) && window == null) {
             try {
                 createWindow()
-            } catch (_: RuntimeException) {
-                stopSelf() // Denied/hidden by the OS: notification remains the fallback.
+            } catch (e: RuntimeException) {
+                Log.w(Adb.TAG, "Pairing overlay unavailable: " + e.javaClass.simpleName)
+                // Keep the notification/foreground session even when Settings suppresses overlays.
             }
         }
         handler.removeCallbacks(hideAfterTimeout)
@@ -94,7 +124,7 @@ class PairingOverlayService : Service() {
             text = getString(R.string.adb_overlay_close)
             isAllCaps = false
             textSize = 12f
-            setOnClickListener { stopSelf() }
+            setOnClickListener { hideWindow() }
         }, LinearLayout.LayoutParams(dp(62), dp(45)))
         panel.addView(titleRow)
 
@@ -207,6 +237,15 @@ class PairingOverlayService : Service() {
         }
     }
 
+    private fun hideWindow() {
+        codeField?.text?.clear()
+        window?.let { runCatching { wm.removeView(it) } }
+        window = null
+        codeField = null
+        status = null
+        submitButton = null
+    }
+
     private fun showStatus(message: String, color: Int) {
         status?.text = message
         status?.setTextColor(getColor(color))
@@ -214,19 +253,33 @@ class PairingOverlayService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(hideAfterTimeout)
-        codeField?.text?.clear()
-        window?.let { runCatching { wm.removeView(it) } }
-        window = null
-        codeField = null
-        status = null
-        submitButton = null
+        hideWindow()
+        if (foregroundSession) {
+            // Keep the 'paired' or 'failed' notification issued by the pairing worker,
+            // but do not leave the short-lived foreground service running after completion.
+            stopForeground(STOP_FOREGROUND_DETACH)
+        }
+        if (cancelNotificationOnStop) {
+            getSystemService(NotificationManager::class.java).cancel(Adb.NOTIF_ADB)
+        }
         super.onDestroy()
     }
 
     companion object {
         private const val ACTION_SHOW = "app.tether.adb.SHOW_PAIRING_OVERLAY"
+        private const val ACTION_STOP = "app.tether.adb.STOP_PAIRING"
+
         fun show(context: Context) {
-            context.startService(Intent(context, PairingOverlayService::class.java).setAction(ACTION_SHOW))
+            context.startForegroundService(Intent(context, PairingOverlayService::class.java)
+                .setAction(ACTION_SHOW))
+        }
+
+        fun stopIntent(context: Context): Intent =
+            Intent(context, PairingOverlayService::class.java).setAction(ACTION_STOP)
+
+        /** Stop the foreground session after a successful code reply (overlay or notification). */
+        fun finish(context: Context) {
+            context.stopService(Intent(context, PairingOverlayService::class.java))
         }
     }
 }
