@@ -3,22 +3,17 @@ package app.tether.link
 import android.util.Log
 import app.tether.core.Bytes
 import app.tether.core.Message
-import app.tether.core.P256
 import app.tether.core.Proto
 import app.tether.core.RecordReader
 import app.tether.core.SecureSession
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Collections
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import org.json.JSONObject
 
 /**
@@ -120,13 +115,13 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
         require(head.copyOfRange(0, 4).contentEquals(magic)) { "bad wifi hello" }
         val nc = head.copyOfRange(4, 20)
         val ns = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        output.write(magic + ns + mac("server", nc, ns))
+        output.write(magic + ns + HybridWifiProof.mac(secret, "server", nc, ns))
         output.flush()
         val proof = ByteArray(32).also { input.readFully(it) }
-        require(MessageDigest.isEqual(proof, mac("client", nc, ns))) { "unauthenticated wifi peer" }
+        require(HybridWifiProof.verify(secret, "client", nc, ns, proof)) { "unauthenticated wifi peer" }
 
-        val okm = P256.hkdf(nc + ns, secret, "tether/hybrid-wifi/1".toByteArray(Charsets.UTF_8), 64)
-        val session = SecureSession(okm.copyOfRange(0, 32), okm.copyOfRange(32, 64))
+        val (serverToClient, clientToServer) = HybridWifiProof.keys(secret, nc, ns)
+        val session = SecureSession(serverToClient, clientToServer)
         synchronized(writeLock) {
             if (closed) return
             client = sock
@@ -156,12 +151,6 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
             }
         }
     }
-
-    private fun mac(role: String, nc: ByteArray, ns: ByteArray): ByteArray =
-        Mac.getInstance("HmacSHA256").run {
-            init(SecretKeySpec(secret, "HmacSHA256"))
-            doFinal(("tether/hybrid-wifi/1/" + role).toByteArray(Charsets.UTF_8) + nc + ns)
-        }
 
     /** false means that the original BLE record should be sent instead. */
     fun send(channel: Int, payload: ByteArray): Boolean = synchronized(writeLock) {
