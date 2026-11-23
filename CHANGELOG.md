@@ -116,6 +116,17 @@
 
 ### Fixes
 
+- The other side could not hear the iPhone (#2, Galaxy Z Fold 6): during a bridged call the Android phone also muted
+  its own microphone (through Android's mic mute, and on Samsung its tx control key), and on several audio systems
+  that mute silences the injected iPhone voice too. The phone's microphone now stays on by default on every phone
+  (its earpiece is still silenced); a new setting "Mute this phone's microphone during bridged calls" (Android app ›
+  Call audio, and a switch in the iPhone's Link tab) turns it on with one mute per vendor, and then a check during
+  the call compares the iPhone's speech with what the call's uplink carries, undoes the mute when the uplink stays
+  silent, and remembers that for the phone model. The self-test runs the working inject method once more with the
+  mic muted, its first row and the link log say whether the uplink injection opened, with which method and with
+  which mute, and the link log flags an iPhone that sent only silence. New optional `micMute`, `uplink` and `capture`
+  in `status.helper`, the `audio.set` message, and the helper's LOCAL frame (protocol §5, §6); docs/TROUBLESHOOTING.md
+  "The other side cannot hear me".
 - Wireless debugging pairing from the notification no longer closes the app (#1): the work runs in a short foreground
   service instead of the notification's broadcast, a wrong or expired code is reported instead of being taken as
   success, and each failure (no Wi-Fi, pairing window closed, wrong code, connected later) says what to do, in English

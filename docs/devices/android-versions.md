@@ -10,7 +10,7 @@ Android 17 has been tested; the other rows follow from the Android sources and A
 | Messages, contacts, call log, notifications | yes | yes | yes |
 | Answering, placing and ending calls from the iPhone | yes | yes | yes |
 | Call audio on the iPhone | **no** (the shell cannot capture a call) | best effort: captures the voice call, injects through the incall-music path (`voice_downlink` / `voice_call`, `telephony_tx`); works only where the phone's audio HAL allows it | yes: call-audio interception API, older routes as fallback |
-| Muting the phone's own earpiece and microphone during a bridged call | Samsung only | Samsung only | Samsung only |
+| Muting the phone's own earpiece during a bridged call (its microphone only when the user turns it on, with an uplink check) | Samsung only | Samsung only | Samsung only |
 | Audio helper (mobile data, data SIM, airplane mode, network mode) | needs the TCP adb path (see [SETUP.md](../SETUP.md)); hotspot and Bluetooth tethering switches are not available | yes | yes |
 | Wireless debugging pairing | not in Android 10: use TCP adb | yes (needs a Wi-Fi network) | yes |
 | Hotspot and Bluetooth tethering switches | no | yes | yes |

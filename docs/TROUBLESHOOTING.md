@@ -55,11 +55,11 @@ card in the Android app says which case you are in.
 3. The Android version must be 13 or later, and the build must let the shell user intercept call audio. Not every
    manufacturer allows it. If no path works, calls still work from the iPhone but their audio stays on the
    Android phone. Please report your model and the self-test result.
-4. You hear the other side on the Android phone too: Tether mutes the phone's own earpiece and microphone during a
-   bridged call with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources,
-   untested). Other phones (Google Pixel and unknown chips) get the earpiece muted only. The Link tab shows it
-   under **Call audio › Android phone silent**. On MediaTek, Tether never mutes the microphone through Android,
-   because there that also mutes what the iPhone sends.
+4. You hear the other side on the Android phone too: Tether silences the phone's own earpiece during a bridged call
+   with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources, untested), the
+   voice-call volume on other phones. The phone's own **microphone stays on** unless you turn on **Mute this phone's
+   microphone during bridged calls** (see the next section for why). The Link tab shows it under **Call audio ›
+   Android phone silent**.
 
 ### Headset or car
 
@@ -67,6 +67,39 @@ card in the Android app says which case you are in.
   Bluetooth settings; music-only (A2DP) speakers have no microphone and are not offered for calls.
 - The Link log shows each route change as `audio route bluetooth / car / receiver / speaker` with its reason. If
   the route changes but the far end goes quiet for more than a second, please report the lines around it.
+
+## The other side cannot hear me
+
+You hear the other side, but they hear nothing (or only the Android phone's surroundings) of what you say on the
+iPhone. The iPhone's voice is injected into the call's uplink by the Android phone; three things can stop it:
+
+- **The Android phone's microphone mute.** On several phones (MediaTek for certain, Qualcomm audio systems, possibly
+  Samsung's own key) muting the phone's microphone also mutes the injected voice. Tether therefore leaves the
+  microphone on by default. If you turned **Mute this phone's microphone during bridged calls** on (Android app ›
+  Call audio, or the switch in the iPhone's Link tab), Tether checks during each call whether your speech reaches
+  the uplink, turns the mute off when it does not, and remembers that for the phone model (**Your voice in the
+  call** then says it was fixed). Some phones cannot show their uplink to this check ("Not checked"): there, keep
+  the switch off.
+- **The injection did not open.** Some phones refuse it, or refuse it until the call is fully connected.
+- **The iPhone sends silence**: Tether may not use the iPhone's microphone (Settings › Privacy & Security ›
+  Microphone; the Link tab warns in red), or the call is muted on the iPhone.
+
+What to do:
+
+1. Make sure **Mute this phone's microphone during bridged calls** is **off** (the default) and call again.
+2. During a call, on the iPhone: **Link › Call audio › Run call-audio self-test** (or the same button in the Android
+   app). It pauses the call audio for a few seconds, plays a tone through each inject method and listens for it in
+   the call's uplink. Its first row, `call-audio`, says how your call ran until then: the inject and capture methods
+   (`NONE` when the injection did not open) and whether the phone's microphone was muted. A last row
+   `inject:<method>, phone mic muted` repeats the working method with the microphone muted; Tether remembers its
+   answer for the phone model.
+3. Open **Link › Link log** on the iPhone (or `tools/dbg.sh linklog` on the Android phone). Each call writes a line
+   starting `call audio path:` (whether the uplink injection opened, with which method, which mute was on), `uplink
+   check …` lines when the check acted, and a `call audio:` summary at the end with the uplink figures (`uplink
+   speech N frames`: 0 means the iPhone sent only silence).
+4. Report it (GitHub issue) with: the Android phone's model and Android version, the iPhone model and iOS version,
+   whether the mute switch was on, every self-test row (name, ✓ / ✗ and its note), and the `call audio path:`,
+   `uplink check` and `call audio:` lines of one failed call. Leave out phone numbers.
 
 ## The audio helper does not start
 
