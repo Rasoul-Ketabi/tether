@@ -614,6 +614,10 @@ final class AppModel {
     func received(_ h: MessageHeader, _ payload: Data) {
         do {
             switch h.t {
+            case "wifi.ready":
+                // The already-paired Android has authenticated its secondary LAN lane.
+                // Restart an incremental sync so the larger pages use Wi-Fi.
+                if linkState.isConnected && !syncing { requestSync() }
             case MsgType.status:
                 // Kept in memory; saved with the next real change (a full snapshot write per status was wasted).
                 data.lastStatus = try Control.body(StatusBody.self, from: payload)
