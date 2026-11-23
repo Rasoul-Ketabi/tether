@@ -11,6 +11,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Maven Central answers shared runners with 429 Too Many Requests at busy times; Google's mirror of it does not.
+  TETHER_MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2/
+
 jobs:
   android:
     name: Android (A54 app, helper, core, client)

@@ -14,6 +14,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  # Maven Central answers shared runners with 429 Too Many Requests at busy times; Google's mirror of it does not.
+  TETHER_MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2/
+
 jobs:
   # The Markdown site (GitHub's Jekyll action runs in a container, so on Linux) and the Kotlin reference.
   site:
@@ -61,10 +65,12 @@ jobs:
           swift package --allow-writing-to-directory swift-docs generate-documentation \
             --target TetherCore --output-path swift-docs \
             --transform-for-static-hosting --hosting-base-path tether/swift
+          # DocC names files after operators ("!=(_:_:).json"); artifacts may not contain ":", so pass a tarball.
+          tar -czf swift-reference.tgz -C swift-docs .
       - uses: actions/upload-artifact@v7
         with:
           name: swift-reference
-          path: swift-docs
+          path: swift-reference.tgz
           retention-days: 1
 
   build:
@@ -78,7 +84,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: swift-reference
-          path: site/swift
+          path: .
+      - name: Unpack the Swift reference
+        run: mkdir -p site/swift && tar -xzf swift-reference.tgz -C site/swift
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
