@@ -48,6 +48,22 @@ targets:
         TETHER_ENTITLEMENTS: ""
         TETHER_COMM_NOTIFICATIONS: "NO"
         CODE_SIGN_ENTITLEMENTS: $(TETHER_ENTITLEMENTS)
+  TetherTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TetherTests
+    dependencies:
+      - target: Tether
+      - package: TetherCore
+        product: TetherCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.tether.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Tether.app/Tether
+        BUNDLE_LOADER: $(TEST_HOST)
+        CODE_SIGNING_ALLOWED: NO
 schemes:
   Tether:
     build:
@@ -57,5 +73,7 @@ schemes:
       config: Debug
     test:
       config: Debug
+      targets:
+        - TetherTests
       # The protocol / crypto / framing tests live in the TetherCore package:
       #   cd ios/TetherCore && ./test.sh   (or open Package.swift in Xcode and press ⌘U)

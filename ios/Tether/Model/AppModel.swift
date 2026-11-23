@@ -30,7 +30,11 @@ final class AppModel {
     static let shared = AppModel()
 
     /// Link identity in the Keychain (a throw-away one in demo mode).
-    let identity: IdentityStore = AppModel.demoMode ? MemoryIdentityStore() : KeychainIdentityStore()
+    let identity: IdentityStore = AppModel.demoMode || AppModel.runningTests ? MemoryIdentityStore() : KeychainIdentityStore()
+
+    /// The app is the host of the unit tests (TetherTests): no Keychain, no saved data read or written, no
+    /// notification permission prompt; the tests drive the model through `received` and `resetForTests`.
+    static let runningTests: Bool = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     /// Debug demo mode (-TetherDemo…): made-up data, never connects and never saves, so it cannot touch the
     /// real pairing or the real synced data on a device that is also used for real.
@@ -97,7 +101,7 @@ final class AppModel {
     private(set) var photoIndex: [String: String] = [:]
 
     private init() {
-        data = AppModel.demoMode ? Snapshot() : store.load()
+        data = AppModel.demoMode || AppModel.runningTests ? Snapshot() : store.load()
         link = TetherLink(store: identity, restoreID: "app.tether.central")
         link.delegate = LinkBridge.shared
         link.log = { msg in NSLog("[link] %@", msg); LinkJournal.shared.add(msg) }
@@ -297,9 +301,20 @@ final class AppModel {
         photoIndex = p
     }
 
-    private func persist() { if !AppModel.demoMode { store.save(data) } }
+    private func persist() { if !AppModel.demoMode && !AppModel.runningTests { store.save(data) } }
     /// Saved at once (the outbox of a text sent from a notification must survive the app being suspended).
-    func persistNow() { if !AppModel.demoMode { store.saveNow(data) } }
+    func persistNow() { if !AppModel.demoMode && !AppModel.runningTests { store.saveNow(data) } }
+
+    /// Unit tests only: start from the given snapshot with no sync in progress.
+    func resetForTests(_ snapshot: Snapshot = Snapshot()) {
+        precondition(AppModel.runningTests)
+        data = snapshot
+        pendingIds = SyncIds(sms: [], calls: []); incomingContacts = []; contactsPageStart = true
+        smsIndex = [:]; pendingSms = [:]; incrementalSync = false
+        net = nil; netPending = nil; ussdResult = nil; ussdPending = false; finding = false; phoneToolError = nil
+        lastError = nil; selftest = nil; syncing = false; openThread = nil
+        rebuildIndex()
+    }
 
     // MARK: actions
 

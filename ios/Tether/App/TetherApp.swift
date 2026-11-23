@@ -66,18 +66,25 @@ final class Router {
     /// in system UI, so it dials at once when the Android phone is linked (waiting a few seconds for the link
     /// after a cold launch), and asks otherwise.
     func continueActivity(_ activity: NSUserActivity) {
-        let intent = activity.interaction?.intent
-        let handle = (intent as? INStartCallIntent)?.contacts?.first?.personHandle?.value
-            ?? (intent as? INStartAudioCallIntent)?.contacts?.first?.personHandle?.value
-        guard let h = handle, let n = DialLink.dialable(h) else { return }
+        guard let n = Router.number(from: activity.interaction?.intent) else { return }
         callNow(n)
     }
+
+    /// The number of a call intent from system UI (the first contact's handle), if it is dialable.
+    nonisolated static func number(from intent: INIntent?) -> String? {
+        let handle = (intent as? INStartCallIntent)?.contacts?.first?.personHandle?.value
+            ?? (intent as? INStartAudioCallIntent)?.contacts?.first?.personHandle?.value
+        return handle.flatMap(DialLink.dialable)
+    }
+
+    /// Half-second checks for the link before `callNow` asks instead (shortened by the unit tests).
+    @PerceptionIgnored var linkWaitTries = 16
 
     /// Dials at once if the link comes up within a few seconds, else asks.
     func callNow(_ number: String) {
         Task { @MainActor in
             let m = AppModel.shared
-            for _ in 0..<16 where !m.linkState.isConnected { try? await Task.sleep(for: .milliseconds(500)) }
+            for _ in 0..<linkWaitTries where !m.linkState.isConnected { try? await Task.sleep(for: .milliseconds(500)) }
             if m.linkState.isConnected && m.callScreen == nil { m.dial(number, sub: nil) } else { ask(number) }
         }
     }
@@ -102,24 +109,29 @@ struct TetherApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(\.appModel, AppModel.shared)
-                .environment(\.router, Router.shared)
-                .onOpenURL { Router.shared.open(url: $0) }
-                .onContinueUserActivity("INStartCallIntent") { Router.shared.continueActivity($0) }
-                .onContinueUserActivity("INStartAudioCallIntent") { Router.shared.continueActivity($0) }
-                .onChangeCompat(of: phase) { p in
-                    AppModel.shared.appActive = p == .active
-                    if p == .active {
-                        let m = AppModel.shared
-                        m.requestSync()
-                        // Coming back to the app during a call opens the call screen, like the Phone app.
-                        if let c = m.callScreen, c.state != "ended", c.state != "ringing" {
-                            m.callScreenDismissed = false
-                            m.showCallScreen = true
-                        }
+            // As the unit tests' host the app shows nothing: the tests drive the model, not the screens.
+            if AppModel.runningTests { Color.clear } else { content }
+        }
+    }
+
+    private var content: some View {
+        RootView()
+            .environment(\.appModel, AppModel.shared)
+            .environment(\.router, Router.shared)
+            .onOpenURL { Router.shared.open(url: $0) }
+            .onContinueUserActivity("INStartCallIntent") { Router.shared.continueActivity($0) }
+            .onContinueUserActivity("INStartAudioCallIntent") { Router.shared.continueActivity($0) }
+            .onChangeCompat(of: phase) { p in
+                AppModel.shared.appActive = p == .active
+                if p == .active {
+                    let m = AppModel.shared
+                    m.requestSync()
+                    // Coming back to the app during a call opens the call screen, like the Phone app.
+                    if let c = m.callScreen, c.state != "ended", c.state != "ringing" {
+                        m.callScreenDismissed = false
+                        m.showCallScreen = true
                     }
                 }
-        }
+            }
     }
 }
