@@ -42,7 +42,7 @@ public enum MsgType {
     public static let callAnswer = "call.answer", callReject = "call.reject", callEnd = "call.end"
     public static let callHold = "call.hold", callMute = "call.mute", callDtmf = "call.dtmf"
     public static let callDial = "call.dial", callDialed = "call.dialed", callTake = "call.take"
-    public static let audioStart = "audio.start", audioStop = "audio.stop"
+    public static let audioStart = "audio.start", audioStop = "audio.stop", audioStats = "audio.stats"
     public static let selftest = "selftest", selftestResult = "selftest.result"
     public static let netGet = "net.get", netSet = "net.set", netState = "net.state"
     public static let smsDelete = "sms.delete", smsDeleted = "sms.deleted", callsDelete = "calls.delete", callsDeleted = "calls.deleted"
@@ -301,6 +301,12 @@ public struct AudioStart: Codable, Equatable, Sendable {
     public init(codec: String, rate: Int, ms: Int, up: Bool, bitrate: Int? = nil) {
         self.codec = codec; self.rate = rate; self.ms = ms; self.up = up; self.bitrate = bitrate
     }
+}
+
+/// The Android phone's half of a call's audio statistics, sent after `audio.stop` (shown in the Link log).
+public struct AudioStats: Codable, Equatable, Sendable {
+    public var summary: String
+    public init(summary: String) { self.summary = summary }
 }
 
 /// Network switches on the Android phone (Link tab). `err` is set when the phone could not do it.

@@ -658,6 +658,8 @@ final class AppModel {
                 audio.configure(try Control.body(AudioStart.self, from: payload))
             case MsgType.audioStop:
                 audio.remoteStopped()
+            case MsgType.audioStats:
+                LinkJournal.shared.add("Android phone call audio: " + (try Control.body(AudioStats.self, from: payload)).summary)
             case MsgType.netState:
                 let st = try Control.body(NetState.self, from: payload)
                 // An error reply carries no switch values: keep the last known ones.

@@ -51,7 +51,8 @@ Neither side drops an idle session: a suspended iPhone may be silent for a long
 time. Liveness comes from the BLE supervision timeout and L2CAP EOF; the
 peripheral pings once a minute and gives up only after 15 minutes of silence. The iPhone pings every 25 s
 while it runs (the round trip is shown in its call statistics); while it is suspended its timers do not run.
-During calls the peripheral asks for high connection priority and the 2M PHY.
+During calls the peripheral asks for high connection priority and the 2M PHY (the state hook shows the PHY and the
+connection parameters each link really got).
 
 ## 2. Records
 
@@ -182,6 +183,7 @@ stored on the Android phone.
 | `call.take` | C→P | `{cid}`: move the call's audio to this client (see §5.1) |
 | `audio.start` | P→C | `{codec: "opus"\|"pcmu", rate, ms, up, bitrate?}` (`bitrate`: what the Android phone encodes at; the client uses it for the uplink) |
 | `audio.stop` | P→C | `{}` |
+| `audio.stats` | P→C | `{summary, helper?}`: the Android phone's half of a call's audio statistics, sent ~0.5 s after `audio.stop` to the client that had the audio (`summary`: one line for its log; `helper`: the shell helper's figures). Optional, informational |
 | `selftest` | C→P | `{}` → `selftest.result` `{methods:[{name, ok, note}], chosen?}` |
 | `sms.read` | both | `{thread, upTo}`: read on a client; the Android phone marks it read and forwards it to the other clients |
 | `sms.unread` | P→C | `{ids:[id], all}`: the Android phone's unread incoming texts, after every sync and within ~2 s of a read-state change there; everything else is read (`all` false: list capped at 3000, only ids ≥ its smallest are known) |

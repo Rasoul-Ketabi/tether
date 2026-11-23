@@ -196,7 +196,7 @@ class LinkService : Service() {
         .put("transport", app.hub.conn?.transport?.label).put("helper", app.hub.helper.state())
         .put("clients", org.json.JSONArray(app.hub.targets().map { c -> JSONObject().put("name", c.name).put("kind", c.kind)
             .put("transport", c.transport.label).put("audio", c === app.hub.audio.target)
-            .put("link", ble?.linkParams?.get(c.transport.address)) }))
+            .put("link", ble?.linkParams?.get(c.transport.address)).put("phy", ble?.linkPhy?.get(c.transport.address)) }))
         .put("paired", org.json.JSONArray(app.keys.centrals().map { it.name }))
 
     companion object {

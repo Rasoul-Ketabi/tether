@@ -170,6 +170,12 @@ private func hex(_ v: Any?) -> Data { Data(hex: v as! String)! }
         #expect(c.cid == "c1" && c.state == "ringing" && c.name == nil)
     }
 
+    @Test func audioStatsFromAndroid() throws {
+        let json = #"{"t":"audio.stats","b":{"summary":"down 250 frames","helper":{"captureDroppedMs":72}}}"#
+        #expect(try Control.header(Data(json.utf8)).t == MsgType.audioStats)
+        #expect(try Control.body(AudioStats.self, from: Data(json.utf8)).summary == "down 250 frames")
+    }
+
     @Test func audioFrame() {
         let f = AudioFrame(codec: .opus, seq: 65535, payload: Data([1, 2, 3]))
         #expect(AudioFrame.parse(f.encoded()) == f)

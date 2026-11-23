@@ -352,6 +352,7 @@ class DebugReceiver : BroadcastReceiver() {
             if (a.echoCount > 0) log.append("Android phone round trip (encode→link→decode→inject queue) avg %.1f ms over %d frames; ".format(a.echoNanos / a.echoCount / 1e6, a.echoCount))
             if (a.upLost > 0) log.append("uplink concealed ${a.upLost} frames; ")
             Thread.sleep(400) // helper stats arrive with its stop
+            log.append("timing: ${a.lastTiming}; ")
             log.append("helper=${app.hub.helper.lastInfo} stats=${app.hub.helper.lastStats}")
         } finally {
             TestConnectionService.endCurrent()

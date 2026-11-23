@@ -7,6 +7,7 @@ import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.audio.HelperBridge
 import app.tether.audio.OpusCodec
+import app.tether.audio.Spacing
 import app.tether.audio.PcmuCodec
 import app.tether.audio.VoiceCodec
 import app.tether.core.AudioFrame
@@ -741,7 +742,45 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         private val sentAt = LongArray(1024)
         @Volatile var echoNanos = 0L; private set
         @Volatile var echoCount = 0; private set
-        fun resetStats() { downFrames = 0; encodeNanos = 0; upFrames = 0; decodeNanos = 0; echoNanos = 0; echoCount = 0; upLost = 0 }
+        /** Frame spacing as the helper delivers the downlink and as the uplink arrives from the client. */
+        val downSpacing = Spacing()
+        val upSpacing = Spacing()
+        fun resetStats() {
+            downFrames = 0; encodeNanos = 0; upFrames = 0; decodeNanos = 0; echoNanos = 0; echoCount = 0; upLost = 0
+            downSpacing.reset(); upSpacing.reset(); target?.audioDelay?.reset()
+        }
+
+        /** [timingSummary] of the last call (debug hooks). */
+        @Volatile var lastTiming = ""; private set
+
+        /** The Android phone's half of the call statistics (sent to the client as `audio.stats`, kept in the link log). */
+        fun timingSummary(c: Connection? = target): String {
+            val d = c?.audioDelay
+            val link = c?.let { cc -> LinkService.running?.peripheral?.let { p ->
+                listOfNotNull(p.linkParams[cc.transport.address], p.linkPhy[cc.transport.address]?.let { "PHY $it" }).joinToString(", ").ifEmpty { null } } }
+            return "down %d frames, encode %.2f ms, from helper jitter %.1f ms worst %.0f ms (%d long gaps); ".format(
+                downFrames, if (downFrames > 0) encodeNanos / downFrames / 1e6 else 0.0, downSpacing.jitterMs, downSpacing.worstMs, downSpacing.longGaps) +
+                (d?.let { "link queue %.1f ms avg %.0f ms max, %d late, %d overflow; ".format(it.avgMs, it.maxMs, it.late, it.overflow) } ?: "") +
+                "up %d frames, arrival jitter %.1f ms worst %.0f ms (%d long gaps), concealed %d".format(
+                    upFrames, upSpacing.jitterMs, upSpacing.worstMs, upSpacing.longGaps, upLost) +
+                (link?.let { "; $it" } ?: "")
+        }
+
+        /** After the helper's own figures for the call came in (they follow its stop), tell the client and log both. */
+        private fun reportStats(c: Connection?, summary: String, before: JSONObject?) {
+            Thread({
+                repeat(20) { if (helper.lastStats !== before) return@repeat; Thread.sleep(50) }
+                val h = helper.lastStats?.takeIf { it !== before }
+                val text = summary + (h?.let { "; helper " + helperSummary(it) } ?: "")
+                LinkLog.add("call audio: $text")
+                if (c != null && c.isUp && c.transport.label != "memory")
+                    c.sendUrgent(Message(T.AUDIO_STATS, JSONObject().put("summary", text).apply { h?.let { put("helper", it) } }))
+            }, "audio-stats").apply { isDaemon = true }.start()
+        }
+
+        private fun helperSummary(h: JSONObject) = "capture backlog %d/%d ms, trimmed %d ms, inject queue %d/%d ms, uplink dropped %d trimmed %d".format(
+            h.optInt("captureBacklogMs"), h.optInt("captureBacklogMaxMs"), h.optInt("captureDroppedMs"),
+            h.optInt("injectQueuedMs"), h.optInt("injectQueuedMaxMs"), h.optInt("uplinkDroppedFrames"), h.optInt("uplinkTrimmedFrames"))
 
         /** A client reconnected (new link replacing its old one): the call audio follows it. */
         fun handOver(old: Connection, new: Connection) {
@@ -840,11 +879,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             running = true
             uplinkMuted = false
             startedAt = SystemClock.elapsedRealtime()
+            resetStats()
             helper.onDown = { pcm ->
                 val cc = target
                 val kk = codec
                 if (cc != null && kk != null && running) {
                     val t0 = System.nanoTime()
+                    downSpacing.mark(t0)
                     val frames = kk.encode(pcm)
                     encodeNanos += System.nanoTime() - t0
                     downFrames++
@@ -900,8 +941,11 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             if (!running) return
             running = false
             helper.onDown = null
+            val statsBefore = helper.lastStats
             helper.stop()
             val t = target
+            lastTiming = timingSummary(t)
+            reportStats(t, lastTiming, statsBefore)
             if (sendStop) t?.sendUrgent(Message(T.AUDIO_STOP))
             codec?.release()
             codec = null
@@ -953,6 +997,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }
             backwards = 0
             lastUpSeq = f.seq
+            upSpacing.mark(t0)
             if (gap in 2..3) repeat(gap - 1) { k.conceal()?.let { helper.up(if (uplinkMuted) ShortArray(it.size) else it) }; upLost++ }
             val pcm = k.decode(f.payload) ?: return
             val t1 = System.nanoTime()
