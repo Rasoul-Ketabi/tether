@@ -79,7 +79,7 @@ final class CallController: NSObject {
         // The speaker button follows the real route (CallKit's own speaker button, AirPods, a cable…).
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
             let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
-            MainActor.assumeIsolated { self?.routeChanged(reason: reason) }
+            MainActor.assumeIsolatedCompat { self?.routeChanged(reason: reason) }
         }
     }
 

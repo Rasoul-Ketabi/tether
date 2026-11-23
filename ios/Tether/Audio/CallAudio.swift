@@ -372,7 +372,7 @@ final class CallAudio: @unchecked Sendable {
         LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms, concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
                                       rtt, snapshot.playoutMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, snapshot.ioBufferMs, snapshot.outputLatencyMs))
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.lastAudioStats = snapshot } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
 
     private func receive(_ f: AudioFrame) {

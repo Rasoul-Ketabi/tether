@@ -1,13 +1,16 @@
 import AVFoundation
+import Perception
 import SwiftUI
 import TetherCore
 
 struct LinkView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @State private var scanning = false
     @State private var confirmUnpair = false
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         NavigationStack {
             ScrollViewReader { scroller in
             List {
@@ -169,14 +172,14 @@ struct LinkView: View {
             }
             .navigationTitle("Link")
             .onAppear { model.refreshNet() }
-            .onChange(of: model.linkState.isConnected) { _, up in if up { model.refreshNet() } }
+            .onChangeCompat(of: model.linkState.isConnected) { up in if up { model.refreshNet() } }
             // Full screen: nothing of the Link tab shows around or behind the camera.
             .fullScreenCover(isPresented: $scanning) {
                 PairingView { code in
                     scanning = false
                     if let code { model.pair(code) }
                 }
-                .environment(AppModel.shared)
+                .environment(\.appModel, AppModel.shared)
             }
             .confirmationDialog("Forget the Android phone and delete synced data from this iPhone?", isPresented: $confirmUnpair,
                                 titleVisibility: .visible) {
@@ -199,9 +202,11 @@ struct LinkView: View {
 
 /// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
 struct VPNSection: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         Section {
             LabeledContent {
                 Text(model.net?.vpn == true ? String(localized: "On") : model.net?.vpn == false ? String(localized: "Off") : "–")
@@ -224,10 +229,12 @@ struct VPNSection: View {
 
 /// One-time steps: iOS lets no app set the system proxy, but the hotspot network can use the phone's PAC file.
 struct IPhoneProxySetup: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let proxy: ShareProxyInfo?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         DisclosureGroup {
             if let a = proxy?.addrs.first(where: { $0.kind == "hotspot" }) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -290,7 +297,7 @@ struct LinkLogView: View {
         }
         .navigationTitle("Link log")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: text) }
+            ToolbarItem(placement: .navigationBarTrailing) { ShareLink(item: text) }
         }
         .refreshable { text = LinkJournal.shared.text }
     }
@@ -298,9 +305,11 @@ struct LinkLogView: View {
 
 /// Blocked numbers (the Android phone's list), with swipe to unblock, as in Settings › Phone › Blocked Contacts.
 struct BlockedListView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         List {
             Section {
                 ForEach(model.blockLists.blocked, id: \.self) { n in
@@ -326,7 +335,7 @@ struct BlockedListView: View {
             }
         }
         .overlay {
-            if model.blockLists.blocked.isEmpty { ContentUnavailableView("No Blocked Contacts", systemImage: "hand.raised") }
+            if model.blockLists.blocked.isEmpty { EmptyStateView("No Blocked Contacts", systemImage: "hand.raised") }
         }
         .navigationTitle("Blocked Contacts")
     }
@@ -334,13 +343,15 @@ struct BlockedListView: View {
 
 /// Calling numbers from other apps (tel: links, Shortcuts, the Phone app's Recents); docs/USAGE.md.
 struct PhoneLinksSection: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     @AppStorage(CallController.phoneRecentsKey) private var inPhoneRecents = false
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         Section {
             Toggle(isOn: $inPhoneRecents) { Label("Show calls in the Phone app", systemImage: "clock.arrow.circlepath") }
-                .onChange(of: inPhoneRecents) { _, _ in model.calls.applyRecentsSetting() }
+                .onChangeCompat(of: inPhoneRecents) { _ in model.calls.applyRecentsSetting() }
         } header: {
             Text("Numbers in other apps")
         } footer: {
@@ -372,13 +383,15 @@ struct SigningSection: View {
 
 /// One switch in the Internet section: shows the phone's state, greys out while a change is in flight.
 struct NetToggle: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     let title: LocalizedStringKey
     let icon: String
     let what: String
     let value: Bool?
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         Toggle(isOn: Binding(get: { value ?? false }, set: { model.setNet(what, on: $0) })) {
             Label {
                 HStack(spacing: 8) {

@@ -12,6 +12,7 @@
 		57085CB17AE572C13A7581F0 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */; };
 		59E68ACF2F32F076A914B45E /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E080E7A804FAA834C5B422C /* Notifications.swift */; };
 		603FD7C492722E6BCC58DF92 /* TetherApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59E78B07440A9F776F7720DC /* TetherApp.swift */; };
+		8DC705297C3FC4B035C0F1FC /* Compat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FEECE0003BC61F76A0EAD2 /* Compat.swift */; };
 		9A394F51878AC0F2FC796A3D /* LinkViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B780AAA1432D833E27C1DAB /* LinkViews.swift */; };
 		A6CC9975EFEB03431DC3A4AD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B65CC0FCBA237E0DB09A99 /* AppModel.swift */; };
 		BACD7C8A46DAF4950934C08E /* MessagesViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E269068C8032C7E6B2F2BA /* MessagesViews.swift */; };
@@ -22,6 +23,7 @@
 		C8336A6FBBB7A8F6D9A61D16 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD9B3C59F18C986266338486 /* Assets.xcassets */; };
 		C88E157636357DF6C84662CB /* CallIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */; };
 		D72AB016847427FC1CDBCA98 /* PhoneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8299BCD38C963DC339407E1 /* PhoneViews.swift */; };
+		DD4F064FFAF7B5A78E852ECD /* Perception in Frameworks */ = {isa = PBXBuildFile; productRef = B5D85145A58297617EC1837B /* Perception */; };
 		E6A8FCAC1B885D30583D39F2 /* RichText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037EF8B195543E690E67E6E9 /* RichText.swift */; };
 		E93D3DA259746DD05104C371 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4C01CCD9ED68CA7601027F9B /* Localizable.strings */; };
 		E94D17DD6D42BF34C5B5A9AC /* Signing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888EDF1A791F4ABFC8A4EE65 /* Signing.swift */; };
@@ -53,6 +55,7 @@
 		8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = fa.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntents.swift; sourceTree = "<group>"; };
 		AD9B3C59F18C986266338486 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C0FEECE0003BC61F76A0EAD2 /* Compat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Compat.swift; sourceTree = "<group>"; };
 		D07D9884FDEFAA158C1A7DF1 /* Tether.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tether.entitlements; sourceTree = "<group>"; };
 		D8299BCD38C963DC339407E1 /* PhoneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -63,6 +66,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				187B1AB6C8C6133973A2AA03 /* TetherCore in Frameworks */,
+				DD4F064FFAF7B5A78E852ECD /* Perception in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -162,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				27B65CC0FCBA237E0DB09A99 /* AppModel.swift */,
+				C0FEECE0003BC61F76A0EAD2 /* Compat.swift */,
 				4A920AE3BA9401C358FAC0F3 /* Stores.swift */,
 			);
 			path = Model;
@@ -197,6 +202,7 @@
 			name = Tether;
 			packageProductDependencies = (
 				5B13539DC145074D842B8CFA /* TetherCore */,
+				B5D85145A58297617EC1837B /* Perception */,
 			);
 			productName = Tether;
 			productReference = 2F2CA052180B01BD2A5B6260 /* Tether.app */;
@@ -228,6 +234,7 @@
 			mainGroup = 2D89F588FC699EDD6E33403A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A479FD9A112E65EE9A18EAC7 /* XCRemoteSwiftPackageReference "swift-perception" */,
 				322B1E2488833FCA241BA106 /* XCLocalSwiftPackageReference "TetherCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -262,6 +269,7 @@
 				C576804291F0EE67B09C8D12 /* CallAudio.swift in Sources */,
 				F5C87C5424AE219E0C83D698 /* CallController.swift in Sources */,
 				C88E157636357DF6C84662CB /* CallIntents.swift in Sources */,
+				8DC705297C3FC4B035C0F1FC /* Compat.swift in Sources */,
 				C22F6862E55A15AB8541D008 /* ContactsViews.swift in Sources */,
 				BF683EE7C0251D5E5FFFDA52 /* DemoData.swift in Sources */,
 				FAE810BB4A344D52557B9E5D /* InCallView.swift in Sources */,
@@ -389,7 +397,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -449,7 +457,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -491,10 +499,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		A479FD9A112E65EE9A18EAC7 /* XCRemoteSwiftPackageReference "swift-perception" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-perception";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.9;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		5B13539DC145074D842B8CFA /* TetherCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TetherCore;
+		};
+		B5D85145A58297617EC1837B /* Perception */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A479FD9A112E65EE9A18EAC7 /* XCRemoteSwiftPackageReference "swift-perception" */;
+			productName = Perception;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

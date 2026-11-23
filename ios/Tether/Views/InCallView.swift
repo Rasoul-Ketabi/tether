@@ -1,3 +1,4 @@
+import Perception
 import SwiftUI
 import TetherCore
 
@@ -5,7 +6,7 @@ import TetherCore
 /// round controls, the red end button centred below. Actions go through CallKit so the system
 /// call state (lock screen, Dynamic Island, AirPods buttons) stays in sync.
 struct InCallView: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
     #if DEBUG
     @State private var keypad = ProcessInfo.processInfo.arguments.contains("-TetherDemoKeypad")
     #else
@@ -13,7 +14,9 @@ struct InCallView: View {
     #endif
     @State private var typed = ""
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         if let call = model.callScreen {
             ZStack {
                 background(call)
@@ -38,7 +41,7 @@ struct InCallView: View {
             .foregroundStyle(.white)
             .preferredColorScheme(.dark)
             .animation(.easeInOut(duration: 0.2), value: keypad)
-            .onChange(of: call.uuid) { _, _ in keypad = false; typed = "" }
+            .onChangeCompat(of: call.uuid) { _ in keypad = false; typed = "" }
         }
     }
 
@@ -314,9 +317,11 @@ struct KeypadPad: View {
 
 /// Green strip on top of the app while a call runs with the call screen hidden.
 struct ReturnToCallBanner: View {
-    @Environment(AppModel.self) private var model
+    @Environment(\.appModel) private var model
 
-    var body: some View {
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
         if let call = model.callScreen, !model.showCallScreen, call.state != "ended" {
             Button {
                 model.callScreenDismissed = false

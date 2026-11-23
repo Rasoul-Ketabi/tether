@@ -1,6 +1,6 @@
 import Intents
 import UserNotifications
-import Observation
+import Perception
 import SwiftUI
 import TetherCore
 import UIKit
@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// The app is being terminated while it still ran (swiped away from the foreground or a running background):
     /// calls stop reaching this iPhone until it is opened again, so say so.
     func applicationWillTerminate(_ application: UIApplication) {
-        MainActor.assumeIsolated {
+        MainActor.assumeIsolatedCompat {
             guard AppModel.shared.link.isPaired else { return }
             let c = UNMutableNotificationContent()
             c.title = String(localized: "Calls paused")
@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Create the model (and with it the CBCentralManager) right away: when iOS relaunches us in the
         // background for a Bluetooth event, state restoration needs the manager during launch.
         Notifications.shared.setUp()
-        MainActor.assumeIsolated {
+        MainActor.assumeIsolatedCompat {
             _ = AppModel.shared.calls // CXProvider must exist before a call can be reported
         }
         return true
@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 /// Simple navigation requests (e.g. tapping an SMS notification).
-@MainActor @Observable
+@MainActor @Perceptible
 final class Router {
     static let shared = Router()
     var tab: Tab = .messages
@@ -103,23 +103,23 @@ struct TetherApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environment(AppModel.shared)
-                .environment(Router.shared)
+                .environment(\.appModel, AppModel.shared)
+                .environment(\.router, Router.shared)
                 .onOpenURL { Router.shared.open(url: $0) }
                 .onContinueUserActivity("INStartCallIntent") { Router.shared.continueActivity($0) }
                 .onContinueUserActivity("INStartAudioCallIntent") { Router.shared.continueActivity($0) }
-        }
-        .onChange(of: phase) { _, p in
-            AppModel.shared.appActive = p == .active
-            if p == .active {
-                let m = AppModel.shared
-                m.requestSync()
-                // Coming back to the app during a call opens the call screen, like the Phone app.
-                if let c = m.callScreen, c.state != "ended", c.state != "ringing" {
-                    m.callScreenDismissed = false
-                    m.showCallScreen = true
+                .onChangeCompat(of: phase) { p in
+                    AppModel.shared.appActive = p == .active
+                    if p == .active {
+                        let m = AppModel.shared
+                        m.requestSync()
+                        // Coming back to the app during a call opens the call screen, like the Phone app.
+                        if let c = m.callScreen, c.state != "ended", c.state != "ringing" {
+                            m.callScreenDismissed = false
+                            m.showCallScreen = true
+                        }
+                    }
                 }
-            }
         }
     }
 }

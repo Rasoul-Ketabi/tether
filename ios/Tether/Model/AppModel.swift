@@ -1,5 +1,5 @@
 import Foundation
-import Observation
+import Perception
 import TetherCore
 
 struct Conversation: Identifiable, Hashable {
@@ -25,7 +25,7 @@ enum Platform {
 }
 
 /// The app's state and the glue between the BLE link, CallKit, audio and the UI.
-@MainActor @Observable
+@MainActor @Perceptible
 final class AppModel {
     static let shared = AppModel()
 
@@ -42,10 +42,10 @@ final class AppModel {
         return false
         #endif
     }()
-    @ObservationIgnored let link: TetherLink
-    @ObservationIgnored private let store = SnapshotStore()
-    @ObservationIgnored lazy var calls = CallController(model: self)
-    @ObservationIgnored lazy var audio = CallAudio(model: self, link: link)
+    @PerceptionIgnored let link: TetherLink
+    @PerceptionIgnored private let store = SnapshotStore()
+    @PerceptionIgnored lazy var calls = CallController(model: self)
+    @PerceptionIgnored lazy var audio = CallAudio(model: self, link: link)
 
     private(set) var linkState: TetherLink.State = .unpaired
     private(set) var data: Snapshot
@@ -53,7 +53,7 @@ final class AppModel {
     var lastError: String?
     /// Short confirmation ("Copied") shown for a moment at the bottom.
     var notice: String?
-    @ObservationIgnored private var noticeTask: Task<Void, Never>?
+    @PerceptionIgnored private var noticeTask: Task<Void, Never>?
     func flash(_ text: String) {
         notice = text
         noticeTask?.cancel()
@@ -65,7 +65,7 @@ final class AppModel {
     var lastSync: Date?
     var selftest: SelftestResult?
     /// Conversations read while the link was down: thread → newest id read, sent on reconnect.
-    @ObservationIgnored private var pendingRead: [Int64: Int64] = [:]
+    @PerceptionIgnored private var pendingRead: [Int64: Int64] = [:]
     /// Mobile data / hotspot / Bluetooth tethering on the Android phone; nil until first asked.
     var net: NetState?
     /// The switch that was just flipped and has not been confirmed yet ("data", "hotspot", "bt").
@@ -76,7 +76,7 @@ final class AppModel {
     var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
     #if DEBUG
     /// Calls the -TetherAutoHangup debug option already scheduled to end.
-    @ObservationIgnored var autoHangupArmed = Set<String>()
+    @PerceptionIgnored var autoHangupArmed = Set<String>()
     #endif
     var activeCalls: [String: CallInfo] = [:]
     /// The in-app call screen (CallKit shows system UI only for incoming calls).
@@ -314,7 +314,7 @@ final class AppModel {
     }
 
     /// True while an incremental sync runs: new incoming texts in it were missed while out of reach.
-    @ObservationIgnored private var incrementalSync = false
+    @PerceptionIgnored private var incrementalSync = false
 
     func requestSync(full: Bool = false) {
         guard linkState.isConnected else { return }
@@ -644,10 +644,10 @@ final class AppModel {
         }
     }
 
-    @ObservationIgnored private var contactsPageStart = true
+    @PerceptionIgnored private var contactsPageStart = true
     /// sync.ids pages collected until the last one (ranges stay sorted: pages come in order).
-    @ObservationIgnored private var pendingIds = SyncIds(sms: [], calls: [])
-    @ObservationIgnored private var incomingContacts: [Contact] = []
+    @PerceptionIgnored private var pendingIds = SyncIds(sms: [], calls: [])
+    @PerceptionIgnored private var incomingContacts: [Contact] = []
 
     private func updateCall(_ c: CallInfo) {
         if c.isEnded { activeCalls[c.cid] = nil } else { activeCalls[c.cid] = c }
@@ -664,7 +664,7 @@ final class AppModel {
     var callScreenDismissed = false
 
     /// id → position in `data.sms`, so a sync page is merged in O(page) rather than O(all messages).
-    @ObservationIgnored private var smsIndex: [Int64: Int] = [:]
+    @PerceptionIgnored private var smsIndex: [Int64: Int] = [:]
 
     private func merge(sms: [Sms], notify: Bool) {
         guard !sms.isEmpty else { return }
@@ -711,11 +711,11 @@ final class LinkBridge: TetherLinkDelegate {
 
     // DispatchQueue.main keeps events in order ("ringing" before "ended"); separate Tasks do not promise that.
     func link(_ link: TetherLink, didChange state: TetherLink.State) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.linkChanged(state) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.linkChanged(state) } }
     }
 
     func link(_ link: TetherLink, didReceive header: MessageHeader, data: Data) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.received(header, data) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.received(header, data) } }
     }
 
     func link(_ link: TetherLink, didReceiveAudio frame: AudioFrame) {
@@ -724,6 +724,6 @@ final class LinkBridge: TetherLinkDelegate {
     }
 
     func link(_ link: TetherLink, didFail reason: String) {
-        DispatchQueue.main.async { MainActor.assumeIsolated { AppModel.shared.linkFailed(reason) } }
+        DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.linkFailed(reason) } }
     }
 }

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "TetherCore",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS(.v16), .macOS(.v14)],
     products: [
         .library(name: "TetherCore", targets: ["TetherCore"]),
         .executable(name: "tether-vectors", targets: ["tether-vectors"]),
