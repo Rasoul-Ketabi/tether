@@ -48,6 +48,9 @@ public final class TetherLink: NSObject {
     private var peripheral: CBPeripheral?
     private var pairing: PairingCode?
     private var channel: CBL2CAPChannel?
+    /// Secondary LAN lane bound to this BLE session. BLE still owns Wake and CallKit events.
+    private var wifi: HybridWifiClient?
+    public var wifiActive: Bool { wifi?.isReady == true }
     private var rxChar: CBCharacteristic?
     private var txChar: CBCharacteristic?
     private var transport = "none"
@@ -124,7 +127,10 @@ public final class TetherLink: NSObject {
 
     public func sendAudio(_ frame: AudioFrame) {
         queue.async {
-            guard self.state.isConnected, let session = self.session else { return }
+            guard self.state.isConnected else { return }
+            // Prefer the authenticated LAN lane; the existing BLE audio path is the fallback.
+            if self.wifi?.sendAudio(frame.encoded()) == true { return }
+            guard let session = self.session else { return }
             // Drop-late: if the transport is backed up by more than ~100 ms of audio, skip this frame.
             if self.outBuffer.count > 4096 || self.audioBacklog > 5 { return }
             guard let r = try? session.seal(channel: Proto.channelAudio, frame.encoded()) else { return }
@@ -177,7 +183,14 @@ public final class TetherLink: NSObject {
     /// The app came to the foreground. Without a session, start over: a pending connect iOS has not completed (for
     /// example issued while the Android phone held its own LE link) is cancelled and issued again, with a scan, and
     /// the back-off from earlier failures is forgotten: opening the app must link within seconds.
-    public func appBecameActive() { connectAfresh("app active without a session: connecting afresh") }
+    public func appBecameActive() {
+        queue.async {
+            if self.state.isConnected && self.wifi?.isReady != true {
+                self.sendNow("wifi.probe", Empty())
+            }
+        }
+        connectAfresh("app active without a session: connecting afresh")
+    }
 
     private func connectAfresh(_ why: String) {
         queue.async {
@@ -227,6 +240,8 @@ public final class TetherLink: NSObject {
 
     /// Ends the session (channel, keys, buffers, timers) but not the Bluetooth connection.
     private func resetSession(reason: String) {
+        wifi?.stop()
+        wifi = nil
         // Link statistics: every session's transport, length and end reason (Link › Link log).
         if let since = sessionSince {
             log("session over \(transport) ended after \(Int(Date().timeIntervalSince(since))) s: \(reason)")
@@ -447,6 +462,34 @@ public final class TetherLink: NSObject {
         switch ch {
         case Proto.channelControl:
             let h = try Control.header(payload)
+            if h.t == "wifi.offer" {
+                if let offer = try? Control.body(HybridWifiOffer.self, from: payload),
+                   let next = HybridWifiClient(offer: offer, queue: queue) {
+                    wifi?.stop()
+                    wifi = next
+                    next.onControl = { [weak self] data in
+                        guard let self, self.state.isConnected,
+                              let header = try? Control.header(data) else { return }
+                        self.delegate?.link(self, didReceive: header, data: data)
+                    }
+                    next.onAudio = { [weak self] data in
+                        guard let self, self.state.isConnected,
+                              let frame = AudioFrame.parse(data) else { return }
+                        self.delegate?.link(self, didReceiveAudio: frame)
+                    }
+                    next.onState = { [weak self] ready in
+                        guard let self else { return }
+                        self.log(ready ? "hybrid Wi-Fi fast lane connected" : "hybrid Wi-Fi fast lane disconnected (BLE fallback)")
+                        if ready {
+                            // Let the model issue a fresh incremental sync through the BLE control link:
+                            // its bulk response can now take Wi-Fi without affecting the call notifications.
+                            self.delegate?.link(self, didReceive: MessageHeader(t: "wifi.ready"), data: Data())
+                        }
+                    }
+                    next.start()
+                }
+                return
+            }
             if h.t == MsgType.ping {
                 if let b = try? Control.body(PingBody.self, from: payload) { sendNow(MsgType.pong, b, re: h.id) }
             } else if h.t == MsgType.pong, let b = try? Control.body(PingBody.self, from: payload) {
@@ -472,6 +515,7 @@ public final class TetherLink: NSObject {
             guard let self else { return }
             if let p = self.partialSince, Date().timeIntervalSince(p) > 10 { self.failAndRetry("stream stalled mid-record"); return }
             self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000)))
+            if self.wifi?.isReady != true { self.sendNow("wifi.probe", Empty()) }
         }
         t.resume()
         keepalive = t
