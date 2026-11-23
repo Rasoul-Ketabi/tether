@@ -411,6 +411,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     // ------------------------------------------------------------------ sync
 
     private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String, clientWifiReady: Boolean) {
+        // A reconnection/recovery can request a full sync before an earlier one
+        // finished. Serialize snapshots per client to preserve paging and
+        // to prevent two requests from racing over the bulkSync preference.
+        synchronized(c.syncLock) {
         // Choose the lane once for this sync. Live SMS and urgent call events
         // always remain on BLE for background wake and predictable ordering.
         c.bulkSync = clientWifiReady && c.wifi?.isReady == true
@@ -454,6 +458,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         Log.i(TAG, "sync: ${sms.size} sms, ${calls.size} calls, contacts ${if (version != contactsVersion) "sent" else "unchanged"} " +
             "in ${SystemClock.elapsedRealtime() - t0} ms")
         } finally { c.bulkSync = false }
+        }
     }
 
     private var lastCallId = -1L
