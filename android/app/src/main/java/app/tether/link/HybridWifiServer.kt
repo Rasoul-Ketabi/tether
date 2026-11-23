@@ -186,7 +186,14 @@ internal class HybridWifiServer(private val onAudio: (ByteArray) -> Unit) {
         if (!isReady || closed || payload.size > 60_000) return false
         // A pressure spike must not let seconds of stale Wi-Fi voice accumulate.
         if (channel == Proto.CH_AUDIO && outbound.size > 32) return false
-        return outbound.offer(Pending(channel, payload, SystemClock.elapsedRealtime()))
+        val accepted = outbound.offer(Pending(channel, payload, SystemClock.elapsedRealtime()))
+        if (!accepted && channel == Proto.CH_CONTROL) {
+            // A split sync across Wi-Fi and BLE can reorder pages. Close the fast
+            // lane so iOS deliberately re-syncs from scratch over BLE instead.
+            isReady = false
+            runCatching { client?.close() }
+        }
+        return accepted
     }
 
     private fun shutdownSockets() {
