@@ -244,7 +244,7 @@ class DebugReceiver : BroadcastReceiver() {
                 counts[m.t] = (counts[m.t] ?: 0) + 1
                 m.b.optJSONArray("items")?.let { items[m.t] = (items[m.t] ?: 0) + it.length() }
                 if (m.re != null) log.append("${m.t}(re=${m.re}) ${m.b}; ")
-                if (m.re != null) seen.add(m.re)
+                m.re?.let { seen.add(it) }
                 if (seen.containsAll(listOf(2, 3, 4, 5))) break
             }
             log.append("received=$counts items=$items")

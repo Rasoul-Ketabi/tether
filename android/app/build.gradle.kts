@@ -58,7 +58,7 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation(project(":helper"))
-    implementation("io.github.jaredmdobson:concentus:1.0.2") // pure-Java libopus port: synchronous, full encoder control
+    implementation(project(":core")) // protocol and codecs, shared with the Android client
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
