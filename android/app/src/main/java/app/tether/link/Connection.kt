@@ -38,6 +38,8 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
     @Volatile var lastRx = SystemClock.elapsedRealtime(); private set
+    /** When the hub last woke this client for being silent (see LinkPolicy.idle); 0: never. */
+    @Volatile var wokeAt = 0L
     /** Since when a record has been half received (0: none). A live stream completes records within milliseconds. */
     @Volatile private var partialSince = 0L
     @Volatile private var upAt = 0L

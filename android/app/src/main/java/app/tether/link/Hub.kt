@@ -607,8 +607,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     /**
      * A suspended iPhone sends nothing for long stretches, so silence is normal: never drop the link for it.
-     * The BLE supervision timeout and L2CAP EOF tell us when the iPhone is really gone. We ping so a
-     * half-open session is noticed eventually (15 min), without waking the iPhone just for that.
+     * The BLE supervision timeout and L2CAP EOF tell us when the iPhone is really gone. We ping once a minute; after
+     * 15 min of silence we wake it once and end the session only if it still does not answer (LinkPolicy.idle).
      */
     /** Pulses soon after a session ended or the service started, while the iPhone is most likely to be reconnecting. */
     private fun pulseBurst() {
@@ -634,7 +634,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         audioCtl.execute { keepHelperWarm() }
         if (targets().isNotEmpty()) lastClientSeen = SystemClock.elapsedRealtime()
         for (c in conns) {
-            if (SystemClock.elapsedRealtime() - c.lastRx > 15 * 60_000L) { c.close("no traffic for 15 min"); continue }
+            val now = SystemClock.elapsedRealtime()
+            if (c.wokeAt in 1 until c.lastRx) { LinkLog.add("${c.name} answered the wake in %.1f s".format((c.lastRx - c.wokeAt) / 1000.0)); c.wokeAt = 0 }
+            when (LinkPolicy.idle(now - c.lastRx, c.wokeAt.takeIf { it > c.lastRx }?.let { now - it })) {
+                LinkPolicy.Idle.CLOSE -> { c.close("no answer to a wake after 15 min of silence"); continue }
+                LinkPolicy.Idle.WAKE -> { c.wokeAt = now; LinkLog.add("${c.name} silent for 15 min: woken"); if (c.transport.label != "memory") wake(c) }
+                LinkPolicy.Idle.KEEP -> Unit
+            }
             c.send(Message(T.PING, JSONObject().put("ts", System.currentTimeMillis())))
         }
     }

@@ -49,7 +49,8 @@ The central keeps a pending `connect` to the bonded peripheral at all times
 (iOS state restoration), and also scans for the service UUID as a backup.
 Neither side drops an idle session: a suspended iPhone may be silent for a long
 time. Liveness comes from the BLE supervision timeout and L2CAP EOF; the
-peripheral pings once a minute and gives up only after 15 minutes of silence. The iPhone pings every 25 s
+peripheral pings once a minute; after 15 minutes of silence it wakes the central (wake characteristic) and gives up
+only if nothing arrives within 45 s more (a suspended iPhone answers once woken). The iPhone pings every 25 s
 while it runs (the round trip is shown in its call statistics); while it is suspended its timers do not run.
 During calls the peripheral asks for high connection priority and the 2M PHY (the state hook shows the PHY and the
 connection parameters each link really got).
