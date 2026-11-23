@@ -30,8 +30,8 @@ starts a small helper as the shell user. Nothing leaves the phone.
    six-digit code into the Tether notification.
 5. The **Audio helper** line in the Call audio card turns to "Running".
 
-After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 12 the helper still
-runs (for the switches) but cannot bridge call audio. On some Android builds the shell user is not allowed to
+After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 10 the helper cannot bridge call
+audio (see [features by Android version](devices/android-versions.md)); on Android 11 and 12 it uses a best-effort path. On some Android builds the shell user is not allowed to
 intercept call audio; then calls are still controlled from the iPhone and their audio stays on the Android phone.
 Use **Run call-audio self-test** during a call to see which audio paths work on your phone.
 

@@ -26,6 +26,13 @@ class HelperBridge(private val ctx: Context) {
         const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
+
+        /** Call-audio level by Android version, see [audioLevel]. */
+        fun audioLevelFor(sdk: Int) = when {
+            sdk >= 33 -> "full"
+            sdk >= 30 -> "fallback"
+            else -> "unavailable"
+        }
     }
 
     private val prefs = ctx.getSharedPreferences("helper", Context.MODE_PRIVATE)
@@ -296,5 +303,9 @@ class HelperBridge(private val ctx: Context) {
             .apply { info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("method", it) } }
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("down", info?.optString("capture")?.let { it.isNotEmpty() && it != "null" } ?: false)
+            .put("audio", audioLevel())
     }
+
+    /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */
+    fun audioLevel(): String = audioLevelFor(android.os.Build.VERSION.SDK_INT)
 }

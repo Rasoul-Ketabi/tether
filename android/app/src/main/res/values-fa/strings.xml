@@ -44,6 +44,10 @@
     <string name="adb_notif_hint">کد جفت‌سازی</string>
     <string name="adb_pairing">در حال جفت کردن…</string>
     <string name="adb_paired">با اشکال‌زدایی بی‌سیم جفت شد. دستیار صدا در حال شروع است…</string>
+    <string name="call_ongoing">تماس در جریان است</string>
+    <string name="call_decline">رد کردن</string>
+    <string name="call_answer">پاسخ</string>
+    <string name="call_end">پایان تماس</string>
     <string name="adb_failed">جفت کردن ناموفق بود: %1$s</string>
 
     <string name="call_incoming">تماس ورودی</string>
@@ -59,6 +63,8 @@
     <string name="dial">تماس</string>
     <string name="dialer_hint">شماره</string>
     <string name="unpair_confirm_named">%1$s فراموش شود؟ باید دوباره جفت شود.</string>
+    <string name="audio_needs_android11">صدای تماس به اندروید ۱۱ یا جدیدتر نیاز دارد. روی این گوشی تماس‌ها همچنان از آیفون پاسخ داده، گرفته و قطع می‌شوند، اما صدایشان روی همین گوشی می‌ماند.</string>
+    <string name="audio_android11_12">صدای تماس در اندروید ۱۱ و ۱۲ از مسیر ضبط تماس گوشی استفاده می‌کند و فقط اگر گوشی اجازه بدهد کار می‌کند. برای بررسی، در حین تماس آزمون خودکار را اجرا کنید.</string>
     <string name="audio_needs_android13">صدای تماس به اندروید ۱۳ یا جدیدتر نیاز دارد. روی این گوشی تماس‌ها همچنان از آیفون پاسخ داده، گرفته و قطع می‌شوند، اما صدایشان روی همین گوشی می‌ماند.</string>
     <string name="audio_local_stays_on">در تماسی که به آیفون وصل است، گوشی و میکروفون خود این گوشی ممکن است روشن بمانند (فقط گوشی‌های سامسونگ اجازهٔ بی‌صدا کردنشان را می‌دهند): آن را در کیف یا جیب نگه دارید.</string>
 </resources>

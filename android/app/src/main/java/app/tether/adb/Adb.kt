@@ -138,8 +138,9 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
             val sb = StringBuilder()
             sb.append(adb.shell("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS 2>&1"))
             for (p in listOf("READ_SMS", "RECEIVE_SMS", "SEND_SMS", "READ_CONTACTS", "WRITE_CONTACTS", "READ_CALL_LOG", "WRITE_CALL_LOG",
-                "READ_PHONE_STATE", "READ_PHONE_NUMBERS", "CALL_PHONE", "ANSWER_PHONE_CALLS", "BLUETOOTH_CONNECT",
-                "BLUETOOTH_ADVERTISE", "POST_NOTIFICATIONS")) {
+                "READ_PHONE_STATE", "READ_PHONE_NUMBERS", "CALL_PHONE", "ANSWER_PHONE_CALLS") +
+                (if (Build.VERSION.SDK_INT >= 31) listOf("BLUETOOTH_CONNECT", "BLUETOOTH_ADVERTISE") else emptyList()) +
+                (if (Build.VERSION.SDK_INT >= 33) listOf("POST_NOTIFICATIONS") else emptyList())) {
                 sb.append(adb.shell("pm grant $pkg android.permission.$p 2>&1"))
             }
             sb.append(adb.shell("cmd deviceidle whitelist +$pkg 2>&1"))

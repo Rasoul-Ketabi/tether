@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "app.tether.android"
-        minSdk = 31
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -47,7 +47,10 @@ android {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/DEPENDENCIES")
     }
     testOptions { unitTests.isReturnDefaultValues = true }
-    lint { abortOnError = false }
+    lint {
+        abortOnError = false
+        error += "NewApi"
+    }
     sourceSets["test"].resources.srcDir("../../protocol")
 }
 

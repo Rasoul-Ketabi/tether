@@ -46,6 +46,10 @@ touch Bluetooth at all and is faster.
 
 ## No call audio
 
+On Android 10 the phone cannot bridge call audio at all, and on Android 11 and 12 it works only if the phone's audio
+system allows capturing the call: see [features by Android version](devices/android-versions.md). The Call audio
+card in the Android app says which case you are in.
+
 1. In Tether on the Android phone, the **Audio helper** must say *Running*. If not, see the next section.
 2. During a call, tap **Run call-audio self-test**: it lists each capture and inject path and whether it works.
 3. The Android version must be 13 or later, and the build must let the shell user intercept call audio. Not every

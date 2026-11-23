@@ -226,6 +226,7 @@ object HelperMain {
             val rate = cfg.optInt("rate", 16000)
             this.rate = rate
             val errors = JSONArray()
+            if (android.os.Build.VERSION.SDK_INT < CallAudio.MIN_SDK_AUDIO) errors.put("call audio is not available: it needs Android 11 or later")
             val capOrder = cfg.optString("capture", "auto").let { if (it == "auto") CallAudio.captureMethods else listOf(it) }
             val injOrder = cfg.optString("inject", "auto").let { if (it == "auto") CallAudio.injectMethods else listOf(it) }
             // Right at answer/dial the audio mode may still be NORMAL; the interception API refuses until

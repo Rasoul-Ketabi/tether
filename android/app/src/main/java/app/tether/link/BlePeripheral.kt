@@ -245,7 +245,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         val c = wakeChar ?: return
         if (address !in wakeSubscribers) return
         val d = devices[address] ?: return
-        runCatching { s.notifyCharacteristicChanged(d, c, false, byteArrayOf(1)) }
+        runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)) }
     }
 
     /**

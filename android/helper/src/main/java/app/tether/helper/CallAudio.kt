@@ -41,8 +41,23 @@ interface Inject {
 
 @SuppressLint("MissingPermission", "PrivateApi", "DiscouragedPrivateApi", "WrongConstant")
 object CallAudio {
-    val captureMethods = listOf("intercept", "voice_downlink", "telephony_rx", "voice_call")
-    val injectMethods = listOf("intercept", "telephony_tx", "policy_mix")
+    /**
+     * What this Android version can do for call audio (the shell's permissions grow with the version):
+     * 13+: the interception API (plus the older routes as fallbacks); 11-12: capture the voice call and inject into
+     * the incall-music path (telephony_tx); 10 and below: nothing (the shell may not capture a call).
+     */
+    const val MIN_SDK_AUDIO = 30
+    const val FULL_SDK_AUDIO = 33
+    val captureMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "voice_downlink", "telephony_rx", "voice_call")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("voice_downlink", "voice_call", "telephony_rx")
+        else -> emptyList()
+    }
+    val injectMethods: List<String> get() = when {
+        Build.VERSION.SDK_INT >= FULL_SDK_AUDIO -> listOf("intercept", "telephony_tx", "policy_mix")
+        Build.VERSION.SDK_INT >= MIN_SDK_AUDIO -> listOf("telephony_tx")
+        else -> emptyList()
+    }
 
     private val am get() = ShellEnv.audioManager
 

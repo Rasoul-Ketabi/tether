@@ -103,8 +103,8 @@ class GattTransport(
                     val acquired = sent.tryAcquire(2, TimeUnit.SECONDS)
                     if (!acquired) Log.w(TAG, "gatt notify ack timeout")
                     awaitingAck = true
-                    val rc = server.notifyCharacteristicChanged(device, tx, false, c)
-                    if (rc != android.bluetooth.BluetoothStatusCodes.SUCCESS) {
+                    val rc = GattCompat.notify(server, device, tx, c)
+                    if (rc != GattCompat.SUCCESS) {
                         awaitingAck = false
                         if (acquired) sent.release()
                         Thread.sleep(10)

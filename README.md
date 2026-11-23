@@ -28,7 +28,7 @@ with no server and no account.
 
 | | |
 | --- | --- |
-| Android phone | Android 12 or later with Bluetooth LE advertising. Call audio needs Android 13 or later and a build that lets the shell user intercept call audio (see below). Tether becomes its default phone app. |
+| Android phone | Android 10 or later with Bluetooth LE advertising. Call audio needs Android 11 or later (full support on 13+) and a build that lets the shell user capture call audio; see [features by Android version](docs/devices/android-versions.md). Tether becomes its default phone app. |
 | iPhone or iPad | iOS 16 or later. |
 | Mac | Xcode with an Apple account (free is enough), [XcodeGen](https://github.com/yonaskolb/XcodeGen), JDK 17 and the Android SDK, to build both apps. |
 
@@ -67,7 +67,8 @@ what you see (open an issue with your phone model, Android version and the Link 
 | iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including muting the phone's own earpiece and microphone during a bridged call |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece and microphone are not muted during a bridged call |
-| Android 12 | Calls are controlled from the iPhone, but their audio stays on the Android phone |
+| Android 11-12 | Everything, with call audio on a best-effort path (voice-call capture); untested |
+| Android 10 | Everything except call audio; the helper needs the TCP adb path; untested |
 | Single-SIM phones | Expected to work; SIM choices are hidden |
 | Phones without Wi-Fi hotspot or Bluetooth tethering | Those switches are hidden |
 | Bluetooth tethering between the same two phones | Works; the link then runs over its GATT transport (see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)) |

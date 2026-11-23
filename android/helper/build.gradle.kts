@@ -7,7 +7,11 @@ plugins {
 android {
     namespace = "app.tether.helper"
     compileSdk = 36
-    defaultConfig { minSdk = 31 }
+    defaultConfig { minSdk = 29 }
+    lint {
+        abortOnError = false
+        error += "NewApi"
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
