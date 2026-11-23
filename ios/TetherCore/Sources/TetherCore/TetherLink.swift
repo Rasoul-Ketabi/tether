@@ -480,6 +480,9 @@ public final class TetherLink: NSObject {
                     next.onState = { [weak self] ready in
                         guard let self else { return }
                         self.log(ready ? "hybrid Wi-Fi fast lane connected" : "hybrid Wi-Fi fast lane disconnected (BLE fallback)")
+                        if !ready {
+                            self.delegate?.link(self, didReceive: MessageHeader(t: "wifi.down"), data: Data())
+                        }
                         if ready {
                             // Let the model issue a fresh incremental sync through the BLE control link:
                             // its bulk response can now take Wi-Fi without affecting the call notifications.
