@@ -74,4 +74,6 @@
     <string name="adb_overlay_drag_hint">Drag this title to move the card.</string>
     <string name="adb_overlay_retry">Pairing failed. Check the code and try again while the system dialog is open.</string>
     <string name="adb_overlay_settings_unavailable">Could not open Developer options. Open Wireless debugging manually and use the code-entry card or notification.</string>
+    <string name="adb_notif_stop">Stop pairing</string>
+    <string name="adb_notif_subtext">Tether pairing session</string>
 </resources>
