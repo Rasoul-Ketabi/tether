@@ -9,6 +9,10 @@ what you do on the Android phone shows up on the iPhone, and the other way round
   SIM's name follows the caller's name ("Sara · Work").
 - **Answer, decline, hang up, mute, hold, keypad, speaker** work as in the Phone app. Holding the phone to your ear
   turns the screen off.
+- **Headsets and cars**: with a Bluetooth headset, a car kit or a wired headset connected, the Speaker button becomes
+  **Audio**: pick iPhone, Speaker or the accessory to move the call there and back. Choices made on the system
+  call screen, in Control Center or on the car's screen are followed too, and a car can answer and end calls (they
+  are CallKit calls, so CarPlay shows them without anything extra).
 - **Dialling**: Keypad, Recents or a contact. With two SIMs you choose the SIM; the phone's own default is used
   otherwise. While the call connects you hear a ringback tone from the iPhone.
 - **Call waiting**: a second call rings as usual; answering it holds the first.

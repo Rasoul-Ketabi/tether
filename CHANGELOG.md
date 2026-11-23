@@ -17,6 +17,10 @@
   the `tether://dial?number=` scheme, a "Call a Number" Shortcuts / Siri action that also finds a number in text,
   and optional call-backs from the Phone app's Recents. Links always ask before dialling; service codes and
   extensions are kept.
+- Calls on Bluetooth headsets and car kits: an **Audio** menu on the call screen (iPhone, Speaker, each accessory)
+  moves the call there and back, routes chosen on the system screen, Control Center or in the car are followed,
+  the speaker button follows the real route, and the call audio rebuilds itself when a hands-free microphone
+  changes the sample rate instead of going silent. Route changes are listed in the Link log.
 - A "Calls paused" notification when the app is closed while running; docs on what happens when it is swiped away.
 
 ## 1.0.0 — first public release

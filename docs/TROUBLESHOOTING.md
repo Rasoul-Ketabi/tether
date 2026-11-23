@@ -54,6 +54,13 @@ touch Bluetooth at all and is faster.
 4. You hear the other side on the Android phone too: only Samsung phones let Tether mute the phone's own earpiece
    and microphone during a bridged call.
 
+### Headset or car
+
+- The call does not go to the headset or car: it must be connected as a hands-free (calls) device in the iPhone's
+  Bluetooth settings; music-only (A2DP) speakers have no microphone and are not offered for calls.
+- The Link log shows each route change as `audio route bluetooth / car / receiver / speaker` with its reason. If
+  the route changes but the far end goes quiet for more than a second, please report the lines around it.
+
 ## The audio helper does not start
 
 - Wireless debugging needs a Wi-Fi connection when the helper starts. Connect the Android phone to Wi-Fi, then tap
