@@ -288,7 +288,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 }
                 if (kindPending.remove(c) && c.isUp) holdLeFor(c)
                 extensions.peerCaps(ext(c), m.b.optJSONArray(Ext.CAPS))   // absent (older clients): no extensions
-                bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts")) }
+                bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts"), m.b.optBoolean("wifi", false)) }
             }
             T.SMS_SEND -> bg { sendSms(c, m) }
             // A conversation was read on a client: mark it read here and tell the other devices.
@@ -410,10 +410,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     // ------------------------------------------------------------------ sync
 
-    private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String) {
+    private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String, clientWifiReady: Boolean) {
         // Choose the lane once for this sync. Live SMS and urgent call events
         // always remain on BLE for background wake and predictable ordering.
-        c.bulkSync = c.wifi?.isReady == true
+        c.bulkSync = clientWifiReady && c.wifi?.isReady == true
         try {
         val t0 = SystemClock.elapsedRealtime()
         val sms = app.sms.since(smsSince)
