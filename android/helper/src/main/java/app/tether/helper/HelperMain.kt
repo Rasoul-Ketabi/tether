@@ -9,7 +9,6 @@ import java.io.FileOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.security.MessageDigest
 import kotlin.system.exitProcess
 
 /**
@@ -151,27 +150,15 @@ object HelperMain {
             }
         }
 
-        private fun hmac(label: String, a: ByteArray, b: ByteArray): ByteArray =
-            javax.crypto.Mac.getInstance("HmacSHA256").run {
-                init(javax.crypto.spec.SecretKeySpec(token.toByteArray(), "HmacSHA256"))
-                update(label.toByteArray()); update(a); update(b); doFinal()
-            }
-
         /** Returns true when the app asked us to quit. */
         private fun session(s: Socket, authDone: () -> Unit): Boolean {
             val input = DataInputStream(s.getInputStream().buffered())
             val o = DataOutputStream(s.getOutputStream().buffered())
             s.soTimeout = 2000
             val ours = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-            o.writeByte(F.CHALLENGE); o.writeInt(ours.size); o.write(ours); o.flush()
-            if (input.readUnsignedByte() != F.AUTH) return false
-            if (input.readInt() != 48) return false
-            val theirs = ByteArray(16).also { input.readFully(it) }
-            val mac = ByteArray(32).also { input.readFully(it) }
-            if (!MessageDigest.isEqual(mac, hmac("tether-helper app", ours, theirs))) { ShellEnv.log("bad proof"); return false }
-            val proof = hmac("tether-helper helper", theirs, ours)
+            val proof = HelperAuth.helperVerify(input, o, token, ours) ?: run { ShellEnv.log("bad proof"); return false }
             authDone()   // before PROOF: the deadline or an eviction must never close an authenticated connection
-            o.writeByte(F.PROOF); o.writeInt(proof.size); o.write(proof); o.flush()
+            HelperAuth.writeProof(o, proof)
             s.soTimeout = 0
             // Authenticated: this connection takes over (an older one is closed and stops nothing of ours).
             synchronized(this) { current?.let { old -> if (old !== s) runCatching { old.close() } }; current = s; stop() }

@@ -47,12 +47,6 @@ class HelperBridge(private val ctx: Context) {
     private fun newToken(): String = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
         .also { prefs.edit().putString("token", it).apply() }
 
-    private fun hmac(label: String, a: ByteArray, b: ByteArray): ByteArray =
-        javax.crypto.Mac.getInstance("HmacSHA256").run {
-            init(javax.crypto.spec.SecretKeySpec(token.toByteArray(), "HmacSHA256"))
-            update(label.toByteArray()); update(a); update(b); doFinal()
-        }
-
     @Volatile private var sock: Socket? = null
     @Volatile private var out: DataOutputStream? = null
     @Volatile var hello: JSONObject? = null; private set
@@ -81,13 +75,8 @@ class HelperBridge(private val ctx: Context) {
             val o = DataOutputStream(s.getOutputStream().buffered())
             // Whoever listens must first send a challenge and then prove it knows the token: nothing is sent to an
             // impostor that took the port, and the token never goes on the wire.
-            if (input.readUnsignedByte() != CHALLENGE || input.readInt() != 16) { s.close(); return false }
-            val theirs = ByteArray(16).also { input.readFully(it) }
             val ours = ByteArray(16).also { SecureRandom().nextBytes(it) }
-            o.writeByte(AUTH); o.writeInt(48); o.write(ours); o.write(hmac("tether-helper app", theirs, ours)); o.flush()
-            if (input.readUnsignedByte() != PROOF || input.readInt() != 32) { s.close(); return false }
-            val proof = ByteArray(32).also { input.readFully(it) }
-            if (!java.security.MessageDigest.isEqual(proof, hmac("tether-helper helper", ours, theirs))) {
+            if (!app.tether.helper.HelperAuth.appAuthenticate(input, o, token, ours)) {
                 Log.w(TAG, "the listener on the helper port could not prove itself: not using it"); s.close(); return false
             }
             s.soTimeout = 0
