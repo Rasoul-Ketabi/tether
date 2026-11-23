@@ -33,7 +33,9 @@ starts a small helper as the shell user. Nothing leaves the phone.
    you can drag its title to move it away from the code. Press **Pair** on the card. The card closes on success
    and times out after five minutes. **Do not dismiss the system's code dialog before submitting the code.**
 5. If the system hides overlays on protected Settings screens, pull down notifications and use Tether's
-   **Enter code** reply action instead. Grant Tether notification permission if you rely on this fallback.
+   **Enter code** reply action instead. While pairing is active, this is a five-minute foreground
+   notification with a **Stop pairing** action; it is not a permanently pinned heads-up banner.
+   Grant Tether notification permission and enable the **Setup** notification channel if necessary.
 6. The **Audio helper** line in the Call audio card turns to "Running".
 
 After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 12 the helper still
