@@ -176,6 +176,7 @@ stored on the Android phone.
 | `contacts.batch` | P→C | `{items:[Contact], more, version, full}` |
 | `contact.star` | C→P | `{id, on}`: Favourites (the contact's starred flag) → `contact.result`; the contacts version changes |
 | `contact.add` | C→P | `{name, phones:[{n, type}], emails:[...]}` → `contact.result` `{ok, id?, err?}` |
+| `contact.update` | C→P | `{id, name, phones:[{n, type, label?}], emails:[...]}`: replaces the contact's name, numbers and e-mail addresses → `contact.result` `{ok, id?, err?}`; the contacts version changes |
 | `calls.batch` | P→C | `{items:[CallEntry], more}` |
 | `call.state` | P→C | `Call` |
 | `call.list` | P→C | `{calls:[Call]}` (sent after every handshake) |
