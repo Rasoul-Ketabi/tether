@@ -14,10 +14,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     testOptions { unitTests.isReturnDefaultValues = true }
+    sourceSets["test"].resources.srcDir("../../protocol") // fixtures/ and PROTOCOL.md for the contract tests
 }
 
 kotlin { jvmToolchain(17) }
 
 dependencies {
     api("io.github.jaredmdobson:concentus:1.0.2") // pure-Java libopus port: synchronous, full encoder control
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }

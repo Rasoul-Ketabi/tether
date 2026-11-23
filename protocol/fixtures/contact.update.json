@@ -1,0 +1,19 @@
+{
+  "t": "contact.update",
+  "dir": "client-to-phone",
+  "variants": {
+    "full": {
+      "id": 42,
+      "name": "Test Person",
+      "phones": [
+        {
+          "n": "+10000000002",
+          "type": "work"
+        }
+      ],
+      "emails": [
+        "test@example.com"
+      ]
+    }
+  }
+}
