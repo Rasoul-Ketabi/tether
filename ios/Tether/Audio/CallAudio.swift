@@ -175,6 +175,7 @@ final class CallAudio: @unchecked Sendable {
             if self.sessionActive {
                 if self.running && (self.coder?.rate ?? 16000) != self.playRate { self.stopLocked() }
                 self.startLocked()
+                self.observeSessionRoute()   // a next call on a still-active session: stop() removed it
             }
         }
     }
@@ -301,6 +302,7 @@ final class CallAudio: @unchecked Sendable {
 
     /// Route change or engine configuration change while a call's session is active (TetherCore decides).
     private func routeEvent(configurationChanged: Bool) {
+        guard sessionRouteObserver != nil || configurationChanged else { return }   // not after stop()
         let s = AVAudioSession.sharedInstance()
         let now = EngineFormat(inputRate: s.isInputAvailable ? s.sampleRate : 0, inputChannels: s.isInputAvailable ? max(1, s.inputNumberOfChannels) : 0,
                                outputRate: s.sampleRate, outputChannels: s.outputNumberOfChannels)
@@ -324,7 +326,8 @@ final class CallAudio: @unchecked Sendable {
         guard rebuildRetries < 20 else { NSLog("[audio] no usable route after a change"); return }
         rebuildRetries += 1
         q.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self, self.sessionActive, !self.running else { return }
+            // The call may have ended meanwhile (stop() removes the route observer before CallKit deactivates).
+            guard let self, self.sessionActive, !self.running, self.sessionRouteObserver != nil else { return }
             self.routeEvent(configurationChanged: false)
         }
     }
