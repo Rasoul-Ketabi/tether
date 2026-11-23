@@ -16,6 +16,8 @@ struct SyncBodyV1: Encodable {
     var contacts: String
     var codecs: [String]
     var client: ClientHello
+    /// The current fast-lane state for this particular sync, not an earlier one.
+    var wifi: Bool
     /// The extensions this app speaks (protocol §7.2); left out when there are none.
     var caps: [String]?
 }
@@ -393,6 +395,7 @@ final class AppModel {
         link.send(MsgType.sync, SyncBodyV1(sms: lastSms, calls: lastCall, contacts: full ? "" : data.contactsVersion,
                                            codecs: CallAudio.supportedCodecs,
                                            client: ClientHello(kind: Platform.kind, name: Platform.clientName),
+                                           wifi: wifiFastLane,
                                            caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
