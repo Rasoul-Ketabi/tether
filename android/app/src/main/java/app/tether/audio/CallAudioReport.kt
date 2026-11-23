@@ -22,15 +22,22 @@ object CallAudioReport {
             else append(", uplink injection NOT open: the other side cannot hear the iPhone")
             if (inject != null && injectErrors.isNotEmpty()) append(" after ").append(injectErrors.joinToString("; "))
             if (inject == null && injectErrors.isNotEmpty()) append(" (").append(injectErrors.joinToString("; ")).append(')')
-            append("; ").append(micLine(u, setting, memory))
+            append("; ").append(micLine(u, setting, memory, info.optJSONObject("mic")))
             info.str("earpiece")?.let { append("; earpiece ").append(it) }
             val other = errors - injectErrors.toSet()
             if (other.isNotEmpty()) append("; errors: ").append(other.joinToString("; "))
         }
     }
 
-    /** Whether and how the phone's own microphone is muted, and why. */
-    fun micLine(u: JSONObject?, setting: Boolean, memory: LocalMutes.Memory?): String = when {
+    /** Whether and how the phone's own microphone is kept out of the call (a redirect mode, [mic]) or muted, and why. */
+    fun micLine(u: JSONObject?, setting: Boolean, memory: LocalMutes.Memory?, mic: JSONObject? = null): String = when {
+        mic?.str("mode") != null -> when (mic.optString("state")) {
+            "on" -> "phone mic OFF: the call is in ${mic.optString("mode")}"
+            "waiting" -> "phone mic open until ${mic.optString("mode")} is set (${mic.optString("note")})"
+            else -> "phone mic open (${mic.optString("mode")} ${mic.optString("state")}: ${mic.optString("note")})"
+        }
+        mic != null && mic.optString("setting") == "open" -> "phone mic open (setting open)"
+        mic != null && mic.optString("setting") == "auto" && u?.optBoolean("micMuted") != true -> "phone mic open (${mic.optString("note")})"
         u == null -> "phone mic mute unknown (old helper)"
         u.optBoolean("micMuted") -> "phone mic MUTED via " + (if (u.optBoolean("telecomMicMute")) "Android (Telecom)" else "the vendor key") +
             (if (u.optString("state") == "checking") ", uplink check running" else ", uplink checked before on this phone")
@@ -51,6 +58,16 @@ object CallAudioReport {
             state == "off" && before == null -> null   // no mic mute this call: the path line says so already
             else -> "call audio: uplink check $state" + (u.optString("note").takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "")
         }
+    }
+
+    /** A line for a mic report that changed the redirect mode's state or verdict (null: nothing worth logging). */
+    fun micEvent(m: JSONObject, before: JSONObject?): String? {
+        val mode = m.str("mode") ?: return null
+        val state = m.optString("state"); val verdict = m.str("verdict")
+        if (before != null && before.optString("state") == state && before.str("verdict") == verdict) return null
+        if (before == null && state == "waiting") return null   // the path line says so already
+        return "call audio: $mode $state" + (verdict?.let { " ($it)" } ?: "") + (m.str("note")?.let { ": $it" } ?: "") +
+            (m.optInt("reasserts").takeIf { it > 0 }?.let { "; set again $it times" } ?: "")
     }
 
     /** From the helper's call figures: the iPhone's voice never had any speech in it (a denied or muted microphone). */

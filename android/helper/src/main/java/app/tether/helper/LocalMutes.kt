@@ -56,8 +56,12 @@ object LocalMutes {
     /** The plan after the uplink check found the mute silencing the iPhone's voice: no mic mute of any kind. */
     fun undone(p: Plan): Plan = p.copy(vendorMic = false, telecomMic = false)
 
-    /** Status `helper.silent`: "full" with the mic muted too, "earpiece" with the earpiece only, "none" when muting failed. */
-    fun silent(p: Plan, ok: Boolean): String = when {
+    /**
+     * Status `helper.silent`: "full" with the mic muted too or out of the call ([redirected]: a redirect audio mode, see
+     * [MicPath]), "earpiece" with the earpiece only, "none" when muting failed and no mode took the call off the phone.
+     */
+    fun silent(p: Plan, ok: Boolean, redirected: Boolean = false): String = when {
+        redirected -> "full"
         !ok -> "none"
         p.micMuted -> "full"
         else -> "earpiece"

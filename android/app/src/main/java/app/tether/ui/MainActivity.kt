@@ -21,8 +21,9 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import app.tether.R
@@ -30,6 +31,7 @@ import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
 import app.tether.helper.LocalMutes
+import app.tether.helper.MicPath
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -177,26 +179,45 @@ class MainActivity : Activity() {
                 (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped)) {
             Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
         })
-        // The phone's own microphone during bridged calls (issue #2): off by default, since on some phones muting it
-        // also mutes the iPhone's voice for the other side.
+        // The phone's own microphone during bridged calls (issue #2): by default a redirect audio mode takes it out of the
+        // call where the phone allows it (MicPath); muting it is opt-in, since on some phones that also mutes the iPhone.
         if (app.hub.helper.audioLevel() != "unavailable") {
-            val micOn = app.hub.audio.micSetting
-            audio.addView(Switch(this).apply {
-                text = getString(R.string.mic_mute_title); textSize = 16f; setTextColor(color(R.color.text))
-                isChecked = micOn; setPadding(0, dp(6), 0, dp(2))
-                setOnCheckedChangeListener { _, on -> Thread { app.hub.audio.setMicSetting(on); app.hub.pushStatus() }.start() }
-            })
-            val blocked = micOn && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
+            val mic = app.hub.audio.mic
+            audio.addView(label(getString(R.string.mic_title), R.color.text, 16f))
+            val group = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding(0, dp(2), 0, dp(2)) }
+            for ((choice, text) in listOf(MicPath.Setting.AUTO to R.string.mic_choice_auto, MicPath.Setting.MUTE to R.string.mic_choice_mute,
+                    MicPath.Setting.OPEN to R.string.mic_choice_open)) {
+                group.addView(RadioButton(this).apply {
+                    id = View.generateViewId(); this.text = getString(text); textSize = 15f; setTextColor(color(R.color.text))
+                    isChecked = choice == mic
+                    // A click (also on the chosen one) sets it anew, which forgets what this phone remembered.
+                    setOnClickListener { Thread { app.hub.audio.setMic(choice); app.hub.pushStatus() }.start() }
+                })
+            }
+            audio.addView(group)
+            val autoFailed = mic == MicPath.Setting.AUTO && (android.os.Build.VERSION.SDK_INT < 33 ||
+                app.hub.audio.redirectMemory().let { m -> m[MicPath.Redirect.CALL_REDIRECT]?.usable == false &&
+                    (m[MicPath.Redirect.CALL_SCREENING]?.usable ?: false) == false })
+            val blocked = mic == MicPath.Setting.MUTE && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
             audio.addView(label(getString(when {
+                autoFailed -> R.string.mic_auto_unavailable
+                mic == MicPath.Setting.AUTO -> R.string.mic_auto_note
                 blocked -> R.string.mic_mute_blocked
-                micOn -> R.string.mic_mute_on
-                else -> R.string.audio_local_stays_on
-            }), if (blocked) R.color.warn else R.color.muted, 13f))
+                mic == MicPath.Setting.MUTE -> R.string.mic_mute_on
+                else -> R.string.mic_open_note
+            }), if (blocked || autoFailed) R.color.warn else R.color.muted, 13f))
+            h.optString("micPath").takeIf { it.isNotEmpty() }?.let { p ->
+                audio.addView(label(when (p) {
+                    "off" -> getString(R.string.mic_now_off, app.hub.helper.lastMic?.optString("mode") ?: "")
+                    "muted" -> getString(R.string.mic_now_muted)
+                    else -> getString(R.string.mic_now_open)
+                }, R.color.muted, 13f))
+            }
             h.optString("uplink").takeIf { it.isNotEmpty() }?.let { u ->
                 audio.addView(label(getString(R.string.uplink_title) + ": " + getString(when (u) {
                     "ok" -> R.string.uplink_ok
                     "checking" -> R.string.uplink_checking
-                    "muted-locally-fixed" -> R.string.uplink_fixed
+                    "muted-locally-fixed" -> if (mic == MicPath.Setting.MUTE) R.string.uplink_fixed else R.string.uplink_fixed_redirect
                     "off" -> R.string.uplink_off
                     else -> R.string.uplink_unverified
                 }), if (u == "muted-locally-fixed") R.color.warn else R.color.muted, 13f))

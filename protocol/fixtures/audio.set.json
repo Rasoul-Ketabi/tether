@@ -7,6 +7,12 @@
     },
     "off": {
       "micMute": false
+    },
+    "mic": {
+      "mic": "auto"
+    },
+    "mic-open": {
+      "mic": "open"
     }
   }
 }

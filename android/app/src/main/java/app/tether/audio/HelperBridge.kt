@@ -55,6 +55,10 @@ class HelperBridge(private val ctx: Context) {
     @Volatile var lastStats: JSONObject? = null; private set
     /** The helper's uplink report (mic mute, uplink check), from the start INFO or a later `{uplink}` INFO; null between calls. */
     @Volatile var lastUplink: JSONObject? = null; private set
+    /** The helper's report on the phone's own mic in this call (INFO `mic`: setting, path, redirect mode); null between calls. */
+    @Volatile var lastMic: JSONObject? = null; private set
+    /** Every mic report (also the one inside the start INFO). */
+    @Volatile var onMic: ((JSONObject) -> Unit)? = null
     @Volatile var onDown: ((ShortArray) -> Unit)? = null
     /** A call's start INFO (methods, mutes, errors). */
     @Volatile var onInfo: ((JSONObject) -> Unit)? = null
@@ -119,19 +123,20 @@ class HelperBridge(private val ctx: Context) {
                             pend.second.complete(o.getJSONObject(pend.first))
                         } else if (o.has("stats")) {
                             lastStats = o.getJSONObject("stats")
-                            lastUplink = null
+                            lastUplink = null; lastMic = null
                             Log.i(TAG, "helper call-audio stats: $lastStats")
                         } else if (o.has("capture") || o.has("inject")) {
                             lastInfo = o
                             lastUplink = o.optJSONObject("uplink")
+                            lastMic = o.optJSONObject("mic")
                             Log.i(TAG, "helper info: $o")
                             onInfo?.invoke(o)
                             lastUplink?.let { u -> onUplink?.invoke(u) }
+                            lastMic?.let { m -> onMic?.invoke(m) }
                             onChange?.invoke()
-                        } else if (o.has("uplink")) {
-                            lastUplink = o.getJSONObject("uplink")
-                            Log.i(TAG, "helper uplink: $lastUplink")
-                            onUplink?.invoke(lastUplink!!)
+                        } else if (o.has("uplink") || o.has("mic")) {
+                            o.optJSONObject("uplink")?.let { u -> lastUplink = u; Log.i(TAG, "helper uplink: $u"); onUplink?.invoke(u) }
+                            o.optJSONObject("mic")?.let { m -> lastMic = m; Log.i(TAG, "helper mic: $m"); onMic?.invoke(m) }
                             onChange?.invoke()
                         } else {
                             // A reply that came after its request timed out: never mistaken for the audio methods.
@@ -144,7 +149,7 @@ class HelperBridge(private val ctx: Context) {
             Log.i(TAG, "helper disconnected: ${e.message}")
         } finally {
             if (sock === c) {
-                sock = null; out = null; hello = null; lastInfo = null; lastUplink = null
+                sock = null; out = null; hello = null; lastInfo = null; lastUplink = null; lastMic = null
                 // Whoever waits for an answer from this helper stops waiting now (not after its 20-25 s timeout).
                 pending?.second?.completeExceptionally(java.io.IOException("helper gone")); pending = null
             }
@@ -165,16 +170,18 @@ class HelperBridge(private val ctx: Context) {
 
     /**
      * [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener.
-     * [micMute]: also mute the phone's own microphone (see LocalMutes); [micCheck]: then watch the uplink.
+     * [mic]: the phone-mic setting (MicPath.Setting: auto, mute, open); [micMute]: with "mute", whether to mute this
+     * call (see LocalMutes); [micCheck]: then watch the uplink; [redirect]: what this phone remembers of the redirect modes.
      */
     fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false,
-              micMute: Boolean = false, micCheck: Boolean = true) =
+              mic: String = "auto", micMute: Boolean = false, micCheck: Boolean = true, redirect: JSONObject = JSONObject()) =
         send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
-            .put("testLine", testLine).put("micMute", micMute).put("micCheck", micCheck).toString().toByteArray())
+            .put("testLine", testLine).put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect)
+            .toString().toByteArray())
 
-    /** The phone's mic mute changed during a bridged call. */
-    fun local(micMute: Boolean, micCheck: Boolean) =
-        send(LOCAL, JSONObject().put("micMute", micMute).put("micCheck", micCheck).toString().toByteArray())
+    /** The phone-mic setting changed during a bridged call. */
+    fun local(mic: String, micMute: Boolean, micCheck: Boolean, redirect: JSONObject = JSONObject()) =
+        send(LOCAL, JSONObject().put("mic", mic).put("micMute", micMute).put("micCheck", micCheck).put("redirect", redirect).toString().toByteArray())
 
     fun stop() = send(STOP)
 
@@ -320,8 +327,17 @@ class HelperBridge(private val ctx: Context) {
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("down", info?.optString("capture")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("audio", audioLevel())
-            // After the uplink check undid the mic mute, the phone is no longer fully silent.
-            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", if (it == "full" && u?.optBoolean("micMuted", true) == false) "earpiece" else it) } }
+            // A redirect mode took the call off the phone: fully silent. After the uplink check undid the mic mute (or a
+            // redirect mode was undone), the phone is no longer fully silent.
+            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", silentNow(it, u, lastMic)) } }
+    }
+
+    /** Status `silent` from the start INFO's [atStart] and the latest uplink / mic reports. */
+    private fun silentNow(atStart: String, u: JSONObject?, mic: JSONObject?): String = when {
+        atStart == "none" && mic?.optString("path") != "off" -> "none"
+        mic?.optString("path") == "off" -> "full"
+        u?.optBoolean("micMuted", false) == true -> "full"
+        else -> if (atStart == "none") "none" else "earpiece"
     }
 
     /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */

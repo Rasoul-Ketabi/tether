@@ -54,4 +54,27 @@ class CallAudioReportTest {
         assertNull("a very short call", CallAudioReport.silentIphone(JSONObject().put("uplinkFrames", 100).put("uplinkSpeechFrames", 0)))
         assertNull("an older helper", CallAudioReport.silentIphone(JSONObject().put("uplinkFrames", 900)))
     }
+
+    private fun mic(state: String, verdict: String? = null, note: String = "") = JSONObject().put("setting", "auto").put("path", if (state == "on") "off" else "open")
+        .put("mode", "call_redirect").put("state", state).put("note", note).apply { verdict?.let { put("verdict", it) } }
+
+    @Test fun redirectModeInThePathLine() {
+        val base = JSONObject().put("capture", "intercept").put("inject", "intercept").put("routed", "18:Telephony").put("errors", JSONArray())
+            .put("uplink", uplink("checking", false))
+        val waiting = CallAudioReport.pathLine(JSONObject(base.toString()).put("mic", mic("waiting", note = "waiting for audio in the downlink")), setting = false, memory = null)
+        assertTrue(waiting, waiting.contains("phone mic open until call_redirect is set (waiting for audio in the downlink)"))
+        val noMode = JSONObject(base.toString()).put("mic", JSONObject().put("setting", "auto").put("path", "open").put("note", "no redirect mode before Android 13"))
+        assertTrue(CallAudioReport.pathLine(noMode, false, null).contains("phone mic open (no redirect mode before Android 13)"))
+        val open = JSONObject(base.toString()).put("mic", JSONObject().put("setting", "open").put("path", "open"))
+        assertTrue(CallAudioReport.pathLine(open, false, null).contains("phone mic open (setting open)"))
+    }
+
+    @Test fun redirectEventsOnlyWhenSomethingChanged() {
+        assertNull("the path line said so already", CallAudioReport.micEvent(mic("waiting"), null))
+        assertEquals("call audio: call_redirect on: mode set", CallAudioReport.micEvent(mic("on", note = "mode set"), mic("waiting")))
+        assertNull(CallAudioReport.micEvent(mic("on", note = "again"), mic("on")))
+        assertEquals("call audio: call_redirect reverted (breaks-downlink): x",
+            CallAudioReport.micEvent(mic("reverted", "breaks-downlink", "x"), mic("reverted", note = "y")))
+        assertNull("no redirect mode this call", CallAudioReport.micEvent(JSONObject().put("setting", "open").put("path", "open"), null))
+    }
 }

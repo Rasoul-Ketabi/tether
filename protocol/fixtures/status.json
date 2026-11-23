@@ -40,7 +40,9 @@
         "down": true,
         "silent": "earpiece",
         "micMute": false,
-        "uplink": "ok"
+        "uplink": "ok",
+        "mic": "auto",
+        "micPath": "off"
       },
       "wifi": true,
       "adbWifi": true,
@@ -137,7 +139,9 @@
         "down": true,
         "silent": "earpiece",
         "micMute": false,
-        "uplink": "ok"
+        "uplink": "ok",
+        "mic": "auto",
+        "micPath": "off"
       },
       "wifi": true,
       "adbWifi": true,

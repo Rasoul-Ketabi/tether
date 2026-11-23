@@ -180,13 +180,19 @@ public struct HelperInfo: Codable, Equatable, Sendable {
     /// During a bridged call: how silent the Android phone itself is ("full", "earpiece", "none").
     public var silent: String?
     /// The setting "mute the Android phone's microphone during bridged calls" (nil from builds without it: no switch).
+    /// Newer builds send ``mic`` too; this stays true only for "mute".
     public var micMute: Bool?
     /// Whether this iPhone's voice reaches the call: "checking", "ok", "muted-locally-fixed", "unverified", "off".
     public var uplink: String?
+    /// The setting "the Android phone's microphone during bridged calls": "auto" (taken out of the call by a redirect
+    /// audio mode where the phone allows it), "mute", "open". Nil from builds before it (they have only ``micMute``).
+    public var mic: String?
+    /// During a bridged call, what the Android phone's own mic does: "off" (out of the call), "muted", "open".
+    public var micPath: String?
     public init(state: String, method: String? = nil, capture: String? = nil, up: Bool = false, down: Bool = false,
-                silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil) {
+                silent: String? = nil, micMute: Bool? = nil, uplink: String? = nil, mic: String? = nil, micPath: String? = nil) {
         self.state = state; self.method = method; self.capture = capture; self.up = up; self.down = down; self.silent = silent
-        self.micMute = micMute; self.uplink = uplink
+        self.micMute = micMute; self.uplink = uplink; self.mic = mic; self.micPath = micPath
     }
 }
 
@@ -429,8 +435,14 @@ public struct RingerResult: Codable, Equatable, Sendable {
     public var ok: Bool; public var mode: String?; public var err: String?
     public init(ok: Bool, mode: String? = nil, err: String? = nil) { self.ok = ok; self.mode = mode; self.err = err }
 }
-/// Changes the Android phone's "mute its own microphone during bridged calls" (answered with a `status`).
-public struct AudioSet: Codable, Equatable, Sendable { public var micMute: Bool; public init(micMute: Bool) { self.micMute = micMute } }
+/// Changes the Android phone's microphone setting (answered with a `status`): `mic` "auto" | "mute" | "open" for
+/// Android builds that report `helper.mic`, else the older switch `micMute`.
+public struct AudioSet: Codable, Equatable, Sendable {
+    public var micMute: Bool?
+    public var mic: String?
+    public init(micMute: Bool) { self.micMute = micMute }
+    public init(mic: String) { self.mic = mic }
+}
 public struct SelftestMethod: Codable, Equatable, Sendable, Hashable {
     public var name: String; public var ok: Bool; public var note: String?
     public init(name: String, ok: Bool, note: String? = nil) { self.name = name; self.ok = ok; self.note = note }

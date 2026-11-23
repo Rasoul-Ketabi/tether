@@ -14,9 +14,14 @@ package app.tether.helper
  *
  * Pure: the helper does the audio, this decides. Levels are RMS of 16-bit PCM.
  */
-class UplinkCheck(private val maxWindows: Int = 90) {
+class UplinkCheck(private val maxWindows: Int = 90, val mitigation: Mitigation = Mitigation.MUTE) {
     enum class State(val wire: String) { CHECKING("checking"), OK("ok"), FIXED("muted-locally-fixed"), UNVERIFIED("unverified") }
     enum class Action { NONE, UNMUTE }
+    /**
+     * What keeps the phone's mic out of the call and is undone when the uplink stays silent ([Action.UNMUTE]): its local
+     * mute ([LocalMutes]) or a redirect audio mode ([RedirectGuard]); `wire` as INFO `uplink.for`.
+     */
+    enum class Mitigation(val wire: String, val text: String) { MUTE("mute", "the phone's mic muted"), REDIRECT("redirect", "the redirect audio mode") }
 
     /** One second: frames of injected speech, their mean level, and the uplink capture's mean level. */
     data class Window(val speechFrames: Int, val speechRms: Double, val uplinkRms: Double)
@@ -37,6 +42,8 @@ class UplinkCheck(private val maxWindows: Int = 90) {
     /** The mutes were undone during this call. */
     @Volatile var unmuted = false; private set
     @Volatile var note = ""; private set
+    /** Ended by [fail] (no capture), not by what it heard. */
+    @Volatile var failed = false; private set
     val done: Boolean get() = state != State.CHECKING
 
     private var windows = 0
@@ -52,21 +59,21 @@ class UplinkCheck(private val maxWindows: Int = 90) {
         if (w.uplinkRms >= maxOf(ALIVE_RMS, ALIVE_SHARE * w.speechRms)) alive++ else quiet++
         if (alive >= ALIVE_WINDOWS) {
             finish(if (unmuted) State.FIXED else State.OK,
-                if (unmuted) "the uplink was silent with the phone's mic muted and hears the iPhone without the mute"
-                else "the uplink hears the iPhone with the phone's mic muted")
+                if (unmuted) "the uplink was silent with ${mitigation.text} and hears the iPhone without it"
+                else "the uplink hears the iPhone with ${mitigation.text}")
         } else if (quiet >= SILENT_WINDOWS) {
             if (!unmuted) {
                 unmuted = true; alive = 0; quiet = 0; skip = 1
-                note = "the uplink stayed silent for $SILENT_WINDOWS s of iPhone speech with the phone's mic muted: mute undone"
+                note = "the uplink stayed silent for $SILENT_WINDOWS s of iPhone speech with ${mitigation.text}: undone"
                 return Action.UNMUTE
             }
-            finish(State.UNVERIFIED, "the uplink capture stays silent without the mute too: this phone's VOICE_UPLINK does not show the injected voice")
+            finish(State.UNVERIFIED, "the uplink capture stays silent without ${mitigation.text} too: this phone's VOICE_UPLINK does not show the injected voice")
         }
         return Action.NONE
     }
 
     /** The uplink capture could not be opened (or broke): nothing can be checked. */
-    fun fail(reason: String) { if (!done) finish(State.UNVERIFIED, reason) }
+    fun fail(reason: String) { if (!done) { failed = true; finish(State.UNVERIFIED, reason) } }
 
     private fun finish(s: State, why: String) { state = s; note = why }
 }

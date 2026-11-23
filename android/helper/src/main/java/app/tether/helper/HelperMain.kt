@@ -17,7 +17,7 @@ import kotlin.system.exitProcess
  *   CLASSPATH=$(pm path app.tether.android | cut -d: -f2) app_process / app.tether.helper.HelperMain <cmd>
  *
  * Commands: `serve <port> <token>` (talks to the app over 127.0.0.1), `probe`, `selftest`,
- * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off [mic]]`.
+ * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off [mic]]`, `mode [<n> [ms]]`.
  */
 object HelperMain {
     const val VERSION = 3   // 3: mutual challenge-response instead of a token on the wire
@@ -44,6 +44,7 @@ object HelperMain {
                         println("$k -> '${ShellEnv.audioManager.getParameters(k)}'")
                     }
                 }
+                "mode" -> mode(args.getOrNull(1)?.toInt(), args.getOrNull(2)?.toLong() ?: 1000)
                 "silence" -> { // silence [on|off [mic]] : the phone's own call silencing (CallAudio.Silence) without a call, for testing
                     println("silence mode: ${CallAudio.silence.name.lowercase()}")
                     if (args.size >= 2) println(CallAudio.localCallAudio(args[1] == "on", args.getOrNull(2) == "mic", JSONArray()))
@@ -81,6 +82,32 @@ object HelperMain {
         println("recorded $secs s via $method to $path")
     }
 
+    /**
+     * `mode [<n> [ms]]`: prints the audio mode and whether call screening mode is declared; with [n], asks for audio
+     * mode n (MicPath.Mode: 4 call screening, 5 call redirect, 6 communication redirect) as the shell for [ms], opens the
+     * interception record and track in it, prints every mode change meanwhile, and withdraws the request.
+     */
+    private fun mode(n: Int?, ms: Long) {
+        val am = ShellEnv.audioManager
+        println("mode ${MicPath.Mode.name(am.mode)}, call screening mode declared: ${CallAudio.screeningSupported()}, interceptable: ${CallAudio.isInterceptable()}")
+        if (n == null) return
+        // Opened first, in the mode the phone is in (as in a call: the helper opens them in the call's own mode).
+        val cap = runCatching { CallAudio.openCapture("intercept", 16000) }.onFailure { println("capture intercept: ${CallAudio.describe(it)}") }.getOrNull()
+        val inj = runCatching { CallAudio.openInject("intercept", 16000) }.onFailure { println("inject intercept: ${CallAudio.describe(it)}") }.getOrNull()
+        val t0 = System.nanoTime()
+        val ok = CallAudio.requestMode(n)
+        println("setMode(${MicPath.Mode.name(n)}): ${if (ok) "in it" else "NOT in it (mode ${MicPath.Mode.name(am.mode)})"} after ${(System.nanoTime() - t0) / 1_000_000} ms")
+        cap?.let { c -> val b = ShortArray(320); var nz = 0; var r = 0; repeat(10) { val k = c.read(b); if (k > 0) { r += k; nz += CallAudio.nonZero(b, k) } }; println("capture intercept in it: read $r, non-zero $nz") }
+        inj?.let { i -> repeat(10) { i.write(ShortArray(320)) }; println("inject intercept in it: routed ${i.routedTo()}, played ${i.playedFrames()}") }
+        var last = am.mode
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { val m = am.mode; if (m != last) { println("mode changed to ${MicPath.Mode.name(m)}"); last = m }; Thread.sleep(50) }
+        CallAudio.requestMode(MicPath.Mode.NORMAL)
+        Thread.sleep(200)
+        println("released: mode ${MicPath.Mode.name(am.mode)}")
+        cap?.stop(); inj?.stop()
+    }
+
     private fun tone(method: String, secs: Int) {
         val rate = 16000
         val i = CallAudio.openInject(method, rate)
@@ -111,6 +138,16 @@ object HelperMain {
         /** Bumped whenever a check is started or abandoned: an older check thread stops on its own. */
         @Volatile private var checkGen = 0
         private val meter = InjectMeter()
+        /** Downlink frames and their non-zero samples since the last take (RedirectGuard's downlink check). */
+        private val downMeter = DownMeter()
+        /** The user's "phone mic during bridged calls" and what this phone model remembers of the redirect modes. */
+        @Volatile private var mic = MicPath.Setting.AUTO
+        @Volatile private var redirectMemory: Map<MicPath.Redirect, MicPath.Verdict> = emptyMap()
+        @Volatile private var testLine = false
+        /** This call's redirect audio mode (null: none), and whether we asked Android for a mode (withdrawn at stop). */
+        @Volatile private var guard: RedirectGuard? = null
+        @Volatile private var modeHeld = false
+        @Volatile private var redirectGen = 0
         /** Guards [plan] changes from the check thread against the session thread (never the object's monitor, see sendLock). */
         private val planLock = Any()
 
@@ -254,7 +291,10 @@ object HelperMain {
             // The call is bridged to the iPhone: silence the Android phone's own earpiece always, its microphone only
             // when the app asks (the user's setting; see LocalMutes). The downlink is still captured and the injected
             // uplink still goes out.
-            plan = LocalMutes.plan(CallAudio.silence, cfg.optBoolean("micMute", false), cfg.optBoolean("micCheck", true))
+            mic = MicPath.Setting.of(cfg.optString("mic").takeIf { cfg.has("mic") }, cfg.optBoolean("micMute", false))
+            redirectMemory = MicPath.memoryOf(cfg.optJSONObject("redirect"))
+            testLine = cfg.optBoolean("testLine")
+            plan = LocalMutes.plan(CallAudio.silence, mic == MicPath.Setting.MUTE && cfg.optBoolean("micMute", true), cfg.optBoolean("micCheck", true))
             val local = CallAudio.localCallAudio(muted = true, mic = plan.vendorMic, errors = errors)
             localNote = local.note; localOk = local.ok
             stats.reset()
@@ -275,6 +315,7 @@ object HelperMain {
                     while (running) {
                         val n = c.read(buf)
                         if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
+                        downMeter.add(n, CallAudio.nonZero(buf, n))
                         stats.captureClock.mark(System.nanoTime(), c.capturedFrames())
                         val b = c.backlogFrames()
                         if (b >= 0) {
@@ -328,10 +369,13 @@ object HelperMain {
             // With the phone's mic muted, watch whether the iPhone's voice still reaches the call (best effort).
             val checking = plan.micMuted && plan.check && inject != null
             if (checking) startCheck(rate)
+            // Default: keep the phone's mic out of the call with a redirect audio mode, where this phone allows one.
+            startRedirect(rate)
             info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL).put("testLineFarEnd", farEnd)
-                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", LocalMutes.silent(plan, local.ok))
+                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", LocalMutes.silent(plan, local.ok, guard?.state == RedirectGuard.State.ON))
+                .put("mic", micJson())
                 .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", plan.telecomMic).put("errors", errors)
-                .put("uplink", uplinkJson(if (checking) null else if (inject == null) "no uplink injection" else if (!plan.micMuted) "the phone's mic is not muted" else "checked on this phone before"))
+                .put("uplink", uplinkJson(if (checking || guard?.check != null) null else if (inject == null) "no uplink injection" else if (guard != null) "the redirect mode was checked on this phone before" else if (!plan.micMuted) "the phone's mic is not muted" else "checked on this phone before"))
                 .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)
                     .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
         }
@@ -345,19 +389,113 @@ object HelperMain {
          * (the check undid the mute this call), `note`. [why]: the reason when no check runs.
          */
         private fun uplinkJson(why: String? = null): JSONObject {
-            val c = check
+            val g = guard
+            val c = check ?: g?.check
             val state = when {
                 c != null -> c.state.wire
                 inject == null -> UplinkCheck.State.UNVERIFIED.wire
+                g != null -> (if (redirectMemory[g.redirect] == MicPath.Verdict.OK) UplinkCheck.State.OK else UplinkCheck.State.UNVERIFIED).wire
                 !plan.micMuted -> "off"
                 else -> UplinkCheck.State.OK.wire   // muted, and a check on this phone saw the uplink work before
             }
-            return JSONObject().put("state", state).put("micMuted", plan.micMuted).put("telecomMicMute", plan.telecomMic)
+            return JSONObject().put("state", state).put("for", (c?.mitigation ?: if (g != null) UplinkCheck.Mitigation.REDIRECT else UplinkCheck.Mitigation.MUTE).wire)
+                .put("micMuted", plan.micMuted).put("telecomMicMute", plan.telecomMic)
                 .put("vendorMicMute", plan.vendorMic).put("unmuted", c?.unmuted == true).put("note", c?.note?.takeIf { it.isNotEmpty() } ?: why ?: "")
                 .put("local", localNote)
         }
 
-        private fun reportUplink() = info(JSONObject().put("uplink", uplinkJson()))
+        private fun reportUplink() = info(JSONObject().put("uplink", uplinkJson()).put("mic", micJson()))
+
+        /**
+         * The phone's own mic in this call (INFO `mic`): `setting` auto | mute | open; `path` off (a redirect mode took it
+         * out of the call) | muted | open; with a redirect mode: `mode`, `state` waiting | on | reverted | stopped,
+         * `verdict` (what this call found out, for the app to remember), `reasserts`, `note`.
+         */
+        private fun micJson(): JSONObject {
+            val g = guard
+            val path = when {
+                g?.state == RedirectGuard.State.ON -> "off"
+                plan.micMuted -> "muted"
+                else -> "open"
+            }
+            return JSONObject().put("setting", mic.wire).put("path", path).apply {
+                if (g != null) {
+                    put("mode", g.redirect.wire).put("state", g.state.wire).put("reasserts", g.reasserts).put("note", g.note)
+                    g.verdict?.let { put("verdict", it.wire) }
+                } else put("note", when {
+                    mic != MicPath.Setting.AUTO -> "setting ${mic.wire}"
+                    android.os.Build.VERSION.SDK_INT < CallAudio.FULL_SDK_AUDIO -> "no redirect mode before Android 13"
+                    inject?.name != "intercept" -> "no redirect mode without the interception API (inject ${inject?.name ?: "none"})"
+                    else -> "every redirect mode failed on this phone before"
+                })
+            }
+        }
+
+        /**
+         * Sets this call's redirect audio mode (MicPath.choose) and watches it once a second (RedirectGuard): the mode
+         * held against Telecom, the downlink alive, and, while the mode is untested on this phone, the iPhone's voice in
+         * VOICE_UPLINK. A revert gives the call back its own mode (the phone's mic open) for the rest of the call.
+         */
+        private fun startRedirect(rate: Int) {
+            val callMode = CallAudio.audioMode()
+            val r = MicPath.choose(android.os.Build.VERSION.SDK_INT, mic, callMode, inject?.name, CallAudio.screeningSupported(), redirectMemory)
+            if (r == null) return
+            val g = RedirectGuard(r, waitDownlink = !testLine, speechCheck = MicPath.wantSpeechCheck(redirectMemory[r]))
+            guard = g
+            val gen = ++redirectGen
+            ShellEnv.log("redirect: ${r.wire} for a call in ${MicPath.Mode.name(callMode)} (remembered ${redirectMemory[r]?.wire ?: "nothing"})")
+            threads.add(Thread({
+                var cap: Capture? = null
+                if (g.check != null) cap = try { CallAudio.openCapture("voice_uplink", rate) } catch (t: Throwable) {
+                    g.uplinkUnavailable("voice_uplink capture: ${CallAudio.describe(t)}"); null
+                }
+                val buf = ShortArray(rate / 50)
+                var last = ""
+                try {
+                    meter.take(); downMeter.take()
+                    while (running && redirectGen == gen) {
+                        var window: UplinkCheck.Window? = null
+                        val c = cap
+                        if (c != null && g.check?.done == false) {
+                            var frames = 0; var sum = 0.0
+                            while (frames < 50 && running && redirectGen == gen) {
+                                val n = c.read(buf)
+                                if (n < 0) { g.uplinkUnavailable("voice_uplink capture stopped ($n)"); break }
+                                if (n == 0) { Thread.sleep(2); continue }
+                                sum += CallAudio.rms(buf, n); frames++
+                            }
+                            val (speech, speechRms) = meter.take()
+                            if (frames >= 50) window = UplinkCheck.Window(speech, speechRms, sum / frames)
+                        } else {
+                            if (c != null) { c.stop(); cap = null }
+                            repeat(10) { if (running && redirectGen == gen) Thread.sleep(100) }
+                            meter.take()
+                        }
+                        if (!running || redirectGen != gen) break
+                        val (df, dnz) = downMeter.take()
+                        when (g.second(RedirectGuard.Second(df, dnz, CallAudio.audioMode(), window))) {
+                            RedirectGuard.Action.APPLY, RedirectGuard.Action.REASSERT -> {
+                                val ok = CallAudio.requestMode(r.audioMode)
+                                modeHeld = true
+                                ShellEnv.log("redirect: ${r.wire} ${if (ok) "on" else "asked, phone in ${MicPath.Mode.name(CallAudio.audioMode())}"} (reasserts ${g.reasserts})")
+                            }
+                            RedirectGuard.Action.REVERT -> releaseMode()
+                            RedirectGuard.Action.NONE -> {}
+                        }
+                        val now = "${g.state}|${g.verdict}|${g.note}|${g.check?.state}|${g.reasserts}"
+                        if (now != last) { last = now; ShellEnv.log("redirect: ${g.state.wire} ${g.verdict?.wire ?: ""} ${g.note}"); reportUplink() }
+                    }
+                } finally { cap?.stop() }
+            }, "redirect").apply { start() })
+        }
+
+        /** Withdraws our audio-mode request: the call has its own mode (Telecom's) again. */
+        private fun releaseMode() {
+            if (!modeHeld) return
+            modeHeld = false
+            CallAudio.requestMode(MicPath.Mode.NORMAL)
+            ShellEnv.log("redirect: released, mode ${MicPath.Mode.name(CallAudio.audioMode())}")
+        }
 
         /**
          * Captures VOICE_UPLINK next to the call's own audio and feeds [UplinkCheck] once a second. Opened only while the
@@ -398,23 +536,33 @@ object HelperMain {
             }, "uplink-check").apply { start() })
         }
 
-        /** The user changed "mute the phone's mic" during a call: apply it now, and check again when it is on. */
+        /** The user changed the phone-mic setting during a call: apply it now (a redirect mode or the mute, with its checks). */
         private fun setMicMute(req: JSONObject) {
             if (!running) return
-            val want = req.optBoolean("micMute", false)
+            val setting = MicPath.Setting.of(req.optString("mic").takeIf { req.has("mic") }, req.optBoolean("micMute", false))
+            val want = setting == MicPath.Setting.MUTE && req.optBoolean("micMute", true)
             synchronized(planLock) {
                 checkGen++   // whatever check runs stops
                 check = null
+                redirectGen++
+                releaseMode()
+                guard = null
+                mic = setting
+                if (req.has("redirect")) redirectMemory = MicPath.memoryOf(req.optJSONObject("redirect"))
                 val next = LocalMutes.plan(CallAudio.silence, want, req.optBoolean("micCheck", true))
                 val errs = JSONArray()
                 if (next.vendorMic != plan.vendorMic) CallAudio.vendorMicMute(next.vendorMic, errs)?.let { localNote = it }
                 plan = next
                 if (plan.micMuted && plan.check && inject != null) startCheck(rate)
+                startRedirect(rate)
             }
             reportUplink()
         }
 
-        /** SELFTEST `{methods?, micMute?}`: with micMute the vendor's mic key is on during the test (the app mutes Telecom). */
+        /**
+         * SELFTEST `{methods?, micMute?, redirect?}`: with micMute the vendor's mic key is on during the test (the app
+         * mutes Telecom); without it the redirect modes are tested too (unless `redirect` is false).
+         */
         private fun selfTest(req: JSONObject): JSONObject {
             val methods = req.optJSONArray("methods")?.let { a -> (0 until a.length()).map { a.getString(it) } }?.filter { it in CallAudio.injectMethods }
                 ?: CallAudio.injectMethods
@@ -422,6 +570,13 @@ object HelperMain {
             val errs = JSONArray()
             if (mic) CallAudio.vendorMicMute(true, errs)
             val r = try { CallAudio.selfTest(methods = methods, captures = !mic) } finally { if (mic) CallAudio.vendorMicMute(false, errs) }
+            // The redirect modes (MicPath): which one takes this phone's mic out of the call without silencing anything.
+            if (!mic && req.optBoolean("redirect", true)) {
+                val red = runCatching { CallAudio.redirectSelfTest() }.getOrElse { JSONObject().put("methods", JSONArray().put(JSONObject().put("name", "mic:redirect").put("ok", false).put("note", CallAudio.describe(it)))) }
+                red.optJSONArray("methods")?.let { a -> for (i in 0 until a.length()) r.getJSONArray("methods").put(a.get(i)) }
+                red.optJSONObject("redirect")?.takeIf { it.length() > 0 }?.let { r.put("redirect", it) }
+                r.put("callMode", red.optString("callMode"))
+            }
             return r.put("silence", CallAudio.silence.name.lowercase()).put("micByTelecom", !CallAudio.silence.vendorMicKeys)
                 .put("micMuted", mic).apply { if (errs.length() > 0) put("errors", errs) }
         }
@@ -476,17 +631,29 @@ object HelperMain {
 
         private fun stop() {
             if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
-                .put("injectBufferFrames", inject?.bufferFrames() ?: -1).put("uplink", uplinkJson())))
+                .put("injectBufferFrames", inject?.bufferFrames() ?: -1).put("uplink", uplinkJson()).put("mic", micJson())))
             running = false
             checkGen++
-            threads.forEach { it.join(500) }
+            redirectGen++
+            threads.forEach { it.join(1500) }
             threads.clear()
+            releaseMode()   // before anything else of the call stops: the phone's own call path comes back first
+            guard = null
             capture?.stop(); capture = null
             inject?.stop(); inject = null
             if (localMuted) { localMuted = false; CallAudio.localCallAudio(muted = false, mic = false, errors = JSONArray()) }
             plan = LocalMutes.Plan.NONE; check = null
         }
     }
+
+/** The down thread adds every frame it reads; the redirect guard takes a second's worth. */
+internal class DownMeter {
+    private var frames = 0
+    private var nonZero = 0
+    @Synchronized fun add(n: Int, nz: Int) { frames++; nonZero += nz }
+    /** Frames read and their non-zero samples since the last call. */
+    @Synchronized fun take(): Pair<Int, Int> = (frames to nonZero).also { frames = 0; nonZero = 0 }
+}
 
 /** Urgent-audio priority for the helper's audio threads (logged when the shell user may not raise it). */
 internal fun audioPriority(name: String) {
