@@ -733,6 +733,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         private var lastUpSeq = -1
         private var backwards = 0
         @Volatile var upLost = 0; private set
+        /**
+         * The helper's report from before this call's audio start: until a newer one says the call's audio path is
+         * open, uplink frames are not forwarded (the far end cannot hear them yet; queued they only added up to 1 s of
+         * delay to the first words, which then had to be caught up).
+         */
+        @Volatile private var infoAtStart: JSONObject? = null
+        @Volatile var upEarly = 0; private set
         private var startedAt = 0L
         private var restarts = 0
         private var savedVolume = -1
@@ -752,7 +759,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         val downSpacing = Spacing()
         val upSpacing = Spacing()
         fun resetStats() {
-            downFrames = 0; encodeNanos = 0; upFrames = 0; decodeNanos = 0; echoNanos = 0; echoCount = 0; upLost = 0
+            downFrames = 0; encodeNanos = 0; upFrames = 0; decodeNanos = 0; echoNanos = 0; echoCount = 0; upLost = 0; upEarly = 0
             downSpacing.reset(); upSpacing.reset(); target?.audioDelay?.reset()
         }
 
@@ -767,8 +774,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             return "down %d frames, encode %.2f ms, from helper jitter %.1f ms worst %.0f ms (%d long gaps); ".format(
                 downFrames, if (downFrames > 0) encodeNanos / downFrames / 1e6 else 0.0, downSpacing.jitterMs, downSpacing.worstMs, downSpacing.longGaps) +
                 (d?.let { "link queue %.1f ms avg %.0f ms max, %d late, %d overflow; ".format(it.avgMs, it.maxMs, it.late, it.overflow) } ?: "") +
-                "up %d frames, arrival jitter %.1f ms worst %.0f ms (%d long gaps), concealed %d".format(
-                    upFrames, upSpacing.jitterMs, upSpacing.worstMs, upSpacing.longGaps, upLost) +
+                "up %d frames (%d before the call's audio path opened), arrival jitter %.1f ms worst %.0f ms (%d long gaps), concealed %d".format(
+                    upFrames, upEarly, upSpacing.jitterMs, upSpacing.worstMs, upSpacing.longGaps, upLost) +
                 (link?.let { "; $it" } ?: "")
         }
 
@@ -908,6 +915,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 }
             }
             quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
+            infoAtStart = helper.lastInfo
             helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto", app.prefs.getInt("inject_ms", 40), onlyTestLine())
             c.sendUrgent(startMessage(k))
             muteLocalMic(true)
@@ -1019,13 +1027,16 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             backwards = 0
             lastUpSeq = f.seq
             upSpacing.mark(t0)
-            if (gap in 2..3) repeat(gap - 1) { k.conceal()?.let { helper.up(if (uplinkMuted) ShortArray(it.size) else it) }; upLost++ }
+            // Decoded (and concealed) anyway, so the decoder's state stays continuous; sent once the helper's path is open.
+            val ready = helper.lastInfo.let { it != null && it !== infoAtStart }
+            if (gap in 2..3) repeat(gap - 1) { k.conceal()?.let { if (ready) helper.up(if (uplinkMuted) ShortArray(it.size) else it) }; upLost++ }
             val pcm = k.decode(f.payload) ?: return
             val t1 = System.nanoTime()
             decodeNanos += t1 - t0
             upFrames++
             val sent = sentAt[f.seq and 1023]
             if (sent != 0L && t1 - sent < 1_000_000_000L) { echoNanos += t1 - sent; echoCount++ }
+            if (!ready) { upEarly++; return }
             helper.up(if (uplinkMuted) ShortArray(pcm.size) else pcm)
         }
     }

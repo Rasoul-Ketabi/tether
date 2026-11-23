@@ -238,8 +238,10 @@ object HelperMain {
                     while (true) {
                         try { return f(m) } catch (t: Throwable) {
                             val msg = CallAudio.describe(t)
+                            // Polled often: every ms here delays both directions' first audio (the iPhone's first
+                            // words wait in the uplink meanwhile).
                             if (m == "intercept" && msg.contains("not available in mode") && System.currentTimeMillis() < deadline) {
-                                Thread.sleep(150); continue
+                                Thread.sleep(30); continue
                             }
                             errors.put("$kind:$m $msg"); break
                         }
