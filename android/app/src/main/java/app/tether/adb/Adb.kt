@@ -164,21 +164,36 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
         const val NOTIF_ADB = 30
         const val KEY_CODE = "code"
 
-        fun showPairingNotification(ctx: Context, text: String = ctx.getString(R.string.adb_notif_text)) {
+        /** Same notification is used by the short-lived pairing foreground service and its fallback. */
+        fun pairingNotification(ctx: Context, text: String = ctx.getString(R.string.adb_notif_text)): Notification {
             val input = RemoteInput.Builder(KEY_CODE).setLabel(ctx.getString(R.string.adb_notif_hint)).build()
-            val pi = PendingIntent.getBroadcast(ctx, 7, Intent(ctx, AdbPairingReceiver::class.java),
+            val reply = PendingIntent.getBroadcast(ctx, 7, Intent(ctx, AdbPairingReceiver::class.java),
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val action = Notification.Action.Builder(null, ctx.getString(R.string.adb_notif_action), pi)
+            val enterCode = Notification.Action.Builder(null, ctx.getString(R.string.adb_notif_action), reply)
                 .addRemoteInput(input).build()
-            val n = Notification.Builder(ctx, TetherApp.CH_SETUP)
+            val stop = PendingIntent.getService(ctx, 8, PairingOverlayService.stopIntent(ctx),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            val stopAction = Notification.Action.Builder(null, ctx.getString(R.string.adb_notif_stop), stop).build()
+            return Notification.Builder(ctx, TetherApp.CH_SETUP)
                 .setSmallIcon(R.drawable.ic_tether)
                 .setContentTitle(ctx.getString(R.string.adb_notif_title))
                 .setContentText(text)
+                .setSubText(ctx.getString(R.string.adb_notif_subtext))
                 .setStyle(Notification.BigTextStyle().bigText(text))
-                .addAction(action)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setPriority(Notification.PRIORITY_HIGH)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true)
+                .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
+                .addAction(enterCode)
+                .addAction(stopAction)
                 .build()
-            ctx.getSystemService(NotificationManager::class.java).notify(NOTIF_ADB, n)
+        }
+
+        fun showPairingNotification(ctx: Context, text: String = ctx.getString(R.string.adb_notif_text)) {
+            ctx.getSystemService(NotificationManager::class.java)
+                .notify(NOTIF_ADB, pairingNotification(ctx, text))
         }
 
         fun updateNotification(ctx: Context, text: String, done: Boolean) {
