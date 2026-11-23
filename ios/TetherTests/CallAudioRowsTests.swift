@@ -44,4 +44,31 @@ final class CallAudioRowsTests: XCTestCase {
         let d = try Control.encode(MsgType.audioSet, AudioSet(micMute: true))
         XCTAssertEqual(String(data: d, encoding: .utf8), #"{"b":{"micMute":true},"t":"audio.set"}"#)
     }
+
+    private let withMic = #"{"device":"A","battery":10,"charging":false,"sims":[],"dialer":true,"helper":{"state":"running","method":"intercept","up":true,"down":true,"silent":"full","micMute":false,"uplink":"ok","mic":"auto","micPath":"off"},"wifi":true,"adbWifi":true}"#
+
+    /// A current Android build: the three-way setting and what the mic does in the call.
+    func testMicSettingFromCurrentAndroidBuilds() {
+        feed(m, wireJSON(MsgType.status, withMic))
+        XCTAssertEqual(m.status?.helper.mic, "auto")
+        XCTAssertEqual(m.status?.helper.micPath, "off")
+        XCTAssertEqual(CallAudioRows.micChoice("open"), "open")
+        XCTAssertEqual(CallAudioRows.micChoice("future"), "auto", "an unknown setting reads as the default")
+        let paths = ["off", "muted", "open"].map(CallAudioRows.micPathText)
+        XCTAssertEqual(Set(paths).count, 3)
+        let footers = ["auto", "mute", "open"].map(CallAudioRows.micFooter)
+        XCTAssertEqual(Set(footers).count, 3)
+    }
+
+    /// The picker sends `mic`, never the old switch's `micMute`.
+    func testAudioSetMicBody() throws {
+        let d = try Control.encode(MsgType.audioSet, AudioSet(mic: "open"))
+        XCTAssertEqual(String(data: d, encoding: .utf8), #"{"b":{"mic":"open"},"t":"audio.set"}"#)
+    }
+
+    func testMicSettingNeedsTheLink() {
+        feed(m, wireJSON(MsgType.status, withMic))
+        m.setPhoneMic("open")
+        XCTAssertEqual(m.status?.helper.mic, "auto")
+    }
 }

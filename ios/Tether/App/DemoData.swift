@@ -58,7 +58,7 @@ extension AppModel {
                                       sims: [SimInfo(slot: 0, sub: 3, name: "Personal", carrier: "Carrier A", signal: 4, net: "LTE", service: "in"),
                                              SimInfo(slot: 1, sub: 2, name: "Work", carrier: "Carrier B", signal: 2, net: "LTE+", service: "in")],
                                       defaultSub: 3, dialer: true, helper: HelperInfo(state: "running", method: "intercept", capture: "intercept", up: true, down: true,
-                                                                                       silent: "earpiece", micMute: false, uplink: "off"),
+                                                                                       silent: "full", micMute: false, uplink: "ok", mic: "auto", micPath: "off"),
                                       wifi: true, adbWifi: true,
                                       tools: .init(ussd: true, find: true, ringer: true), ringer: "vibrate", dnd: false),
                    lists: BlockLists(blocked: ["7000", "+15550199"], muted: [3], system: true))
