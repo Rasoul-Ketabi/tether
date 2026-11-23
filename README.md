@@ -4,25 +4,41 @@ Tether puts an Android phone's calls, text messages, contacts and call history o
 second Android phone. The Android phone keeps the SIM cards and can stay in a bag; the two talk directly over an
 end-to-end encrypted Bluetooth link, with no server and no account.
 
-<p>
-  <img src="docs/images/recents.png" width="260" alt="Recents on the iPhone, with calls from two SIMs">
-  <img src="docs/images/thread.png" width="260" alt="A text conversation on the iPhone">
-</p>
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/recents.png" width="190" alt="Recents: calls from both SIMs, missed calls in red"><br><sub>Recents</sub></td>
+    <td align="center"><img src="docs/images/thread.png" width="190" alt="A text conversation"><br><sub>A conversation</sub></td>
+    <td align="center"><img src="docs/images/one-time-code.png" width="190" alt="One-time codes with a Copy button, links and numbers recognised"><br><sub>One-time codes</sub></td>
+    <td align="center"><img src="docs/images/contacts.png" width="190" alt="Contacts and Favourites"><br><sub>Contacts</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/keypad.png" width="190" alt="Keypad, the number grouped as you type"><br><sub>Keypad</sub></td>
+    <td align="center"><img src="docs/images/in-call.png" width="190" alt="Call screen with the Audio menu for headsets and the car"><br><sub>In a call</sub></td>
+    <td align="center"><img src="docs/images/phone-tools.png" width="190" alt="Link tab: carrier codes, Find phone and the ringer"><br><sub>Phone tools</sub></td>
+    <td align="center"><img src="docs/images/messages-persian.png" width="190" alt="Messages in Persian, right to left"><br><sub>Persian</sub></td>
+  </tr>
+</table>
 
-*Screenshots from the iOS simulator with demo data.*
+*Screenshots from the iOS simulator with demo data (test numbers and made-up names).*
 
 ## What works
 
 - **Calls** through the iPhone's own call screen (CallKit): incoming ringing, answer, decline, dial, hang up, hold,
   mute, keypad tones, speaker, call waiting, "move the call here" between devices. Call audio is bridged both ways
-  (Opus, wideband) on Android phones that allow it, see [Compatibility](#compatibility).
+  (Opus, wideband) on Android phones that allow it, see [Compatibility](#compatibility). An **Audio** menu moves a
+  call to a Bluetooth headset or the car and back.
+- **Numbers from other apps**: a "Call with" action for Shortcuts and Siri (also finds a number in shared text),
+  `tether://dial` links, call-backs from the Phone app's Recents, and on iOS 18.2+ with a paid developer account,
+  the default calling app for `tel:` links. Numbers are grouped like phones show them, on the keypad as you type.
 - **Messages** (SMS): every conversation, live new texts, send from either SIM, read state shared with the Android
   phone, delete, mute, block, one-time codes with a Copy button, links and phone numbers recognised.
 - **Contacts**: browse, search, edit, add, favourites; **Recents**: search, delete, clear, missed-call badge.
 - **Notifications** for texts and missed calls, with quick reply.
 - **Link tab**: battery and signal of each SIM, and remote switches for mobile data, the data SIM, Wi-Fi hotspot,
   Bluetooth tethering, airplane mode, network mode, and "Share VPN" (use the Android phone's VPN from the iPhone).
-- English and Persian, light and dark.
+- **Phone tools**: carrier codes such as a balance check (USSD) on either SIM, "Find phone" (the Android phone rings
+  loudly) and its ringer mode.
+- English and Persian (right to left), in a dark design.
 
 ### On a second Android phone
 
