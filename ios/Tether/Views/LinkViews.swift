@@ -26,6 +26,10 @@ struct LinkView: View {
                         }
                     }
                     .padding(.vertical, 6)
+                    if model.linkState.isConnected {
+                        LabeledContent("Audio & sync transport",
+                            value: model.wifiFastLane ? "Wi-Fi (BLE wake active)" : "Bluetooth (Wi-Fi fallback)")
+                    }
                 }
 
                 Section {
