@@ -11,7 +11,7 @@ After the handshake every record is sealed with AES-256-GCM under a strict count
 
 ### With TetherLink
 
-``TetherLink/send(_:_:expectReply:)`` encodes, seals and queues a message from any thread. It returns the request
+``TetherLink/send(_:_:expectReply:re:)`` encodes, seals and queues a message from any thread. It returns the request
 id; replies carry it in ``MessageHeader/re``:
 
 ```swift
