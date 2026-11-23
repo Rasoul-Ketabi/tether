@@ -44,7 +44,8 @@ public enum DialLink {
     static func telNumber(_ rest: String) -> String? {
         let noQuery = rest.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
         let fields = noQuery.split(separator: ";", omittingEmptySubsequences: false).map(String.init)
-        guard var n = fields.first.map(decode) else { return nil }
+        // An extension or pause alone is no number to call.
+        guard var n = fields.first.map(decode), dialable(n) != nil else { return nil }
         for f in fields.dropFirst() {
             let kv = f.split(separator: "=", maxSplits: 1).map(String.init)
             guard kv.count == 2 else { continue }
