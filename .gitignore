@@ -22,3 +22,4 @@ ios/build-sim-ent/
 ios/Config/Local.xcconfig
 tools/local.env
 
+tools/private-patterns.txt
