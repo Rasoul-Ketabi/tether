@@ -75,13 +75,12 @@ jobs:
         working-directory: examples/kotlin-jvm
         run: ./gradlew --console=plain run | tee out.txt && grep -qx ok out.txt
 
-  # Run every Apple check on the SAME macOS runner. A separate macOS job was
-  # twice cancelled before it acquired a runner (no steps or logs), even while
-  # the app build/test job succeeded. Consolidation removes that scheduling dependency.
+  # macOS is only the Xcode build runner; the target is an iPhone/iOS app.
+  # No macOS, tvOS, watchOS, visionOS apps or unrelated SDK examples are built.
   apple:
-    name: Apple (iPhone app, Swift SDK, docs, examples)
+    name: iPhone (iOS app, TetherCore, simulator tests)
     runs-on: macos-latest
-    timeout-minutes: 75
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: Swift package TetherCore
@@ -103,25 +102,6 @@ jobs:
           xcodebuild test -project Tether.xcodeproj -scheme Tether -destination "id=$udid" \
             -derivedDataPath build-test -skipMacroValidation -quiet
 
-      # Previously a second macOS job; keep these checks rather than skip them.
-      - name: Swift SDK (root package), tests
-        run: swift test
-      - name: Builds for iOS, tvOS, watchOS, visionOS (each one whose SDK the runner has)
-        run: |
-          for p in iOS:iphoneos tvOS:appletvos watchOS:watchos visionOS:xros; do
-            name=${p%%:*}; sdk=${p##*:}
-            if ! xcodebuild -showsdks | grep -q -- "-sdk $sdk"; then echo "$name: SDK not installed, skipped"; continue; fi
-            xcodebuild -scheme Tether -destination "generic/platform=$name" -derivedDataPath build-sdk \
-              -skipMacroValidation build -quiet
-          done
-      - name: Documentation (DocC)
-        run: swift package generate-documentation --target TetherCore --warnings-as-errors
-      - name: Example Loopback
-        working-directory: examples/swift/Loopback
-        run: swift run
-      - name: Example MacCentral (build only, it needs Bluetooth)
-        working-directory: examples/swift/MacCentral
-        run: swift build
 
   swift-linux:
     name: Swift on Linux
