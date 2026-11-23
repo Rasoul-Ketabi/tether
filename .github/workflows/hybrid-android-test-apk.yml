@@ -1,0 +1,51 @@
+name: Hybrid Android Test APK
+
+on:
+  push:
+    branches:
+      - build/hybrid-android-test-apk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-test-apk:
+    name: Build Hybrid Android Host APK (debug signing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Unit tests and signed test APK
+        working-directory: android
+        run: ./gradlew --console=plain :core:testDebugUnitTest :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - name: Package and checksum
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Tether-Hybrid-Android-Host-debug-signed.apk
+          (cd dist && sha256sum Tether-Hybrid-Android-Host-debug-signed.apk > SHA256SUMS.txt)
+          cat > dist/READ-ME-FIRST.txt <<'TXT'
+          EXPERIMENTAL HYBRID BLE + WI-FI Android Host.
+          Source branch: feature/hybrid-ble-wifi, mirrored on build/hybrid-android-test-apk.
+          The release APK uses the GitHub runner's debug signing key, NOT a production key.
+          It may not update an installed Tether app with a different signing certificate.
+          Do NOT remove an existing Tether installation until you have backed up its pairing
+          details and understood that uninstalling removes its local app data and permissions.
+          Not approved for everyday use. Run with the matching Hybrid iOS build.
+          BLE remains mandatory for pairing, background wake and call controls.
+          Wi-Fi is an optional encrypted audio and bulk sync fast lane.
+          No physical-device call/audio/hotspot/failover tests have been completed.
+          TXT
+      - name: Upload signed test APK and checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: tether-hybrid-android-host-test-apk
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
