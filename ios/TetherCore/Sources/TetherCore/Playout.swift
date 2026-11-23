@@ -48,10 +48,12 @@ public final class SampleRing: @unchecked Sendable {
 /// Playout buffer for decoded far-end audio.
 /// - A short shortfall is concealed (the last 10 ms faded out over ~60 ms) instead of dropping to silence and
 ///   re-buffering; only ~100 ms without audio un-primes it.
-/// - Clock drift and bursts are drained in quiet frames (a quiet frame is written short: inaudible) back to `target`, so the
-///   delay never creeps up and is never cut in the middle of speech; a hard trim only catches a huge burst.
+/// - The level is steered in quiet frames (inaudible): above `target` a quiet frame is written short (clock drift,
+///   bursts, the delay a gap left behind); below it, while the far clock runs measurably slow, a quiet frame is written
+///   longer. Speech is never cut or stretched; a hard trim only catches a huge burst.
 /// - `target` follows the spread of frame arrival times over the last ~10 s (up at once, down slowly), grows by 5 ms
 ///   with every concealed gap (more after a real underrun) and shrinks after ~3 s clean, never below that spread.
+///   The spread is measured around the far clock's own rate (a drift line), so drift does not widen it.
 public final class PlayoutBuffer: @unchecked Sendable {
     private let ring: SampleRing
     private var lock = os_unfair_lock()
@@ -62,19 +64,34 @@ public final class PlayoutBuffer: @unchecked Sendable {
     public private(set) var underruns = 0
     public private(set) var trimmed = 0
     public private(set) var concealedSamples = 0
+    /// Samples added by writing quiet frames longer (the level was below target).
+    public private(set) var inserted = 0
     private var cleanPulls = 0
+    // Actual playout delay: the level at every pull once primed (render thread).
+    private var levelSum = 0.0, levelPulls = 0
+    /// Mean samples queued when the render thread took audio: the playout delay the listener had (beyond the output's own).
+    public var meanBuffered: Double { os_unfair_lock_lock(&lock); defer { os_unfair_lock_unlock(&lock) }; return levelPulls > 0 ? levelSum / Double(levelPulls) : 0 }
+    /// The far clock against ours from the arrival line (parts per million; > 0: frames come faster than real time).
+    public private(set) var driftPpm = 0.0
+    /// Mean square of the quietest recent frames: what "quiet" is measured against (audio queue).
+    private var noiseFloor: Float = 1e-6
     // Concealment state, render thread only.
     private let last: UnsafeMutablePointer<Float>
     private let lastLen: Int
     private var concealRun = 0
 
-    public init(rate: Double) {
+    /// Which late frames the buffer covers: this percentile of the arrival delays in the ~10 s window.
+    public let hiPercentile: Double
+
+    public init(rate: Double, hiPercentile: Double = 0.998) {
         self.rate = Int(rate)
+        self.hiPercentile = hiPercentile
         minTarget = Int(rate * 0.03)   // 30 ms
         maxTarget = Int(rate * 0.12)   // 120 ms
         target = Int(rate * 0.04)      // start at 40 ms
         jitterFloor = Int(rate * 0.03)
         delays = [Double](repeating: 0, count: 500)
+        times = [Double](repeating: 0, count: 500)
         ring = SampleRing(capacity: Int(rate))
         lastLen = Int(rate * 0.01)     // 10 ms
         last = .allocate(capacity: lastLen)
@@ -84,8 +101,10 @@ public final class PlayoutBuffer: @unchecked Sendable {
 
     // Arrival statistics (audio queue only): each frame's delay against an ideal 20 ms clock, last ~10 s.
     private var delays: [Double]
+    private var times: [Double]
     private var delayCount = 0, delayNext = 0, sinceStats = 0
     private var firstArrival: UInt64 = 0
+    private var startupArrivals = 100
     private var expectedSamples = 0
     /// The target the arrival statistics ask for (samples); `target` never shrinks below it and jumps up to it.
     /// Written on the audio queue, read for statistics.
@@ -100,20 +119,29 @@ public final class PlayoutBuffer: @unchecked Sendable {
         if concealed { expectedSamples += pcm.count; concealedFrames += 1 } else { noteArrival(samples: pcm.count, missing: missing, at: at) }
         let f = pcm.map { Float($0) / 32768 }
         let energy = f.reduce(Float(0)) { $0 + $1 * $1 } / Float(max(1, f.count))
+        noiseFloor = energy < noiseFloor ? max(energy, 1e-10) : noiseFloor * 1.01   // falls at once, rises ~2 dB/s
+        let quiet = energy < 1e-3 && (energy < 1e-5 || energy < noiseFloor * 6)
         os_unfair_lock_lock(&lock)
-        let tgt = target
+        let tgt = target, isPrimed = primed
         os_unfair_lock_unlock(&lock)
-        // Drift: a quiet frame is written short (only its own silence is dropped, never queued speech).
+        // Steering in quiet frames only (never queued speech): above target + 10 ms the frame is written short. Below
+        // target - 10 ms, while the far clock runs measurably slow, it is written longer by repeating its start (else the
+        // buffer would run dry every few seconds; without drift a gap refills it by itself, and filling up to a target
+        // that one freak stall raised would only add delay).
         var n = f.count
         let before = ring.available
-        if energy < 1e-5 && before + n > tgt + minTarget / 3 { n -= min(before + n - tgt, n) }
+        var add = 0
+        if quiet && before + n > tgt + minTarget / 3 { n -= min(before + n - tgt, n) }
+        else if quiet && isPrimed && driftPpm < -Self.slowClockPpm && before + n + minTarget / 3 < tgt { add = min(tgt - before - n, f.count) }
         if n > 0 { f.withUnsafeBufferPointer { ring.write($0.baseAddress!, n) } }
-        var live = before + n
+        if add > 0 { f.withUnsafeBufferPointer { ring.write($0.baseAddress!, add) } }
+        var live = before + n + add
         var skip = f.count - n
         if live > tgt + maxTarget { ring.skip(live - tgt); skip += live - tgt; live = tgt }   // a huge burst: cut now
         os_unfair_lock_lock(&lock)
         if !primed && live >= tgt { primed = true }
         trimmed += skip
+        inserted += add
         os_unfair_lock_unlock(&lock)
     }
 
@@ -124,6 +152,7 @@ public final class PlayoutBuffer: @unchecked Sendable {
         let isPrimed = primed, tgt = target
         os_unfair_lock_unlock(&lock)
         guard isPrimed else { for i in 0..<count { out[i] = 0 }; return 0 }
+        let level = ring.available
         // After a gap keep concealing until half the target is back: frames lost (not late) would otherwise leave
         // the buffer running on empty, and every small jitter spike would be another gap.
         let n = concealRun > 0 && ring.available < tgt / 2 ? 0 : ring.read(into: out, count)
@@ -136,6 +165,7 @@ public final class PlayoutBuffer: @unchecked Sendable {
             concealRun = 0
             remember(out, count)
             os_unfair_lock_lock(&lock)
+            levelSum += Double(level); levelPulls += 1
             cleanPulls += 1
             // ~3 s clean: shrink, but not below what the arrival statistics ask for.
             if cleanPulls > 300 && target > max(minTarget, jitterFloor) { target = max(jitterFloor, target - minTarget / 6); cleanPulls = 0 }
@@ -158,6 +188,7 @@ public final class PlayoutBuffer: @unchecked Sendable {
             concealRun += 1
         }
         os_unfair_lock_lock(&lock)
+        levelSum += Double(level); levelPulls += 1
         concealedSamples += count - n
         cleanPulls = 0
         if concealRun > rate / 10 {
@@ -172,33 +203,75 @@ public final class PlayoutBuffer: @unchecked Sendable {
     }
 
     /**
-     * The delay of each frame against an ideal clock started by the first one; the spread of the last ~10 s
-     * (2nd percentile to the second-latest frame, so one freak spike does not count) is how much the buffer must hold
-     * so the late frames are still in time. Over Bluetooth the late frames are few and periodic (a 60-77 ms hold-up
-     * every few seconds): a percentile below the top misses them, and each one was concealed. It is
-     * recomputed every 0.5 s; the target follows it up at once (before the next gap is concealed, not after) and
-     * down only by the slow clean-playout shrink. Clock drift moves all delays together, so it does not widen the
-     * spread inside a window.
+     * The delay of each frame against an ideal clock started by the first one; the spread of the last ~10 s is how much
+     * the buffer must hold so the late frames are still in time. The spread is taken around a drift line through the
+     * delays (the far clock's rate against ours: a drift of 2 % would otherwise add 200 ms in 10 s), from
+     * the 2nd percentile to the [hiPercentile] (one freak spike does not count; the late frames over Bluetooth are a
+     * few periodic hold-ups of 60-77 ms, and the buffer should cover most of them). Recomputed every 0.5 s; the target
+     * follows it up at once (before the next gap is concealed, not after) and down only by the clean-playout shrink.
      */
     private func noteArrival(samples: Int, missing: Int, at: UInt64) {
+        // The first ~2 s are no measure of the link: the connection interval is still being shortened for the call
+        // (a 250-280 ms hold-up then, on a real iPhone, 2026-11-23), which kept the target at its maximum for
+        // the next 10 s. Concealed gaps deepen the buffer meanwhile.
+        if startupArrivals > 0 { startupArrivals -= 1; return }
         if firstArrival == 0 || at < firstArrival { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0 }
         expectedSamples += missing * samples
-        let d = Double(at - firstArrival) / 1e6 - Double(expectedSamples) * 1000 / Double(rate)
+        let t = Double(at - firstArrival) / 1e6
+        let d = t - Double(expectedSamples) * 1000 / Double(rate)
         expectedSamples += samples
         delays[delayNext] = d
+        times[delayNext] = t
         delayNext = (delayNext + 1) % delays.count
         delayCount = min(delayCount + 1, delays.count)
         sinceStats += 1
         guard sinceStats >= 25, delayCount >= 50 else { return }
         sinceStats = 0
-        let sorted = delays[0..<delayCount].sorted()
-        let lo = sorted[Int(Double(delayCount - 1) * 0.02)], hi = sorted[delayCount - 2]
-        let floor = min(maxTarget, max(minTarget, Int((hi - lo + Self.marginMs) * Double(rate) / 1000)))
+        let (spread, slope) = Self.spread(times: times, delays: delays, count: delayCount, hi: hiPercentile)
+        driftPpm = -slope * 1e6
+        let floor = min(maxTarget, max(minTarget, Int((spread + Self.marginMs) * Double(rate) / 1000)))
         os_unfair_lock_lock(&lock)
         jitterFloor = floor
         if target < floor { target = floor }
         os_unfair_lock_unlock(&lock)
     }
+
+    /// Percentile spread of `delays` around their drift line against `times` (ms), and the line's slope. The slope comes
+    /// from the early frames (10th percentile) of each half of the window: late frames and stalls do not tilt it.
+    static func spread(times: [Double], delays: [Double], count n: Int, lo: Double = 0.02, hi: Double) -> (Double, Double) {
+        let slope = driftSlope(times: times, delays: delays, count: n)
+        var r = [Double](repeating: 0, count: n)
+        for i in 0..<n { r[i] = delays[i] - slope * times[i] }
+        r.sort()
+        return (r[min(n - 1, Int(Double(n - 1) * hi))] - r[Int(Double(n - 1) * lo)], slope)
+    }
+
+    /// ms of delay per ms of time; 0 for a window shorter than ~4 s (too short to tell drift from jitter).
+    static func driftSlope(times: [Double], delays: [Double], count n: Int) -> Double {
+        let idx = (0..<n).sorted { times[$0] < times[$1] }
+        guard n >= 100, let t0 = idx.first.map({ times[$0] }), let t1 = idx.last.map({ times[$0] }), t1 - t0 > 4000 else { return 0 }
+        func early(_ part: ArraySlice<Int>) -> (Double, Double) {
+            let d = part.map { delays[$0] }.sorted()
+            let t = part.map { times[$0] }.reduce(0, +) / Double(part.count)
+            return (t, d[d.count / 10])
+        }
+        let a = early(idx[0..<n / 2]), b = early(idx[n / 2..<n])
+        return b.0 > a.0 ? (b.1 - a.1) / (b.0 - a.0) : 0
+    }
+
+    /// The arrival window's residual delays (ms, around the drift line) at a few percentiles, for traces. Audio queue only.
+    public func arrivalSummary() -> String {
+        guard delayCount >= 50 else { return "arrivals: \(delayCount)" }
+        let n = delayCount
+        let slope = Self.driftSlope(times: times, delays: delays, count: n)
+        let r = (0..<n).map { delays[$0] - slope * times[$0] }.sorted()
+        func p(_ q: Double) -> Double { r[min(n - 1, Int(Double(n - 1) * q))] - r[Int(Double(n - 1) * 0.02)] }
+        return String(format: "spread p50 %.0f p90 %.0f p99 %.0f p99.8 %.0f max %.0f ms (n %d, drift %.0f ppm)", p(0.5), p(0.9), p(0.99), p(0.998), p(1), n, -slope * 1e6)
+    }
+
+    /// A far clock slower than this (ppm) is made up for in quiet frames. Real clocks are tens of ppm apart; the
+    /// estimate from a 10 s window with hold-ups wanders by up to ~800 ppm.
+    static let slowClockPpm = 3000.0
 
     /// Room beyond the arrival spread: the render thread takes 10 ms at a time.
     static let marginMs = 10.0

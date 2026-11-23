@@ -13,9 +13,9 @@ final class PlayoutTraceTests: XCTestCase {
     }
 
     /// `arrivals[k]`: ms at which frame k arrives (sorted or not; delivery is in order of time, then index).
-    static func run(_ arrivals: [Double], seconds: Double = 60) -> Result {
+    static func run(_ arrivals: [Double], seconds: Double = 60, hi: Double? = nil) -> Result {
         let rate = 16000.0
-        let b = PlayoutBuffer(rate: rate)
+        let b = hi.map { PlayoutBuffer(rate: rate, hiPercentile: $0) } ?? PlayoutBuffer(rate: rate)
         let order = arrivals.indices.sorted { (arrivals[$0], $0) < (arrivals[$1], $1) }
         var next = 0
         var out = [Float](repeating: 0, count: 160)
@@ -62,6 +62,47 @@ final class PlayoutTraceTests: XCTestCase {
 
     /// 15 ms events with one 300 ms hold-up half-way (a freak spike).
     static func spike() -> [Double] { ble15().map { a in a >= 30_000 && a < 30_300 ? 30_300 : a } }
+
+    /// The reference link (2026-11-23): 15 ms events, a hold-up every ~2 s leaving a 60-77 ms gap; `drift`: the far
+    /// clock that much fast (+) or slow (-).
+    static func measured(drift: Double = 0) -> [Double] {
+        (0..<frames).map { k in
+            let a = ceil((Double(k) * 20 / (1 + drift) + 0.5) / 15) * 15
+            let cycle = 1900.0 + Double((Int(a / 1900) * 7) % 5) * 100, phase = a.truncatingRemainder(dividingBy: cycle)
+            let hold = 45 + Double((Int(a / cycle) * 11) % 18)
+            return phase < hold ? a - phase + hold : a
+        }
+    }
+
+    /// Before (2026-11-23, the playout without a drift line or quiet-frame filling, same traces): measured 168 ms
+    /// concealed / 50 ms mean delay; +2 % 130 ms / 106 ms (the spread grew with the drift and held the target at its
+    /// maximum); -2 % 1190 ms concealed (the buffer ran dry every few seconds).
+    func testMeasuredLinkWithDrift() {
+        for (name, tr) in [("measured", Self.measured()), ("measured+2%", Self.measured(drift: 0.02)), ("measured-2%", Self.measured(drift: -0.02))] {
+            let r = Self.run(tr)
+            print("[trace] " + Self.report(name, r))
+            XCTAssertLessThan(r.concealedMs, 300, name)    // < 0.5 % of the minute
+            XCTAssertLessThan(r.meanDelayMs, 75, name)
+            XCTAssertLessThanOrEqual(r.underruns, 1, name)
+        }
+    }
+
+    /// The connection interval being shortened as the call starts held frames for ~260 ms on a real iPhone: that
+    /// must not hold the target at its maximum for the next 10 s.
+    func testStartupStallDoesNotRaiseTheTarget() {
+        let tr = Self.measured().map { a in a >= 300 && a < 560 ? 560 : a }
+        let rate = 16000.0
+        let b = PlayoutBuffer(rate: rate)
+        var out = [Float](repeating: 0, count: 160)
+        var next = 0
+        var t = 0.0
+        while t < 6000 {
+            while next < tr.count && tr[next] <= t { b.push(Self.tone(320, next), at: UInt64((tr[next] + 1_000_000) * 1e6)); next += 1 }
+            out.withUnsafeMutableBufferPointer { _ = b.pull(into: $0.baseAddress!, count: 160) }
+            t += 10
+        }
+        XCTAssertLessThan(Double(b.jitterFloor) / rate * 1000, 90, "the floor follows the link after the start, not the stall")
+    }
 
     static func report(_ name: String, _ r: Result) -> String {
         String(format: "%@: concealed %.0f ms, underruns %d, mean delay %.1f ms, mean target %.1f ms", name, r.concealedMs, r.underruns, r.meanDelayMs, r.meanTargetMs)
