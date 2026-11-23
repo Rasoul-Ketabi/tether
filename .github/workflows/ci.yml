@@ -96,6 +96,44 @@ jobs:
           xcodebuild test -project Tether.xcodeproj -scheme Tether -destination "id=$udid" \
             -derivedDataPath build-test -skipMacroValidation -quiet
 
+  swift-linux:
+    name: Swift on Linux
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Swift SDK (root package), build and tests
+        run: swift build && swift test
+      - name: Example Loopback
+        working-directory: examples/swift/Loopback
+        run: swift run
+
+  swift-sdk-apple:
+    name: Swift SDK on Apple platforms, docs, examples
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Swift SDK (root package), tests
+        run: swift test
+      - name: Builds for iOS, tvOS, watchOS, visionOS (each one whose SDK the runner has)
+        run: |
+          for p in iOS:iphoneos tvOS:appletvos watchOS:watchos visionOS:xros; do
+            name=${p%%:*}; sdk=${p##*:}
+            if ! xcodebuild -showsdks | grep -q -- "-sdk $sdk"; then echo "$name: SDK not installed, skipped"; continue; fi
+            xcodebuild -scheme Tether -destination "generic/platform=$name" -derivedDataPath build-sdk \
+              -skipMacroValidation build -quiet
+          done
+      - name: Documentation (DocC)
+        run: swift package generate-documentation --target TetherCore --warnings-as-errors
+      - name: Example Loopback
+        working-directory: examples/swift/Loopback
+        run: swift run
+      - name: Example MacCentral (build only, it needs Bluetooth)
+        working-directory: examples/swift/MacCentral
+        run: swift build
+
   hygiene:
     name: Whitespace, scripts, privacy patterns
     runs-on: ubuntu-latest
