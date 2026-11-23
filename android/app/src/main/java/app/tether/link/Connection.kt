@@ -39,6 +39,8 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     @Volatile internal var wifi: HybridWifiServer? = null
     /** Fixed for each sync request to avoid splitting a page sequence by normal lane selection. */
     @Volatile var bulkSync = false
+    /** Independent lock: serialize sync snapshots without blocking call-control reads. */
+    internal val syncLock = Any()
     /** Normal lane (sync pages, status…) and priority lane (handshake, call events, audio). */
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
