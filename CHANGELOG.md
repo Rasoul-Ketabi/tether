@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.0 — 2026-11-23
+
 ### New features
 
 - iPhone Link tab › Phone tools: send carrier codes (balance etc.) on a chosen SIM and read the answer, "Find phone"
