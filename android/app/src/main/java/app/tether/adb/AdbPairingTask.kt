@@ -26,6 +26,7 @@ object AdbPairingTask {
             val result = runCatching { (appContext as TetherApp).adbPairAndBootstrap(code) }
             if (result.isSuccess) {
                 runCatching { Adb.updateNotification(appContext, appContext.getString(R.string.adb_paired), true) }
+                runCatching { PairingOverlayService.finish(appContext) }
             } else {
                 val error = result.exceptionOrNull()
                 Log.w(Adb.TAG, "pairing failed: " + (error?.javaClass?.simpleName ?: "unknown"))
