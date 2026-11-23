@@ -116,6 +116,8 @@
 
 ### Fixes
 
+- After an update the Android phone's link service starts as soon as the app's process starts, not only when Samsung
+  delivers the delayed update broadcast; until then the iPhone could not link and calls were not bridged.
 - The other side could not hear the iPhone (#2, Galaxy Z Fold 6): during a bridged call the Android phone also muted
   its own microphone (through Android's mic mute, and on Samsung its tx control key), and on several audio systems
   that mute silences the injected iPhone voice too. The phone's microphone now stays on by default on every phone
