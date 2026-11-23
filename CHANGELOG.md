@@ -17,6 +17,14 @@
   iPhone's keypad as you type, in Recents, Contacts, Messages, the call screen, CallKit and notifications, and on
   the Android phone's call screen. National numbers follow the SIM's country (new optional `country` per SIM in
   `status`). Short codes, USSD codes and names are left as they are; what is dialled, stored and searched is unchanged.
+- **Android client** (`android/client`, "Tether Client"): a second Android phone (Android 10+) as a Tether client,
+  like the iPhone app: QR pairing, the link with the iPhone's reconnect rules, calls as self-managed Telecom calls
+  (Bluetooth headsets and car kits) with Opus audio both ways, keypad, Recents, Contacts and Favourites, Messages,
+  notifications, the Link screen and switches, `tel:` links. Tested against a simulated Android phone only so far.
+- The Android phone's protocol and codec code moved to a shared module (`android/core`) used by both Android apps.
+- The Android phone knows the client kind "android" and holds / pulses the LE link only for an iPhone (a new
+  client's kind is known at its first sync).
+
 - Stable link while the phones are also paired for Bluetooth tethering (the Android phone holds an LE link during a
   session, so the session runs over LE / L2CAP and does not move between links).
 - Reconnects after the app is closed and reopened (within ~1-3 s), after a link drop while the app is in the

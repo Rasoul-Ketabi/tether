@@ -19,6 +19,8 @@
 
 | Part | Where | What it does |
 | --- | --- | --- |
+| Shared Android core | `android/core` | Protocol code used by both Android apps: framing, the handshake (both sides), sealed records, message types, G.711 and Opus (Concentus) |
+| Android client | `android/client` | The iPhone app's job on a second Android phone: BLE central with L2CAP / GATT pipe and the iPhone's reconnect rules, self-managed Telecom calls, call audio with the ported playout buffer, the five tabs, notifications. See [ANDROID-CLIENT.md](ANDROID-CLIENT.md) |
 | Android app | `android/app` | BLE peripheral and foreground service (`link/`), sync of SMS, contacts and call log (`data/`), Telecom: the default-dialer InCallService, call screening and a self-managed test line (`telecom/`), the audio bridge to the helper (`audio/`), in-app Wireless debugging pairing (`adb/`), the Share VPN proxy, its own small UI |
 | Shell helper | `android/helper` | Started by the app as the shell user over the phone's own Wireless debugging. Captures the call downlink and injects the uplink through Android's call-audio interception API (with fallbacks), and changes network settings an app may not (mobile data, hotspot, tethering, airplane mode, network mode, data SIM) |
 | iOS app | `ios/Tether` | SwiftUI: Recents, Contacts with Favourites, Keypad, Messages, Link. CallKit for calls, AVAudioEngine with voice processing and Opus for audio, local notifications |

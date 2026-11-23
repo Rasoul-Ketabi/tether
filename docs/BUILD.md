@@ -45,6 +45,17 @@ adb shell cmd package compile -m speed -f app.tether.android   # optional: compi
 Enable USB debugging on the phone first (Settings › About phone › tap Build number seven times, then Developer
 options › USB debugging).
 
+### The Android client (a second Android phone)
+
+```bash
+cd android
+./gradlew :client:testDebugUnitTest :client:assembleRelease
+adb -s <the client phone> install -r client/build/outputs/apk/release/client-release.apk
+```
+
+It shares the protocol and codec code with the app above (`android/core`) and is signed the same way. Application
+id `app.tether.client`, Android 10 or later. See [ANDROID-CLIENT.md](ANDROID-CLIENT.md).
+
 ## 4. iPhone / iPad app
 
 ```bash
@@ -94,6 +105,7 @@ xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platfo
 ```bash
 (cd ios/TetherCore && ./test.sh)                      # Swift: protocol, crypto, framing, playout, parsing
 (cd android && ./gradlew :app:testDebugUnitTest)      # Kotlin: the same protocol vectors, lists, link security
+(cd android && ./gradlew :client:testDebugUnitTest)   # Android client: vectors, and its whole stack against a simulated Android phone
 ```
 
 Both implementations check themselves against `protocol/vectors.json` byte for byte.
