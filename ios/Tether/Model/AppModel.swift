@@ -618,7 +618,17 @@ final class AppModel {
         do {
             switch h.t {
             case "wifi.down":
+                let wasUsingWiFi = wifiFastLane
                 wifiFastLane = false
+                // Any sync page that was accepted by TCP but lost during a Wi-Fi
+                // drop will be recovered by a new BLE incremental sync.
+                if wasUsingWiFi && linkState.isConnected {
+                    contactsPageStart = true
+                    incomingContacts = []
+                    pendingIds = SyncIds(sms: [], calls: [])
+                    syncing = false
+                    requestSync()
+                }
             case "wifi.ready":
                 wifiFastLane = true
                 // The already-paired Android has authenticated its secondary LAN lane.
