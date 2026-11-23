@@ -26,6 +26,7 @@ import android.widget.TextView
 import app.tether.R
 import app.tether.TetherApp
 import app.tether.adb.Adb
+import app.tether.adb.PairingOverlayService
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -37,6 +38,7 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var qrUntil = 0L
     private var qrBitmap: Bitmap? = null
+    private var awaitingOverlayPermission = false
     private val listener: () -> Unit = { main.post { render() } }
 
     private val perms = arrayOf(
@@ -49,6 +51,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        awaitingOverlayPermission = savedInstanceState?.getBoolean("awaitingOverlayPermission") ?: false
         app = application as TetherApp
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(24), dp(16), dp(24)) }
         setContentView(ScrollView(this).apply { addView(root); setBackgroundColor(color(R.color.background)) })
@@ -60,6 +63,15 @@ class MainActivity : Activity() {
         app.hub.addListener(listener)
         render()
         tick()
+        if (awaitingOverlayPermission) {
+            awaitingOverlayPermission = false
+            main.post { openPairingSettings() }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("awaitingOverlayPermission", awaitingOverlayPermission)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onPause() {
@@ -144,8 +156,7 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         })
         setup.addView(step(getString(R.string.step_adb), Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false), getString(R.string.action_pair)) {
-            Adb.showPairingNotification(this)
-            runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+            startAdbPairingFlow()
         })
 
         // Audio
@@ -169,6 +180,41 @@ class MainActivity : Activity() {
         audio.addView(button(getString(R.string.action_selftest), secondary = true) {
             Thread { app.hub.selftest() }.start()
         })
+    }
+
+    /** Permission is optional; never block the existing notification-based pairing path. */
+    private fun startAdbPairingFlow() {
+        if (Settings.canDrawOverlays(this)) {
+            openPairingSettings()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.adb_overlay_permission_title)
+            .setMessage(R.string.adb_overlay_permission_message)
+            .setPositiveButton(R.string.adb_overlay_permission_enable) { _, _ ->
+                awaitingOverlayPermission = true
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")))
+                } catch (_: Exception) {
+                    awaitingOverlayPermission = false
+                    openPairingSettings()
+                }
+            }
+            .setNegativeButton(R.string.adb_overlay_permission_skip) { _, _ -> openPairingSettings() }
+            .show()
+    }
+
+    private fun openPairingSettings() {
+        // RemoteInput stays available as a fallback, including when protected system UI hides overlays.
+        Adb.showPairingNotification(this)
+        // Start the short-lived pairing foreground session even if overlay access is denied.
+        // Android may hide the overlay on protected Settings screens; notification reply remains usable.
+        runCatching { PairingOverlayService.show(this) }
+        if (!WirelessDebuggingSettings.open(this)) {
+            AlertDialog.Builder(this).setMessage(R.string.adb_overlay_settings_unavailable)
+                .setPositiveButton(android.R.string.ok, null).show()
+        }
     }
 
     private fun showQr() {

@@ -1,0 +1,100 @@
+name: Publish stable pairing notification Android test APKs
+
+on:
+  push:
+    branches:
+      - fix/wireless-adb-pairing-overlay
+    paths:
+      - .github/workflows/publish-adb-notification-test.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish verified Android APKs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN_ID: "45148435275"
+      SOURCE_SHA: "6eeba45c03d337e7d98255779f4684a10985e357"
+      RELEASE_TAG: "adb-notification-test-45148435275"
+
+    steps:
+      - name: Verify successful Android build on the exact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.head_sha')" = "$SOURCE_SHA"
+          job_status="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs" --jq '[.jobs[] | select(.name == "Android APK + unit tests") | .conclusion] | first')"
+          test "$job_status" = "success"
+
+      - name: Download tested Android APKs
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45148435275
+          name: tether-android-apks
+          github-token: ${{ github.token }}
+          path: downloaded
+
+      - name: Prepare release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          copy_exact() {
+            local filename="$1" destination="$2" count source
+            count="$(find downloaded -type f -name "$filename" | wc -l)"
+            test "$count" -eq 1
+            source="$(find downloaded -type f -name "$filename" -print -quit)"
+            cp -- "$source" "release-assets/$destination"
+            test -s "release-assets/$destination"
+          }
+          copy_exact app-debug.apk Tether-Android-Notification-Fix-Debug.apk
+          copy_exact app-release.apk Tether-Android-Notification-Fix-Release-Temporary-Signing.apk
+          (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Android prerelease — stronger Wireless debugging pairing notification
+
+          Android build and unit tests succeeded in [GitHub Actions run 45148435275](https://github.com/Rasoul-Ketabi/tether/actions/runs/45148435275), commit `6eeba45c03d337e7d98255779f4684a10985e357`.
+
+          New features:
+          - Best-effort direct link to the Wireless debugging submenu, with documented Developer options fallback when OEM Settings blocks it.
+          - Time-limited connected-device foreground service to keep the inline-reply notification more accessible while Settings is open.
+          - Notification actions: Enter code and Stop pairing.
+          - Optional draggable code entry overlay; notification fallback retained when Settings hides overlays.
+          - Strict six-digit pairing validation and correct handling of rejected pairing codes.
+
+          **Download Tether-Android-Notification-Fix-Debug.apk for testing.**
+
+          Important limitations:
+          - Android ultimately controls heads-up banner visibility. No permanent banner over a protected Settings screen can be guaranteed.
+          - The Android build passed CI but has not been verified on a physical phone for this behavior.
+          - This release intentionally publishes **Android APKs only**. The iOS app was not changed; the iOS CI job for this run was still queued at the time of publication.
+          - APKs use a **temporary GitHub CI signing key** and may not update a previously installed APK. Uninstalling deletes local app data; back it up first if needed.
+          - This is not a production security-certified release; previous optional Share VPN security findings remain.
+          EOF
+
+      - name: Create Android prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: refusing to overwrite" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" release-assets/*.apk release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Tether Android — Wireless Debugging notification fix (test)" \
+            --notes-file release-notes.md \
+            --prerelease
