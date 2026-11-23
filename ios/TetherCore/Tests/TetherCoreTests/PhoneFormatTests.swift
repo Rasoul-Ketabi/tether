@@ -31,7 +31,7 @@ final class PhoneFormatTests: XCTestCase {
     }
 
     func testPassThrough() {
-        for s in ["*#06#", "*140#", "#31#0912", "MCI", "Bank-Info", "10004346", "112", "5555",
+        for s in ["*#06#", "*140#", "#31#0912", "Carrier", "Bank-Info", "10000000", "112", "5555",
                   "123456", "", "+", "+9", "0912", "۰۹۱۲۱۲۳۴۵۶۷", "+98 912 123 4567 ext 2"] {
             XCTAssertEqual(f(s, "ir"), s, s)
             XCTAssertEqual(f(s, "us"), s, s)
