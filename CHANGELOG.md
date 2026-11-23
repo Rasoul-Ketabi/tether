@@ -4,6 +4,8 @@
 
 - TetherCore carries libopus 1.5.2 (`COpus` target) with `LibOpusDecoder` / `LibOpusEncoder`: Opus with packet-loss
   concealment and complexity control on the iPhone, checked against AudioToolbox's Opus both ways.
+- The iPhone app runs on iOS 16 (it needed 17): Observation comes from swift-perception, a few iOS 17 views have
+  iOS 16 stand-ins; iOS 17 and later behave as before. The Swift package needs network access at build time.
 - Phone numbers are shown grouped like phones show them ("+98 912 345 6789", "+1 (555) 010-0001"), on the
   iPhone's keypad as you type, in Recents, Contacts, Messages, the call screen, CallKit and notifications, and on
   the Android phone's call screen. National numbers follow the SIM's country (new optional `country` per SIM in

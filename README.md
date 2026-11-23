@@ -29,7 +29,7 @@ with no server and no account.
 | | |
 | --- | --- |
 | Android phone | Android 12 or later with Bluetooth LE advertising. Call audio needs Android 13 or later and a build that lets the shell user intercept call audio (see below). Tether becomes its default phone app. |
-| iPhone or iPad | iOS 17 or later. |
+| iPhone or iPad | iOS 16 or later. |
 | Mac | Xcode with an Apple account (free is enough), [XcodeGen](https://github.com/yonaskolb/XcodeGen), JDK 17 and the Android SDK, to build both apps. |
 
 ## Quick start
@@ -64,7 +64,7 @@ what you see (open an issue with your phone model, Android version and the Link 
 | Device / feature | Status |
 | --- | --- |
 | Samsung Galaxy A54, Android 17 (One UI) + iPhone 17 | **Tested**: everything above, including call audio |
-| iPad (iOS 17+) | Builds and lays out in the simulator; untested on a device |
+| iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including muting the phone's own earpiece and microphone during a bridged call |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece and microphone are not muted during a bridged call |
 | Android 12 | Calls are controlled from the iPhone, but their audio stays on the Android phone |
