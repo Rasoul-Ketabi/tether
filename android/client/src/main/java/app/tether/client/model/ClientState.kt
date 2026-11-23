@@ -406,7 +406,9 @@ class ClientState(private val link: LinkPort, private val fx: Effects) {
                 persist()
             }
             T.SYNC_IDS -> {
-                // Whatever the phone no longer has was deleted there or on another client.
+                // Whatever the phone no longer has was deleted there or on another client. A page without one of the
+                // lists is malformed and ignored, like the iPhone's decoder does: a missing list is not an empty one.
+                if (!b.has("sms") || !b.has("calls")) return true
                 pendingIdsSms.addAll(IdRanges.parse(b.optJSONArray("sms"))); pendingIdsCalls.addAll(IdRanges.parse(b.optJSONArray("calls")))
                 if (!b.optBoolean("more")) {
                     val s = pendingIdsSms; val c = pendingIdsCalls
