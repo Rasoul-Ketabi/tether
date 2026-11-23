@@ -50,7 +50,8 @@ public final class SampleRing: @unchecked Sendable {
 ///   re-buffering; only ~100 ms without audio un-primes it.
 /// - Clock drift and bursts are drained in quiet frames (a quiet frame is written short: inaudible) back to `target`, so the
 ///   delay never creeps up and is never cut in the middle of speech; a hard trim only catches a huge burst.
-/// - `target` grows by 5 ms with every concealed gap (more after a real underrun) and shrinks after ~3 s clean.
+/// - `target` follows the spread of frame arrival times over the last ~10 s (up at once, down slowly), grows by 5 ms
+///   with every concealed gap (more after a real underrun) and shrinks after ~3 s clean, never below that spread.
 public final class PlayoutBuffer: @unchecked Sendable {
     private let ring: SampleRing
     private var lock = os_unfair_lock()
@@ -72,6 +73,8 @@ public final class PlayoutBuffer: @unchecked Sendable {
         minTarget = Int(rate * 0.03)   // 30 ms
         maxTarget = Int(rate * 0.12)   // 120 ms
         target = Int(rate * 0.04)      // start at 40 ms
+        jitterFloor = Int(rate * 0.03)
+        delays = [Double](repeating: 0, count: 500)
         ring = SampleRing(capacity: Int(rate))
         lastLen = Int(rate * 0.01)     // 10 ms
         last = .allocate(capacity: lastLen)
@@ -79,8 +82,19 @@ public final class PlayoutBuffer: @unchecked Sendable {
     }
     deinit { last.deallocate() }
 
-    /// Audio queue (not real-time): converts outside any lock the render thread uses.
-    public func push(_ pcm: [Int16]) {
+    // Arrival statistics (audio queue only): each frame's delay against an ideal 20 ms clock, last ~10 s.
+    private var delays: [Double]
+    private var delayCount = 0, delayNext = 0, sinceStats = 0
+    private var firstArrival: UInt64 = 0
+    private var expectedSamples = 0
+    /// The target the arrival statistics ask for (samples); `target` never shrinks below it and jumps up to it.
+    /// Written on the audio queue, read for statistics.
+    public private(set) var jitterFloor: Int
+
+    /// Audio queue (not real-time): converts outside any lock the render thread uses. `at`: when the frame arrived
+    /// (uptime ns); `missing`: frames lost just before this one (they never come, so they do not count as late).
+    public func push(_ pcm: [Int16], at: UInt64 = DispatchTime.now().uptimeNanoseconds, missing: Int = 0) {
+        noteArrival(samples: pcm.count, missing: missing, at: at)
         let f = pcm.map { Float($0) / 32768 }
         let energy = f.reduce(Float(0)) { $0 + $1 * $1 } / Float(max(1, f.count))
         os_unfair_lock_lock(&lock)
@@ -120,7 +134,8 @@ public final class PlayoutBuffer: @unchecked Sendable {
             remember(out, count)
             os_unfair_lock_lock(&lock)
             cleanPulls += 1
-            if cleanPulls > 300 && target > minTarget { target -= minTarget / 6; cleanPulls = 0 }   // ~3 s clean: shrink
+            // ~3 s clean: shrink, but not below what the arrival statistics ask for.
+            if cleanPulls > 300 && target > max(minTarget, jitterFloor) { target = max(jitterFloor, target - minTarget / 6); cleanPulls = 0 }
             os_unfair_lock_unlock(&lock)
             return n
         }
@@ -153,6 +168,38 @@ public final class PlayoutBuffer: @unchecked Sendable {
         return n
     }
 
+    /**
+     * The delay of each frame against an ideal clock started by the first one; the spread of the last ~10 s
+     * (2nd percentile to the second-latest frame, so one freak spike does not count) is how much the buffer must hold
+     * so the late frames are still in time. Over Bluetooth the late frames are few and periodic (a 60-77 ms hold-up
+     * every few seconds): a percentile below the top misses them, and each one was concealed. It is
+     * recomputed every 0.5 s; the target follows it up at once (before the next gap is concealed, not after) and
+     * down only by the slow clean-playout shrink. Clock drift moves all delays together, so it does not widen the
+     * spread inside a window.
+     */
+    private func noteArrival(samples: Int, missing: Int, at: UInt64) {
+        if firstArrival == 0 || at < firstArrival { firstArrival = at; expectedSamples = 0; delayCount = 0; delayNext = 0 }
+        expectedSamples += missing * samples
+        let d = Double(at - firstArrival) / 1e6 - Double(expectedSamples) * 1000 / Double(rate)
+        expectedSamples += samples
+        delays[delayNext] = d
+        delayNext = (delayNext + 1) % delays.count
+        delayCount = min(delayCount + 1, delays.count)
+        sinceStats += 1
+        guard sinceStats >= 25, delayCount >= 50 else { return }
+        sinceStats = 0
+        let sorted = delays[0..<delayCount].sorted()
+        let lo = sorted[Int(Double(delayCount - 1) * 0.02)], hi = sorted[delayCount - 2]
+        let floor = min(maxTarget, max(minTarget, Int((hi - lo + Self.marginMs) * Double(rate) / 1000)))
+        os_unfair_lock_lock(&lock)
+        jitterFloor = floor
+        if target < floor { target = floor }
+        os_unfair_lock_unlock(&lock)
+    }
+
+    /// Room beyond the arrival spread: the render thread takes 10 ms at a time.
+    static let marginMs = 10.0
+
     private func remember(_ out: UnsafeMutablePointer<Float>, _ count: Int) {
         let k = min(count, lastLen)
         // Keep the newest 10 ms, in order, so concealment continues the waveform.
@@ -160,6 +207,9 @@ public final class PlayoutBuffer: @unchecked Sendable {
         else { last.update(from: last + k, count: lastLen - k); (last + (lastLen - k)).update(from: out + (count - k), count: k) }
     }
 
-    public func reset() { ring.clear(); os_unfair_lock_lock(&lock); primed = false; concealRun = 0; os_unfair_lock_unlock(&lock) }
+    /** Samples queued right now (the playout delay beyond the output's own). */
+    public var buffered: Int { ring.available }
+
+    public func reset() { ring.clear(); os_unfair_lock_lock(&lock); primed = false; concealRun = 0; os_unfair_lock_unlock(&lock); firstArrival = 0 }
 }
 

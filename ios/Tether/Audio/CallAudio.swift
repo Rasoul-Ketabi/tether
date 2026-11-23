@@ -369,18 +369,20 @@ final class CallAudio: @unchecked Sendable {
         let concealedMs = Double(playout.concealedSamples) / playRate * 1000
         let rtt = link.lastRoundTripMs.map { "\($0) ms" } ?? "-"
         // Call statistics in the Link log: what a real call measured on this iPhone.
-        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms, concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
-                                      rtt, snapshot.playoutMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
+        let spreadMs = Double(playout.jitterFloor) / playRate * 1000
+        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms (arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
+                                      rtt, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, snapshot.ioBufferMs, snapshot.outputLatencyMs))
         DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
 
     private func receive(_ f: AudioFrame) {
         guard running, let coder, f.codec == coder.id else { return }
+        var missing = 0
         if let last = lastSeq {
             let gap = Int(Int16(bitPattern: f.seq &- last))
             if gap <= 0 { return }               // late / duplicate: drop
-            if gap > 1 { stats.lost += gap - 1 }
+            if gap > 1 { stats.lost += gap - 1; missing = min(gap - 1, 50) }
         }
         lastSeq = f.seq
         let now = DispatchTime.now().uptimeNanoseconds
@@ -403,7 +405,8 @@ final class CallAudio: @unchecked Sendable {
                 NSLog("[audio] far end audible: local ringback off")
             }
         }
-        playout.push(pcm)
+        // Arrival time and lost frames feed the playout's jitter statistics (its target follows the arrival spread).
+        playout.push(pcm, at: now, missing: missing)
     }
 
     private func drainCapture() {
