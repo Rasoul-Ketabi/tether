@@ -61,7 +61,18 @@
         "ringer": true
       },
       "ringer": "vibrate",
-      "dnd": false
+      "dnd": false,
+      "caps": [
+        "x.tether.echo/1",
+        "x.com.example.battery/1",
+        "x.com.example.battery/2"
+      ],
+      "ext": {
+        "x.com.example.battery": {
+          "low": false,
+          "at": 15
+        }
+      }
     },
     "old": {
       "device": "Test Phone",
@@ -145,6 +156,17 @@
       },
       "ringer": "vibrate",
       "dnd": false,
+      "caps": [
+        "x.tether.echo/1",
+        "x.com.example.battery/1",
+        "x.com.example.battery/2"
+      ],
+      "ext": {
+        "x.com.example.battery": {
+          "low": false,
+          "at": 15
+        }
+      },
       "futureField": {
         "x": 1
       }

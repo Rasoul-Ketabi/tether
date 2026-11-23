@@ -162,14 +162,15 @@ in a buffer of up to 1 s whose delay is corrected in quiet frames (cut or repeat
 
 Envelope: `{"t": "<type>", "id": <int>?, "re": <int>?, "b": { ... }?}`.
 `id` is set on requests that expect an answer; the answer carries `re`.
-Unknown types are ignored. Times are Unix milliseconds. Phone numbers are as
-stored on the Android phone.
+Unknown types are ignored; unknown fields too. Types starting with `x.` are extension messages, not core ones: an
+unknown extension type that carries an `id` is answered with `error` (§7.4). Times are Unix milliseconds. Phone
+numbers are as stored on the Android phone.
 
 | Type | Dir | Body |
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
-| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down, silent?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted) |
-| `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1) |
+| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down, silent?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted). Optional, from builds with extensions (§7): `caps:["<id>/<major>"]` (the Android phone's extensions), `ext:{"<id>": {…}}` (their status fields, only those the receiving client agreed) |
+| `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}, caps?: ["<id>/<major>"]}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1; `caps`: the client's extensions, §7.2, absent when it has none) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
 | `sms.send` | C→P | `{to, body, sub?}` → `sms.result` `{ok, state: "sent"\|"delivered"\|"failed", err?}` (may arrive twice: sent, then delivered) |
@@ -202,7 +203,7 @@ stored on the Android phone.
 | `phone.find` / `phone.finding` | C→P / P→C | `{on}` → `{on, err?}`: the Android phone rings on the alarm stream at maximum alarm volume for at most 30 s (volume restored afterwards; stops on `on:false`, the notification's Stop action or a screen unlock). `phone.finding` is also pushed to every client when it starts or stops |
 | `ringer.set` / `ringer.result` | C→P / P→C | `{mode: "normal"\|"vibrate"\|"silent"}` → `{ok, mode, err?}` (`err` e.g. Do Not Disturb access missing for silent); `status` then carries the new `ringer` |
 | `unpair` | C→P | `{}` (peripheral forgets `S_C`) |
-| `error` | both | `{msg}` |
+| `error` | both | `{msg, t?, code?}` (`t`, `code`: set when an extension message is refused, §7.4) |
 
 Objects:
 
@@ -308,3 +309,121 @@ Frames: `type: u8 ‖ len: u32 ‖ payload`.
 | 10 AUTH | A→H | 16-byte nonce ‖ 32-byte HMAC (see above) |
 | 12 CHALLENGE | H→A | 16-byte nonce |
 | 14 PROOF | H→A | 32-byte HMAC |
+
+## 7. Extensions
+
+Extensions add features on top of the link without changing the core apps or this document's §5: their messages
+travel in the same sealed session (§4) and the same control envelope (§5), under a reserved namespace, and each side
+says which ones it speaks. Builds from before 2026-11-23 know nothing of them and keep working: they never see an
+extension message (nobody sends one to a peer that did not announce it) and ignore the new fields. How to write
+one: [docs/EXTENDING.md](../docs/EXTENDING.md).
+
+### 7.1 Names
+
+An **extension id** is `x.` followed by a reverse-DNS name the author controls, at least two labels, lowercase:
+`x.com.example.battery`. Labels match `[a-z0-9][a-z0-9-]*`; an id is at most 48 characters. `x.tether.*` is reserved
+for extensions shipped in this repository.
+
+An extension's **message types** are its id itself or the id plus one label (`x.com.example.battery`,
+`x.com.example.battery.low`), at most 64 characters. Types without the `x.` prefix are core types: only §5 defines
+them, and an implementation refuses to register an extension that claims one, so no extension can handle, replace or
+send a core message. Each type belongs to exactly one extension.
+
+### 7.2 Capabilities
+
+Each side announces what it speaks in a `caps` array of `"<id>/<major>"` strings (`"x.tether.echo/1"`):
+
+- the client in every `sync` (its first message of a session, and any later re-sync);
+- the Android phone in every `status` (pushed at every link up and again whenever it changes, so an extension can
+  be switched on or off at run time).
+
+An extension that speaks several major versions lists each. Entries without the `x.` prefix are reserved for core
+features (none are defined; receivers ignore entries they do not know), malformed entries are ignored, at most 64
+entries count. An absent `caps` means none: every build from before extensions. The latest list of a session
+replaces the previous one; both are forgotten when the session ends. For each extension the **agreed version** is the
+highest major in both lists; without one the extension is off on that link.
+
+Why these two messages rather than a new one: they already open every session in both directions, so negotiating
+costs no message and no round trip, a client's extensions are known before the first answer to its sync, and older
+apps already ignore unknown fields in both (pinned by the `unknown` fixture variants). A dedicated message would add a
+core type, an ordering problem against `sync`, and nothing an older peer could use.
+
+### 7.3 Sending
+
+- An unsolicited extension message (no `re`) goes only to a peer that agreed a version of its extension. A request
+  carries an `id`; the answer (same or another type of the extension) carries `re`. An answer to a peer's request is
+  always allowed, agreed or not.
+- `id`s are the sender's own; a sender keeps them unique among all its open requests, core and extension alike (the
+  iPhone draws both from one counter; the Android apps start their extensions' ids at 2^30, far from their own).
+- **Size:** the whole encoded envelope is at most 16 384 bytes, and at most 2 048 bytes while call audio runs on that
+  link (a large record holds the next audio frames back). Larger data is paged by the extension.
+- **Rate:** at most 20 extension messages per second per link and direction, in bursts of at most 40. A receiver
+  drops what goes over, silently.
+- Extension messages never use the urgent queue or the wake characteristic (§1): they never wake a suspended iPhone
+  and never go ahead of call events or audio.
+
+### 7.4 Receiving
+
+1. Core types (§5) are handled by the app; extension code never sees them.
+2. An `x.` type a registered, enabled extension handles goes to it.
+3. Any other `x.` type that carries an `id` is answered with
+   `error {msg, t: <type>, code: "unknown-type"}` and `re` = that `id`; without an `id` it is ignored.
+4. An extension message over the size limit is refused the same way with `code: "too-large"`.
+5. An `error` whose `re` matches an open request of an extension goes to that extension, not to the app.
+6. Unknown core types are still ignored and never answered, as every build always did: an older peer may not
+   understand `error` at all, and §5 types change only with this document.
+
+What the apps did before extensions, and still do for core traffic: the Android phone ignores an unknown type (a log
+line), the iPhone ignores it (only `ping` is answered by `TetherLink` itself), the Android client ignores it and shows
+an `error` that answers none of its extensions' requests as a problem.
+
+**Failures stay inside the extension.** An exception thrown by an extension is caught and logged; the session goes
+on, and a request that carried an `id` is answered with `error` `code: "failed"`. After 10 failures in a row an
+extension is switched off for the rest of the process: its types become unknown (rule 3) and its `caps` entries
+disappear from the next `status` / `sync`.
+
+### 7.5 Status fields
+
+The Android phone's extensions may add small status fields: `status.ext` is an object keyed by extension id, each
+value at most 1 024 bytes encoded, sent only to clients that agreed a version of that extension. Clients that do not
+know an id ignore it.
+
+### 7.6 Versions
+
+A major version changes only for an incompatible change (a field removed or its meaning changed, a new required
+field). Adding optional fields or new message types of the extension does not need a new major: receivers ignore what
+they do not know, exactly as for core messages. A side keeps announcing and answering an older major as long as
+installed peers may still use it.
+
+### 7.7 From extension to core
+
+An extension that becomes part of what every Tether build does is promoted:
+
+1. New core type names without the `x.` prefix, added to §5, Kotlin `T`, Swift `MsgType` and `protocol/fixtures/`,
+   like any new message type.
+2. The Android phone keeps answering the `x.` types and keeps them in its `caps` while installed clients may still use
+   them (at least one release); new clients use the core types when the phone's `status` shows it has them
+   (its `caps` or the core fields of the promoted feature).
+3. A retired `x.` name is never reused for something else. Third-party extensions are promoted only with their
+   authors' agreement.
+
+### 7.8 Security and privacy
+
+Extension messages have the same protection as every other message: encrypted and authenticated end to end, only
+between paired devices. An extension is trusted like the app it runs in: it sees only its own messages and can send
+only its own types, but it runs with the app's permissions. Extensions must not carry phone numbers, texts or
+contacts unless that is the feature the user turned on, never log message contents (counts only, as the debug hooks
+do), validate every field they read, and treat a test transport (`dry`) as off-limits for anything real.
+
+### 7.9 Built-in: `x.tether.echo` (version 1)
+
+Link diagnostics, registered on every side (the Android phone, the iPhone, the Android client), both directions:
+
+| Type | Body |
+| --- | --- |
+| `x.tether.echo` with `id` (request) | `{ts, data?}`: the asker's clock (Unix ms) and an optional payload |
+| `x.tether.echo` with `re` (answer) | `{ts, data?, at, via}`: `ts` and `data` copied, `at` the responder's clock, `via` its transport ("l2cap", "gatt", "memory") |
+
+The asker gets the control round trip (`now − ts`) and the clock offset (`at − (ts + rtt / 2)`); a larger `data` measures
+throughput within the size limit. A message with neither `id` nor `re` is ignored. A test message type that no build
+registers, `x.org.example.unknown`, pins rule 3 in the fixtures.

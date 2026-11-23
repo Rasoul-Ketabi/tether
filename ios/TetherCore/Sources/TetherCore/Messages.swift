@@ -196,6 +196,10 @@ public struct StatusBody: Codable, Equatable, Sendable {
     public var tools: PhoneTools?
     /// Ringer mode of the Android phone: "normal", "vibrate" or "silent"; `dnd` = Do Not Disturb access (needed for silent).
     public var ringer: String?; public var dnd: Bool?
+    /// The Android phone's extensions, `"<id>/<major>"` (protocol §7.2; nil from builds without extensions).
+    public var caps: [String]?
+    /// Their status fields, by extension id (only those this client agreed, §7.5).
+    public var ext: [String: JSONValue]?
     public struct PhoneTools: Codable, Equatable, Sendable {
         public var ussd: Bool?; public var find: Bool?; public var ringer: Bool?
         public init(ussd: Bool? = nil, find: Bool? = nil, ringer: Bool? = nil) { self.ussd = ussd; self.find = find; self.ringer = ringer }
@@ -203,8 +207,9 @@ public struct StatusBody: Codable, Equatable, Sendable {
 
     public init(device: String, battery: Int, charging: Bool, sims: [SimInfo], defaultSub: Int?, dialer: Bool,
                 helper: HelperInfo, wifi: Bool, adbWifi: Bool, clients: [ClientInfo]? = nil,
-                tools: PhoneTools? = nil, ringer: String? = nil, dnd: Bool? = nil) {
-        self.tools = tools; self.ringer = ringer; self.dnd = dnd
+                tools: PhoneTools? = nil, ringer: String? = nil, dnd: Bool? = nil,
+                caps: [String]? = nil, ext: [String: JSONValue]? = nil) {
+        self.tools = tools; self.ringer = ringer; self.dnd = dnd; self.caps = caps; self.ext = ext
         self.device = device; self.battery = battery; self.charging = charging; self.sims = sims
         self.defaultSub = defaultSub; self.dialer = dialer; self.helper = helper; self.wifi = wifi; self.adbWifi = adbWifi
         self.clients = clients
@@ -442,7 +447,12 @@ public struct SyncIds: Codable, Equatable, Sendable {
         return false
     }
 }
-public struct ErrorBody: Codable, Equatable, Sendable { public var msg: String }
+public struct ErrorBody: Codable, Equatable, Sendable {
+    public var msg: String
+    /// Set when an extension message is refused (protocol §7.4): its type and why ("unknown-type", "too-large", "failed").
+    public var t: String?; public var code: String?
+    public init(msg: String, t: String? = nil, code: String? = nil) { self.msg = msg; self.t = t; self.code = code }
+}
 
 // MARK: - Audio channel
 

@@ -109,6 +109,8 @@ final class ContractTests: XCTestCase {
         XCTAssertNil(o.sims[0].country); XCTAssertNil(o.sims[0].net); XCTAssertTrue(o.sims[0].hasService)
         XCTAssertNil(o.helper.silent); XCTAssertNil(o.tools); XCTAssertNil(o.ringer); XCTAssertNil(o.dnd); XCTAssertNil(o.clients)
         XCTAssertNil(o.defaultSub)
+        XCTAssertEqual(s.caps?.first, "x.tether.echo/1"); XCTAssertEqual(s.ext?["x.com.example.battery"]?["at"]?.number, 15)
+        XCTAssertNil(o.caps, "an Android phone from before extensions"); XCTAssertNil(o.ext)
         // An A54 newer than this iPhone may add fields: they are ignored, not fatal.
         XCTAssertEqual(try body("status", "unknown", as: StatusBody.self), s)
     }
@@ -150,5 +152,79 @@ final class ContractTests: XCTestCase {
         let o = try body("net.state", "old", as: NetState.self)
         XCTAssertNil(o.can); XCTAssertNil(o.rat); XCTAssertNil(o.proxy); XCTAssertNil(o.airplane)
         XCTAssertEqual(try body("net.state", "error", as: NetState.self).err, "helper did not answer")
+    }
+
+    // MARK: extensions (§7)
+
+    private final class Port: ExtensionPort {
+        var transport = "l2cap", inCall = false
+        var sent: [Data] = []
+        func send(_ type: String, _ body: any Encodable, expectReply: Bool, re: Int?) -> Int? {
+            sent.append(try! Control.encode(type, body, id: expectReply ? 99 : nil, re: re)); return expectReply ? 99 : 0
+        }
+        func lastBody() throws -> NSDictionary {
+            (try JSONSerialization.jsonObject(with: sent.last!) as! NSDictionary)["b"] as! NSDictionary
+        }
+    }
+
+    func testExtensionFixturesAreNamedInSection7AndNotInSection5() throws {
+        let ext = try ContractFixtures.extensions()
+        XCTAssertNotNil(ext["x.tether.echo"]); XCTAssertNotNil(ext["x.org.example.unknown"])
+        let sec7 = try ContractFixtures.text("protocol/PROTOCOL.md").components(separatedBy: "## 7. Extensions")[1]
+        for t in ext.keys {
+            XCTAssertTrue(ExtensionRegistry.validId(t), t)
+            XCTAssertTrue(sec7.contains("`\(t)`"), "\(t) is not named in §7")
+        }
+        XCTAssertTrue(try ContractFixtures.protocolTypes().allSatisfy { !$0.hasPrefix("x.") })
+    }
+
+    func testEchoAnswersEveryRequestFixtureLikeTheReplyFixture() throws {
+        let f = try XCTUnwrap(try ContractFixtures.extensions()["x.tether.echo"])
+        let reply = try JSONSerialization.jsonObject(with: try XCTUnwrap(f.variants["reply"])) as! NSDictionary
+        let at = (reply["at"] as! NSNumber).int64Value
+        for (name, body) in f.variants where !name.hasPrefix("reply") {
+            let reg = ExtensionRegistry(), port = Port()
+            try reg.register(EchoExtension(clock: { at })); reg.start(); reg.linkUp(port)
+            let env = ContractFixtures.envelope("x.tether.echo", body)
+            XCTAssertTrue(reg.route(try Control.header(env), env))
+            let out = try port.lastBody()
+            let want = NSMutableDictionary(dictionary: reply)
+            if (try JSONSerialization.jsonObject(with: body) as! NSDictionary)["data"] == nil { want.removeObject(forKey: "data") }
+            XCTAssertEqual(out, want, "echo/\(name)")
+            XCTAssertEqual(Self.shape(out), Self.shape(want))
+            XCTAssertEqual(try Control.header(port.sent.last!).re, 5)
+        }
+        for (name, body) in f.variants where name.hasPrefix("reply") {
+            XCTAssertNoThrow(try JSONDecoder().decode(EchoExtension.Reply.self, from: body), name)
+        }
+    }
+
+    func testUnknownExtensionIsRefusedWithTheErrorFixture() throws {
+        let f = try XCTUnwrap(try ContractFixtures.extensions()["x.org.example.unknown"])
+        let reg = ExtensionRegistry(), port = Port()
+        try reg.register(EchoExtension()); reg.start(); reg.linkUp(port)
+        let env = ContractFixtures.envelope(f.t, try XCTUnwrap(f.variants["request"]))
+        XCTAssertTrue(reg.route(try Control.header(env), env))
+        let want = try JSONSerialization.jsonObject(with: try XCTUnwrap(try ContractFixtures.all()["error"]?.variants["extension"])) as! NSDictionary
+        XCTAssertEqual(try port.lastBody(), want)
+        XCTAssertEqual(try Control.header(port.sent.last!).t, MsgType.error)
+        let noId = Data("{\"t\":\"\(f.t)\",\"b\":{}}".utf8)
+        XCTAssertTrue(reg.route(try Control.header(noId), noId))
+        XCTAssertEqual(port.sent.count, 1, "without an id: ignored")
+    }
+
+    func testCapsInSyncAndStatusFixturesAgreeEcho() throws {
+        struct Caps: Decodable { var caps: [String]? }
+        let echo = EchoExtension()
+        let reg = ExtensionRegistry(); try reg.register(echo); reg.linkUp(Port())
+        for (t, v) in [("sync", "full"), ("sync", "android"), ("status", "full"), ("status", "unknown")] {
+            reg.peerCaps(try body(t, v, as: Caps.self).caps)
+            XCTAssertEqual(reg.version(of: echo), 1, "\(t)/\(v)")
+        }
+        for t in ["sync", "status"] {
+            reg.peerCaps(try body(t, "old", as: Caps.self).caps)
+            XCTAssertNil(reg.version(of: echo), "\(t)/old")
+        }
+        XCTAssertEqual(reg.caps, ["x.tether.echo/1"])
     }
 }

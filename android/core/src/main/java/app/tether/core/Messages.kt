@@ -49,6 +49,39 @@ object T {
     const val UNPAIR = "unpair"; const val ERROR = "error"
 }
 
+/**
+ * Extension messages (protocol §7): the reserved namespace, the capability fields and the limits. Extension types are
+ * not core types, so they are never listed in [T]; the registry in app.tether.core.ext applies these rules.
+ */
+object Ext {
+    /** Every extension type starts with this; nothing else may (core types never do). */
+    const val PREFIX = "x."
+    /** Extensions shipped in this repository; third parties use a reverse-DNS name they control. */
+    const val BUILT_IN_PREFIX = "x.tether."
+    /** `caps` in `sync` (client → phone) and `status` (phone → client): ["<id>/<major>", …]. */
+    const val CAPS = "caps"
+    /** `ext` in `status`: {"<id>": {…}}, small per-extension status fields. */
+    const val STATUS = "ext"
+    const val MAX_ID = 48
+    const val MAX_TYPE = 64
+    const val MAX_CAPS = 64
+    /** The whole encoded envelope of one extension message; while call audio runs on the link, [MAX_BYTES_IN_CALL]. */
+    const val MAX_BYTES = 16_384
+    const val MAX_BYTES_IN_CALL = 2_048
+    const val MAX_STATUS_BYTES = 1_024
+    /** Extension messages per second per link and direction, with bursts up to [BURST]. */
+    const val RATE_PER_S = 20
+    const val BURST = 40
+    /** Failures in a row after which an extension is switched off for the rest of the process. */
+    const val MAX_FAILURES = 10
+    /** `error.code` values for refused extension messages. */
+    const val ERR_UNKNOWN = "unknown-type"
+    const val ERR_TOO_LARGE = "too-large"
+    const val ERR_FAILED = "failed"
+    /** The built-in diagnostics extension (§7.9). */
+    const val ECHO = "x.tether.echo"
+}
+
 data class Sms(val id: Long, val thread: Long, val addr: String, val body: String, val date: Long,
                val box: Int, val read: Boolean, val sub: Int?) {
     fun json(): JSONObject = JSONObject().put("id", id).put("thread", thread).put("addr", addr).put("body", body)
