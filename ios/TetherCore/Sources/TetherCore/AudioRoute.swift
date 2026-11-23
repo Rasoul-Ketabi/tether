@@ -131,6 +131,9 @@ public enum EngineRebuild: Sendable, Equatable {
     case keep
     /// Tear down and build a fresh engine (new graph, new converters), keeping the call's state.
     case rebuild
+    /// The engine stopped itself on a configuration change but the formats are the same: start the same engine
+    /// again (a fresh voice-processing engine posts another change when it starts, which looped on a real iPhone).
+    case restart
     /// No usable input yet (the route is still settling): try again shortly.
     case retryLater
 }
@@ -138,12 +141,25 @@ public enum EngineRebuild: Sendable, Equatable {
 public enum EngineDecision {
     /// After `AVAudioEngineConfigurationChange` or a route change while a call's session is active.
     /// - running: the engine is running; built: the formats it was built with; now: the session's formats now.
+    /// - engineRunning: the audio engine itself still runs. Starting a voice-processing engine posts a configuration
+    ///   change and a route change of its own on a real iPhone; rebuilding for those started the next one, in a loop
+    ///   (every ~0.4 s, no uplink, seen 2026-11-23). An engine that still runs in the same formats is left alone.
+    /// - recentRebuilds: rebuilds in the last few seconds; past `maxRebuilds` only a stopped engine is rebuilt.
+    public static let maxRebuilds = 4
+
     public static func onRouteEvent(sessionActive: Bool, running: Bool, configurationChanged: Bool,
-                                    built: EngineFormat?, now: EngineFormat) -> EngineRebuild {
+                                    built: EngineFormat?, now: EngineFormat, engineRunning: Bool = false,
+                                    recentRebuilds: Int = 0) -> EngineRebuild {
         guard sessionActive else { return .keep }
         if now.inputRate <= 0 || now.inputChannels <= 0 || now.outputRate <= 0 { return .retryLater }
-        if !running || configurationChanged { return .rebuild }   // the engine stops itself on a configuration change
-        guard let built else { return .rebuild }
-        return built == now ? .keep : .rebuild
+        if !running { return .rebuild }
+        let sameFormats = built.map { $0 == now } ?? false
+        if engineRunning && (sameFormats || recentRebuilds >= maxRebuilds) { return .keep }
+        if configurationChanged {
+            // The engine stopped itself: the same one again when nothing changed, a fresh graph for new formats.
+            if sameFormats || recentRebuilds >= maxRebuilds { return engineRunning ? .keep : .restart }
+            return .rebuild
+        }
+        return sameFormats ? .keep : .rebuild
     }
 }
