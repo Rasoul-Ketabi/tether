@@ -40,6 +40,23 @@ class ClientLinkPolicy(private val now: () -> Long = System::currentTimeMillis) 
         return if (failures.size <= 3) Next.Reconnect(0) else Next.Reconnect(minOf(30, 2 * failures.size) * 1000L)
     }
 
+    /** What a REJECT from the Android phone means (protocol §3): [reason] is its first byte. */
+    fun rejected(reason: Int, pairing: Boolean): Reject = when {
+        reason == 3 && pairing -> Reject.PairingExpired
+        reason == 2 -> Reject.Wait(UNKNOWN_RETRY_MS, "unknown_device")
+        reason == 4 -> Reject.Wait(BUSY_RETRY_MS, null)
+        else -> Reject.Fail
+    }
+
+    sealed class Reject {
+        /** Pairing code expired or already used: stop this pairing attempt and forget the half-made pairing. */
+        object PairingExpired : Reject()
+        /** Keep the keys, try again after [ms]; [problem] is shown when not null. */
+        data class Wait(val ms: Long, val problem: String?) : Reject()
+        /** Anything else: an ordinary failure (reconnect rules apply). */
+        object Fail : Reject()
+    }
+
     sealed class Next {
         object RestartOnConnection : Next()
         data class Reconnect(val afterMs: Long) : Next()

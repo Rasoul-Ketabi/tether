@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.telecom.CallAudioState
+import app.tether.client.calls.nextAudioRoute
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -124,12 +125,7 @@ class CallActivity : Activity() {
 
     /** Earpiece → speaker → Bluetooth / wired (whatever is there) → earpiece. */
     private fun nextRoute(s: CallAudioState?) {
-        val supported = s?.supportedRouteMask ?: (CallAudioState.ROUTE_EARPIECE or CallAudioState.ROUTE_SPEAKER)
-        val order = listOf(CallAudioState.ROUTE_EARPIECE, CallAudioState.ROUTE_SPEAKER, CallAudioState.ROUTE_BLUETOOTH, CallAudioState.ROUTE_WIRED_HEADSET)
-            .filter { supported and it != 0 }
-        if (order.isEmpty()) return
-        val cur = order.indexOf(s?.route ?: CallAudioState.ROUTE_EARPIECE)
-        app.telecom.setRoute(order[(cur + 1) % order.size])
+        nextAudioRoute(s?.supportedRouteMask, s?.route)?.let { app.telecom.setRoute(it) }
     }
 
     /** Screen off at the ear while the call is on the earpiece (not on speaker or a headset). */

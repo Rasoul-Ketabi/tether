@@ -136,3 +136,16 @@ fun dialable(s: String): String {
     val t = s.map { c -> if (c in '۰'..'۹') '0' + (c - '۰') else if (c in '٠'..'٩') '0' + (c - '٠') else c }
     return t.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }.joinToString("")
 }
+
+/** The number of a tel: link's scheme-specific part (%-escapes decoded once more, as before), digits, + * # only. */
+fun telNumber(ssp: String?): String {
+    if (ssp == null) return ""
+    val out = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < ssp.length) {
+        val c = ssp[i]
+        val hex = if (c == '%' && i + 2 < ssp.length) ssp.substring(i + 1, i + 3).takeIf { h -> h.all { it.isLetterOrDigit() } }?.toIntOrNull(16) else null
+        if (hex != null) { out.write(hex); i += 3 } else { out.write(c.toString().toByteArray()); i++ }
+    }
+    return dialable(out.toString("UTF-8"))
+}

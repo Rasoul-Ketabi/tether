@@ -413,8 +413,8 @@ class BleCentral(private val ctx: Context, private val identity: Identity, priva
 
     private fun rejected(reason: Int) {
         log("rejected by the Android phone: $reason")
-        when {
-            reason == 3 && pairing != null -> {
+        when (val r = policy.rejected(reason, pairing != null)) {
+            ClientLinkPolicy.Reject.PairingExpired -> {
                 // Pairing code expired or already used: stop this pairing attempt.
                 events.onProblem("pairing_expired")
                 pairing = null
@@ -423,16 +423,15 @@ class BleCentral(private val ctx: Context, private val identity: Identity, priva
                 stopScan()
                 setState(State.UNPAIRED)
             }
-            reason == 2 -> {
-                // The Android phone does not (currently) accept this phone. Keep the keys (it may only be busy with a
-                // test or restoring) but back off instead of retrying at once.
-                events.onProblem("unknown_device")
-                disconnect("rejected 2")
+            is ClientLinkPolicy.Reject.Wait -> {
+                // 2: the Android phone does not (currently) accept this phone. Keep the keys (it may only be busy with a
+                // test or restoring) but back off instead of retrying at once. 4: busy (a test holds the link).
+                r.problem?.let { events.onProblem(it) }
+                disconnect(if (reason == 4) "peripheral busy" else "rejected $reason")
                 setState(State.SEARCHING)
-                h.postDelayed(retry, ClientLinkPolicy.UNKNOWN_RETRY_MS)
+                h.postDelayed(retry, r.ms)
             }
-            reason == 4 -> { disconnect("peripheral busy"); setState(State.SEARCHING); h.postDelayed(retry, ClientLinkPolicy.BUSY_RETRY_MS) }
-            else -> failAndRetry("rejected $reason")
+            ClientLinkPolicy.Reject.Fail -> failAndRetry("rejected $reason")
         }
     }
 

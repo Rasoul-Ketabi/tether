@@ -267,3 +267,13 @@ class TetherConnectionService : ConnectionService() {
         if (local != null) app.calls.localFailed(local) else app.problem(Problem.CALL_FAILED)
     }
 }
+
+/** The route after [current]: earpiece → speaker → Bluetooth / wired (whatever [supported] has) → earpiece; null: none. */
+fun nextAudioRoute(supported: Int?, current: Int?): Int? {
+    val mask = supported ?: (android.telecom.CallAudioState.ROUTE_EARPIECE or android.telecom.CallAudioState.ROUTE_SPEAKER)
+    val order = listOf(android.telecom.CallAudioState.ROUTE_EARPIECE, android.telecom.CallAudioState.ROUTE_SPEAKER,
+        android.telecom.CallAudioState.ROUTE_BLUETOOTH, android.telecom.CallAudioState.ROUTE_WIRED_HEADSET).filter { mask and it != 0 }
+    if (order.isEmpty()) return null
+    val cur = order.indexOf(current ?: android.telecom.CallAudioState.ROUTE_EARPIECE)
+    return order[(cur + 1) % order.size]
+}
