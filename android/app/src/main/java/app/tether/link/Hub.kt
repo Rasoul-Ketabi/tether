@@ -127,16 +127,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     /** Same for tests with several fake clients at once (call hand-over). */
     @Volatile var exclusiveSet: Set<Transport>? = null
 
-    private val callControls = setOf(T.CALL_ANSWER, T.CALL_TAKE, T.CALL_REJECT, T.CALL_END, T.CALL_HOLD, T.CALL_DTMF, T.SELFTEST)
-
     /** Dry run (debug) touches only the test session's connections, never a real client linked meanwhile. */
-    private fun dry(c: Connection) = c.transport.dry || (dryRun && admits(c))
+    private fun dry(c: Connection) = TestGuards.isDry(c.transport.dry, dryRun, admits(c))
 
     override fun admits(c: Connection) = exclusive.let { it == null || it === c.transport } &&
         exclusiveSet.let { it == null || c.transport in it }
 
     /** Clients that get broadcasts; a test holding the link exclusively gets them alone (the iPhone never rings). */
-    fun targets(): List<Connection> = conns.filter { it.isUp && admits(it) && (onlyKind == null || it.kind == onlyKind || it.transport.dry) }
+    fun targets(): List<Connection> = conns.filter { TestGuards.receivesBroadcasts(it.isUp, admits(it), onlyKind, it.kind, it.transport.dry) }
 
     /** Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see calls and messages, so test calls never
      *  ring the iPhone. On-device test clients (dry transports) are never filtered: `only none` must not silence them. */
@@ -182,7 +180,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
      * must never replace the iPhone's.
      */
     private fun holdLeFor(c: Connection) {
-        if (c.transport.label != "memory" && c.kind == "iphone" && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address)) {
+        if (TestGuards.holdsLe(c.transport.label, c.kind, android.bluetooth.BluetoothAdapter.checkBluetoothAddress(c.transport.address))) {
             app.prefs.edit().putString("central_bt_address", c.transport.address).apply()
             LinkService.running?.peripheral?.holdLe(c.transport.address)
         }
@@ -221,13 +219,11 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     override fun onMessage(c: Connection, m: Message) {
         // A test client (dry transport) may only touch calls on Tether's own test line, never a real call.
         // Taking the audio (answer, take) or a self-test needs every live call to be on the test line.
-        if (c.transport.dry && m.t in callControls) {
-            val allTest = CallRegistry.active().let { l -> l.isNotEmpty() && l.all { CallRegistry.isTestCall(app, CallRegistry.cidOf(it)) } }
-            val ok = when (m.t) {
-                T.CALL_TAKE, T.CALL_ANSWER, T.SELFTEST -> allTest && (m.t != T.CALL_ANSWER || CallRegistry.isTestCall(app, m.b.optString("cid")))
-                else -> CallRegistry.isTestCall(app, m.b.optString("cid"))
+        if (c.transport.dry && m.t in TestGuards.callControls) {
+            val active = CallRegistry.active().map { CallRegistry.isTestCall(app, CallRegistry.cidOf(it)) }
+            if (!TestGuards.callControlAllowed(true, m.t, active, CallRegistry.isTestCall(app, m.b.optString("cid")))) {
+                Log.w(TAG, "test client: ${m.t} for a call not on the test line ignored"); return
             }
-            if (!ok) { Log.w(TAG, "test client: ${m.t} for a call not on the test line ignored"); return }
         }
         when (m.t) {
             T.PING -> c.send(Message(T.PONG, JSONObject().put("ts", m.b.optLong("ts")), re = m.id))
@@ -289,7 +285,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             // and "Share VPN" (Tether's own proxy). The state also says whether a VPN is up on the Android phone.
             T.NET_GET, T.NET_SET -> slowBg {
                 // A test client only reads: it never flips the Android phone's radios, airplane mode or sharing.
-                val what = if (m.t == T.NET_SET && !c.transport.dry) m.b.optString("what").takeIf { it in setOf("data", "hotspot", "bt", "dataSub", "share", "airplane", "rat") } else null
+                val what = TestGuards.netSwitch(m.t, c.transport.dry, m.b.optString("what"))
                 val on = m.b.optBoolean("on")
                 if (what == "share") {
                     app.prefs.edit().putBoolean("share_vpn", on).apply()

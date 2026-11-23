@@ -31,8 +31,7 @@ import java.util.concurrent.TimeUnit
  *       loopback (full handshake + sync against an in-process fake iPhone) | probe | helper_cmd
  */
 class DebugReceiver : BroadcastReceiver() {
-    /** The only numbers the delete / block hooks accept: +10000000001 … +10000000009. */
-    private fun isTestNumber(n: String) = Regex("""\+?1000000000\d""").matches(n.filter { !it.isWhitespace() })
+    private fun isTestNumber(n: String) = TestGuards.isTestNumber(n)
 
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext as TetherApp
@@ -62,11 +61,11 @@ class DebugReceiver : BroadcastReceiver() {
         "pair_code" -> app.keys.openPairing().encode()
         // Never rings the user's iPhone by accident: with an iPhone connected it refuses (use loopback_call instead).
         // A test-line ring reaches a linked iPhone only when asked for (--es allow iphone).
-        "fake_incoming" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+        "fake_incoming" -> if (!TestGuards.fakeCallAllowed(app.hub.targets().map { it.kind }, intent.getStringExtra("allow")))
                 "refused: an iPhone would ring; add --es allow iphone to ring it on purpose, or use loopback_call"
             else { TestConnectionService.ringIn(app, intent.getStringExtra("num") ?: "5550100"); "ringing" }
         // fake_outgoing: an outgoing call on the self-managed test line (never a SIM), shown on a linked iPhone.
-        "fake_outgoing" -> if (app.hub.targets().any { it.kind == "iphone" } && intent.getStringExtra("allow") != "iphone")
+        "fake_outgoing" -> if (!TestGuards.fakeCallAllowed(app.hub.targets().map { it.kind }, intent.getStringExtra("allow")))
                 "refused: an iPhone would show it; add --es allow iphone"
             else { TestConnectionService.dialOut(app, "+10000000009"); "dialing on the test line" }
         "fake_end" -> { TestConnectionService.endCurrent(); "ended" }
