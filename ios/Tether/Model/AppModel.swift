@@ -16,6 +16,9 @@ struct SyncBodyV1: Encodable {
     var contacts: String
     var codecs: [String]
     var client: ClientHello
+    /// Optional extension for older clients/tests: omitted unless a caller
+    /// explicitly supplies the current Wi-Fi state. Android treats absent as BLE.
+    var wifi: Bool? = nil
     /// The extensions this app speaks (protocol §7.2); left out when there are none.
     var caps: [String]?
 }
@@ -72,6 +75,8 @@ final class AppModel {
     @PerceptionIgnored lazy var audio = CallAudio(model: self, link: link)
 
     private(set) var linkState: TetherLink.State = .unpaired
+    /** True only after the mutually authenticated Wi-Fi lane sends its sealed ready record. */
+    var wifiFastLane = false
     private(set) var data: Snapshot
     var status: StatusBody? { data.lastStatus }
     var lastError: String?
@@ -391,6 +396,7 @@ final class AppModel {
         link.send(MsgType.sync, SyncBodyV1(sms: lastSms, calls: lastCall, contacts: full ? "" : data.contactsVersion,
                                            codecs: CallAudio.supportedCodecs,
                                            client: ClientHello(kind: Platform.kind, name: Platform.clientName),
+                                           wifi: wifiFastLane,
                                            caps: extensions.caps.isEmpty ? nil : extensions.caps))
         // Conversations read while out of reach.
         for (thread, upTo) in pendingRead { link.send(MsgType.smsRead, SmsRead(thread: thread, upTo: upTo)) }
@@ -592,6 +598,7 @@ final class AppModel {
             flushOutbox()
         }
         if !s.isConnected && wasConnected {
+            wifiFastLane = false
             extensionPort.isUp = false
             extensions.linkDown()
             calls.linkLost()
@@ -614,6 +621,25 @@ final class AppModel {
     func received(_ h: MessageHeader, _ payload: Data) {
         do {
             switch h.t {
+            case "wifi.down":
+                let wasUsingWiFi = wifiFastLane
+                wifiFastLane = false
+                // Any sync page that was accepted by TCP but lost during a Wi-Fi
+                // drop will be recovered by a new BLE incremental sync.
+                if wasUsingWiFi && linkState.isConnected {
+                    contactsPageStart = true
+                    incomingContacts = []
+                    pendingIds = SyncIds(sms: [], calls: [])
+                    syncing = false
+                    // Full reconciliation is required: a previously received final
+                    // page may have advanced the incremental cursor after a gap.
+                    requestSync(full: true)
+                }
+            case "wifi.ready":
+                wifiFastLane = true
+                // The already-paired Android has authenticated its secondary LAN lane.
+                // Restart an incremental sync so the larger pages use Wi-Fi.
+                if linkState.isConnected && !syncing { requestSync() }
             case MsgType.status:
                 // Kept in memory; saved with the next real change (a full snapshot write per status was wasted).
                 data.lastStatus = try Control.body(StatusBody.self, from: payload)

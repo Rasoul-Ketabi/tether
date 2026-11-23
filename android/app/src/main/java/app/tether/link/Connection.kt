@@ -8,6 +8,7 @@ import app.tether.core.Kind
 import app.tether.core.Message
 import app.tether.core.PeripheralHandshake
 import app.tether.core.Proto
+import app.tether.core.T
 import app.tether.core.Record
 import app.tether.core.RecordReader
 import app.tether.core.SecureSession
@@ -34,6 +35,12 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     private var pendingStatic: ByteArray? = null
     private var pairing = false
     @Volatile var session: SecureSession? = null; private set
+    /** This optional channel belongs to this BLE connection; it is never a second Tether client. */
+    @Volatile internal var wifi: HybridWifiServer? = null
+    /** Fixed for each sync request to avoid splitting a page sequence by normal lane selection. */
+    @Volatile var bulkSync = false
+    /** Independent lock: serialize sync snapshots without blocking call-control reads. */
+    internal val syncLock = Any()
     /** Normal lane (sync pages, status…) and priority lane (handshake, call events, audio). */
     private val queue = LinkedBlockingDeque<Item>()
     private val prio = LinkedBlockingDeque<Item>()
@@ -55,7 +62,8 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     @Volatile var lastAction = 0L
 
     private class Item(val channel: Int, val payload: ByteArray, val audio: Boolean,
-                       val raw: Record? = null, val at: Long = SystemClock.elapsedRealtime(), val atNs: Long = System.nanoTime())
+                       val raw: Record? = null, val at: Long = SystemClock.elapsedRealtime(), val atNs: Long = System.nanoTime(),
+                       val bulk: Boolean = false)
 
     /** Audio records: queue → written delay, and frames dropped late or for overflow (call statistics). */
     val audioDelay = app.tether.audio.QueueDelay()
@@ -76,7 +84,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     fun send(m: Message) {
         if (state != State.UP) return
         val b = fits(m) ?: return
-        queue.put(Item(Proto.CH_CONTROL, b, false))
+        queue.put(Item(Proto.CH_CONTROL, b, false, bulk = bulkSync && m.t in BULK_SYNC_TYPES))
     }
 
     /** A record body holds at most 65534 bytes: an oversized message is dropped with a log line, never sent
@@ -108,6 +116,12 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
                 val it = prio.poll() ?: queue.poll() ?: prio.poll(20, TimeUnit.MILLISECONDS) ?: continue
                 if (it.raw != null) { transport.write(it.raw.encoded()); continue }
                 if (it.audio && SystemClock.elapsedRealtime() - it.at > 60) { audioDelay.droppedLate(); continue }
+                // Audio and sync pages prefer the authenticated Wi-Fi fast lane, while
+                // urgent call events and Wake always travel on the original BLE link.
+                if ((it.audio || it.bulk) && wifi?.send(it.channel, it.payload) == true) {
+                    if (it.audio) audioDelay.written((System.nanoTime() - it.atNs) / 1e6)
+                    continue
+                }
                 val s = session ?: continue
                 transport.write(s.seal(it.channel, it.payload).encoded())
                 if (it.audio) audioDelay.written((System.nanoTime() - it.atNs) / 1e6)
@@ -214,9 +228,14 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
         // We end it (not the iPhone, not a dead link): wake the iPhone app first. A suspended app is not woken for its
         // closed channel and only noticed ~30 s later, when iOS dropped the idle connection (seen 2026-11-22).
         if (reason != "transport closed" && transport.label != "memory") LinkService.running?.peripheral?.wake(transport.address)
+        wifi?.close()
+        wifi = null
         transport.close()
         listener.onClosed(this)
     }
 
-    companion object { const val TAG = "Tether" }
+    companion object {
+        const val TAG = "Tether"
+        private val BULK_SYNC_TYPES = setOf(T.SMS_BATCH, T.CALLS_BATCH, T.CONTACTS_BATCH, T.SYNC_IDS)
+    }
 }

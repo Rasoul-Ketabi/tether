@@ -40,6 +40,8 @@
 	<true/>
 	<key>TetherCommunicationNotifications</key>
 	<string>$(TETHER_COMM_NOTIFICATIONS)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Tether uses your local Wi-Fi or Android hotspot to transfer call audio and synchronize messages faster. Bluetooth remains active for calls and background notifications.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Tether connects to your Android phone over Bluetooth to bring its calls and messages to this iPhone.</string>
 	<key>NSCameraUsageDescription</key>

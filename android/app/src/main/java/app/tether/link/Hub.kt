@@ -208,6 +208,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
         bg { pushStatus() }
+        // Offer a separate encrypted Wi-Fi bulk lane only to real iPhone links.
+        // BLE remains the sole source of wake events, pairing and call control.
+        bg { offerWifi(c) }
+    }
+
+    private fun offerWifi(c: Connection) {
+        if (!c.isUp || c.kind != "iphone" || c.transport.label !in setOf("l2cap", "gatt")) return
+        val lane = c.wifi ?: HybridWifiServer { payload -> onAudio(c, payload) }.also { c.wifi = it }
+        lane.offer()?.let { c.send(Message("wifi.offer", it)) }
     }
 
     /** Connections paired in this session whose kind is not known until their first sync. */
@@ -266,6 +275,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }
         }
         when (m.t) {
+            // Optional Wi-Fi discovery/recovery: only inside an authenticated BLE session.
+            "wifi.probe" -> bg { offerWifi(c) }
             T.PING -> c.send(Message(T.PONG, JSONObject().put("ts", m.b.optLong("ts")), re = m.id))
             T.PONG -> Unit
             T.SYNC -> {
@@ -277,7 +288,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 }
                 if (kindPending.remove(c) && c.isUp) holdLeFor(c)
                 extensions.peerCaps(ext(c), m.b.optJSONArray(Ext.CAPS))   // absent (older clients): no extensions
-                bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts")) }
+                bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts"), m.b.optBoolean("wifi", false)) }
             }
             T.SMS_SEND -> bg { sendSms(c, m) }
             // A conversation was read on a client: mark it read here and tell the other devices.
@@ -399,7 +410,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     // ------------------------------------------------------------------ sync
 
-    private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String) {
+    private fun sync(c: Connection, smsSince: Long, callsSince: Long, contactsVersion: String, clientWifiReady: Boolean) {
+        // A reconnection/recovery can request a full sync before an earlier one
+        // finished. Serialize snapshots per client to preserve paging and
+        // to prevent two requests from racing over the bulkSync preference.
+        synchronized(c.syncLock) {
+        // Choose the lane once for this sync. Live SMS and urgent call events
+        // always remain on BLE for background wake and predictable ordering.
+        c.bulkSync = clientWifiReady && c.wifi?.isReady == true
+        try {
         val t0 = SystemClock.elapsedRealtime()
         val sms = app.sms.since(smsSince)
         // During a call, small pages: a big record would hold the next audio frames up (one record goes out whole).
@@ -438,6 +457,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         app.sms.unreadIds()?.let { c.send(unreadMessage(it)) }
         Log.i(TAG, "sync: ${sms.size} sms, ${calls.size} calls, contacts ${if (version != contactsVersion) "sent" else "unchanged"} " +
             "in ${SystemClock.elapsedRealtime() - t0} ms")
+        } finally { c.bulkSync = false }
+        }
     }
 
     private var lastCallId = -1L

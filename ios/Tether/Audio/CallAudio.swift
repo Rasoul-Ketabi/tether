@@ -173,7 +173,10 @@ final class CallAudio: @unchecked Sendable {
         let s = AVAudioSession.sharedInstance()
         // Hands-free (HFP) Bluetooth and car kits for calls; A2DP has no microphone. No .defaultToSpeaker: the
         // receiver is the default and the speaker is an override the user picks.
-        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetoothHFP]) }
+        // Xcode 16 / iOS 18 SDK calls this option .allowBluetooth. It enables
+        // Bluetooth HFP input/output for a .playAndRecord voice call. The renamed
+        // .allowBluetoothHFP spelling is not available in older SDKs.
+        do { try s.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth]) }
         catch { NSLog("[audio] category: %@", "\(error)") }
         try? s.setPreferredSampleRate(16000)
         try? s.setPreferredIOBufferDuration(0.01) // 10 ms I/O buffer
