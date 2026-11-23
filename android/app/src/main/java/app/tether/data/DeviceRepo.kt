@@ -170,6 +170,7 @@ class SimRepo(private val ctx: Context) {
             JSONObject().put("slot", info.simSlotIndex).put("sub", info.subscriptionId)
                 .put("name", info.displayName?.toString() ?: "SIM ${info.simSlotIndex + 1}")
                 .put("carrier", t.networkOperatorName?.takeIf { it.isNotBlank() } ?: info.carrierName?.toString() ?: "")
+                .apply { country(t)?.let { put("country", it) } }
                 .put("signal", live[info.subscriptionId]?.level ?: t.signalStrength?.level ?: 0)
                 .apply { live[info.subscriptionId]?.let { l ->
                     l.net?.let { put("net", it) }; put("service", l.service); put("roaming", l.roaming)
@@ -181,6 +182,11 @@ class SimRepo(private val ctx: Context) {
     } catch (e: SecurityException) {
         emptyList()
     }
+
+    /** The SIM's country (lowercase ISO 3166), else the network's; the iPhone groups national numbers by it. */
+    private fun country(t: TelephonyManager): String? = try {
+        (t.simCountryIso?.takeIf { it.isNotBlank() } ?: t.networkCountryIso?.takeIf { it.isNotBlank() })?.lowercase()
+    } catch (_: Throwable) { null }
 
     /** CallLog PHONE_ACCOUNT_ID is the subscription id or ICCID depending on the build. */
     @SuppressLint("MissingPermission")

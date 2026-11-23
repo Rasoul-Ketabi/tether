@@ -153,13 +153,16 @@ public struct SimInfo: Codable, Equatable, Hashable, Sendable, Identifiable {
     /// "in" (service), "none", "emergency" (emergency calls only), "off" (radio off, e.g. airplane mode).
     public var service: String?
     public var roaming: Bool?
+    /// The SIM's country, lowercase ISO 3166 ("ir"); national numbers are grouped by it. Older Android apps omit it.
+    public var country: String?
     public var id: Int { sub }
     public var hasService: Bool { service == nil || service == "in" }
 
     public init(slot: Int, sub: Int, name: String, carrier: String, number: String? = nil, signal: Int = 0,
-                net: String? = nil, service: String? = nil, roaming: Bool? = nil) {
+                net: String? = nil, service: String? = nil, roaming: Bool? = nil, country: String? = nil) {
         self.slot = slot; self.sub = sub; self.name = name; self.carrier = carrier
         self.number = number; self.signal = signal; self.net = net; self.service = service; self.roaming = roaming
+        self.country = country
     }
 }
 

@@ -163,7 +163,7 @@ stored on the Android phone.
 | Type | Dir | Body |
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
-| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?}], defaultSub?, dialer, helper:{state, method?, up, down}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`. Pushed again within ~2 s of a signal / network change) |
+| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change) |
 | `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone", name}}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
