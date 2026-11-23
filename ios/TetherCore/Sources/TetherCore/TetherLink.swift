@@ -109,11 +109,12 @@ public final class TetherLink: NSObject {
         }
     }
 
-    /// Sends a control message; returns the request id (use it to match `re` in replies).
+    /// Sends a control message; returns the request id (use it to match `re` in replies). `re`: this answers the
+    /// Android phone's request with that id (extensions, protocol §7).
     @discardableResult
-    public func send<B: Encodable>(_ type: String, _ body: B, expectReply: Bool = false) -> Int {
+    public func send<B: Encodable>(_ type: String, _ body: B, expectReply: Bool = false, re: Int? = nil) -> Int {
         let id = ids.next()
-        queue.async { self.sendNow(type, body, id: expectReply ? id : nil) }
+        queue.async { self.sendNow(type, body, id: expectReply ? id : nil, re: re) }
         return id
     }
 

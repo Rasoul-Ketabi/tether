@@ -164,6 +164,9 @@ struct LinkView: View {
                 } footer: {
                     Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
                 }
+                #if DEBUG
+                DeveloperSection()
+                #endif
             }
             #if DEBUG
             // -TetherDemoVPN: start scrolled to the VPN section (screenshots).
@@ -211,6 +214,27 @@ struct LinkView: View {
 }
 
 /// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
+#if DEBUG
+/// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
+struct DeveloperSection: View {
+    @Environment(\.appModel) private var model
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            Button { model.echoTest() } label: { Text(verbatim: "Echo round trip (x.tether.echo)") }
+                .disabled(!model.linkState.isConnected)
+            if let line = model.extensionLine { Text(verbatim: line).font(.footnote) }
+            Text(verbatim: model.extensions.summary).font(.caption2.monospaced()).foregroundStyle(.secondary)
+        } header: {
+            Text(verbatim: "Developer")
+        } footer: {
+            Text(verbatim: "Debug builds only. Add your own feature: docs/EXTENDING.md.")
+        }
+    }
+}
+#endif
+
 struct VPNSection: View {
     @Environment(\.appModel) private var model
 
