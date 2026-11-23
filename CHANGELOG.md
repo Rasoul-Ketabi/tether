@@ -6,6 +6,9 @@
   concealment and complexity control on the iPhone, checked against AudioToolbox's Opus both ways.
 - The iPhone app runs on iOS 16 (it needed 17): Observation comes from swift-perception, a few iOS 17 views have
   iOS 16 stand-ins; iOS 17 and later behave as before. The Swift package needs network access at build time.
+- Opt-in TCP debugging fallback for the audio helper: where Wireless debugging is missing (Android 10) or fails,
+  Tether connects to the phone's adbd in `adb tcpip` mode on `127.0.0.1:5555` (port settable, key approval). Setup in
+  [docs/SETUP.md](docs/SETUP.md); the security trade-off is in [SECURITY.md](SECURITY.md).
 - Android 10 and later are supported (was 12): call audio is attempted on Android 11 and 12 (voice-call capture and
   the incall-music inject path) and the app says clearly when the phone cannot bridge call audio (Android 10). Version
   guards for the newer Bluetooth, telephony, notification and Telecom APIs, legacy Bluetooth permissions below 12, and

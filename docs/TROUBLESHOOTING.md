@@ -69,6 +69,9 @@ card in the Android app says which case you are in.
 
 - Wireless debugging needs a Wi-Fi connection when the helper starts. Connect the Android phone to Wi-Fi, then tap
   **Start**.
+- With TCP debugging (SETUP.md): the TCP mode is lost on every phone restart; connect USB and run `adb tcpip 5555`
+  again, accept the key prompt, then tap **Start**. If you used another port, Tether only tries the one it was
+  enabled with (default 5555).
 - If the phone forgot the Wireless debugging pairing (some updates do), pair again (SETUP.md, Wireless debugging).
 - From a computer, `tools/start-helper.sh` starts the helper over USB `adb` as a fallback.
 

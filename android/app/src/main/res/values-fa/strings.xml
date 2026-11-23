@@ -32,6 +32,15 @@
     <string name="action_pair">جفت کردن</string>
     <string name="action_start">شروع</string>
     <string name="action_selftest">آزمون صدای تماس</string>
+    <string name="step_adb_tcp">اشکال‌زدایی TCP (اندروید ۱۰ یا بدون Wi-Fi)</string>
+    <string name="adb_tcp_on">روشن، درگاه %1$d</string>
+    <string name="adb_tcp_off">خاموش</string>
+    <string name="action_enable">فعال‌سازی</string>
+    <string name="action_turn_off">خاموش کردن</string>
+    <string name="adb_tcp_howto">یک بار گوشی را با USB به رایانه وصل کنید، دستور adb tcpip 5555 را اجرا کنید و پیام کلید را در گوشی بپذیرید (همیشه مجاز). سپس Tether خودش به 127.0.0.1:5555 وصل می‌شود. پس از هر راه‌اندازی مجدد گوشی دستور adb tcpip را دوباره اجرا کنید. برای خاموش کردن: adb usb. تا وقتی روشن است، گوشی در هر شبکه‌ای که هست اتصال adb می‌پذیرد و فقط تأیید کلید از آن محافظت می‌کند.</string>
+    <string name="adb_tcp_connecting">در حال اتصال به adb روی 127.0.0.1…</string>
+    <string name="adb_tcp_connected">وصل شد. دستیار صدا در حال شروع است…</string>
+    <string name="adb_tcp_failed">اتصال به adb روی درگاه %1$d ممکن نشد. از رایانه دستور adb tcpip %1$d را اجرا کنید و پیام کلید را بپذیرید.</string>
     <string name="done">انجام شد</string>
     <string name="missing">لازم است</string>
     <string name="helper_running">در حال اجرا (%1$s)</string>

@@ -32,6 +32,15 @@
     <string name="action_pair">Pair</string>
     <string name="action_start">Start</string>
     <string name="action_selftest">Run call-audio self-test</string>
+    <string name="step_adb_tcp">TCP debugging (Android 10, or no Wi-Fi)</string>
+    <string name="adb_tcp_on">On, port %1$d</string>
+    <string name="adb_tcp_off">Off</string>
+    <string name="action_enable">Enable</string>
+    <string name="action_turn_off">Turn off</string>
+    <string name="adb_tcp_howto">Connect this phone to a computer with USB once, run: adb tcpip 5555, and accept the key prompt on the phone (Always allow). Tether then connects to 127.0.0.1:5555 itself. Repeat the adb tcpip command after every restart of the phone. Turn it off again with: adb usb. While it is on, the phone accepts adb connections on every network it is on, protected only by that key approval.</string>
+    <string name="adb_tcp_connecting">Connecting to adb on 127.0.0.1…</string>
+    <string name="adb_tcp_connected">Connected. Starting the audio helper…</string>
+    <string name="adb_tcp_failed">Could not connect to adb on port %1$d. Run adb tcpip %1$d from a computer and accept the key prompt.</string>
     <string name="done">Done</string>
     <string name="missing">Needed</string>
     <string name="helper_running">Running (%1$s)</string>

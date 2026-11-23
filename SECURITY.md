@@ -24,6 +24,13 @@ those two devices can read or inject anything on the link, and no third party is
 
 ## What it does not protect against
 
+- **TCP debugging, if you enable it** (Android 10, or a phone without Wireless debugging): `adb tcpip` makes the
+  phone's adbd listen on **every network interface**, including Wi-Fi, the hotspot and Bluetooth tethering, guarded
+  only by the approval of a computer's RSA key. Anyone on those networks who can get you to accept a key prompt, or
+  who holds an already approved key, gets a shell. Tether never turns this mode on by itself and connects only to
+  `127.0.0.1`; keep it off on untrusted networks, accept key prompts only for your own computer, and switch it off
+  with `adb usb` when you do not need it. Wireless debugging (TLS, pairing code) is the safer default.
+
 - Someone with your **unlocked Android phone** or **unlocked iPhone** can read what those phones show, as with any
   phone.
 - The Android phone grants Tether broad permissions (default phone app, SMS, contacts) and, through Wireless

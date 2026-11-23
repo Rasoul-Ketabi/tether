@@ -76,7 +76,15 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
 
     @Synchronized fun ensureConnected(): Boolean {
         if (isConnected) return true
-        return autoConnect(ctx, 10_000)
+        val prefs = (ctx as? TetherApp)?.prefs
+        val legacy = prefs?.getBoolean(PREF_LEGACY, false) ?: false
+        val port = prefs?.getInt(PREF_LEGACY_PORT, ConnectOrder.DEFAULT_LEGACY_PORT) ?: ConnectOrder.DEFAULT_LEGACY_PORT
+        val how = connectInOrder(object : AdbEndpoints {
+            override fun connectTls() = autoConnect(ctx, 10_000)
+            override fun connectLegacy(port: Int) = connect("127.0.0.1", port)
+        }, ConnectOrder.tlsSupported(Build.VERSION.SDK_INT), legacy, port) { Log.i(TAG, it) }
+        if (how == "legacy") Log.i(TAG, "adb connected over TCP mode on port $port")
+        return how != null
     }
 
     /** Runs a shell command and returns its output (stdout + stderr). */
@@ -110,6 +118,9 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
 
     companion object {
         const val TAG = "Tether"
+        /** Opt-in legacy TCP adb (`adb tcpip`): the setting and its port (default 5555). */
+        const val PREF_LEGACY = "adb_legacy"
+        const val PREF_LEGACY_PORT = "adb_legacy_port"
         @Volatile private var instance: Adb? = null
         fun get(ctx: Context): Adb = instance ?: synchronized(this) {
             instance ?: Adb(ctx.applicationContext).also { instance = it }
