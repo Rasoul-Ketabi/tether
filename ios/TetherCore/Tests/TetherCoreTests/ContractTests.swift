@@ -86,7 +86,13 @@ final class ContractTests: XCTestCase {
         switch v {
         case let d as NSDictionary: return "{" + (d.allKeys as! [String]).sorted().map { "\($0):\(shape(d[$0]!))" }.joined(separator: ",") + "}"
         case let a as NSArray: return "[" + a.map { shape($0) }.joined(separator: ",") + "]"
+        #if canImport(Darwin)
         case let n as NSNumber: return CFGetTypeID(n) == CFBooleanGetTypeID() ? "bool" : "num"
+        #else
+        // swift-corelibs-foundation gives JSON booleans as Bool and numbers as NSNumber.
+        case let b where type(of: b) == Bool.self: return "bool"
+        case is NSNumber: return "num"
+        #endif
         case is String: return "str"
         default: return "?"
         }

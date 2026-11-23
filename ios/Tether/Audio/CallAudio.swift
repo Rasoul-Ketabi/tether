@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import os
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// 20 ms mono voice codec.
 protocol VoiceCoder: AnyObject {

@@ -5,6 +5,7 @@ public struct MessageHeader: Codable, Equatable, Sendable {
     public var t: String
     public var id: Int?
     public var re: Int?
+    public init(t: String, id: Int? = nil, re: Int? = nil) { self.t = t; self.id = id; self.re = re }
 }
 
 public struct Empty: Codable, Equatable, Sendable { public init() {} }
@@ -238,11 +239,17 @@ public struct ClientHello: Codable, Equatable, Sendable {
 
 public struct PingBody: Codable, Equatable, Sendable { public var ts: Int64; public init(ts: Int64) { self.ts = ts } }
 
+/// `sync` (client → phone): the newest SMS and call ids and the contacts version the client holds (0 / "" for a full
+/// sync), the codecs it can decode and encode (best first), and who it is. Optional fields left nil are not sent.
 public struct SyncBody: Codable, Equatable, Sendable {
     public var sms: Int64
     public var calls: Int64
     public var contacts: String
-    public init(sms: Int64, calls: Int64, contacts: String) { self.sms = sms; self.calls = calls; self.contacts = contacts }
+    public var codecs: [String]?
+    public var client: ClientHello?
+    public init(sms: Int64, calls: Int64, contacts: String, codecs: [String]? = nil, client: ClientHello? = nil) {
+        self.sms = sms; self.calls = calls; self.contacts = contacts; self.codecs = codecs; self.client = client
+    }
 }
 
 /// Star (Favourites) or unstar a contact on the Android phone; answered with `contact.result`.
@@ -250,8 +257,11 @@ public struct ContactStar: Codable, Equatable, Sendable {
     public var id: Int64; public var on: Bool
     public init(id: Int64, on: Bool) { self.id = id; self.on = on }
 }
-public struct SmsBatch: Codable, Equatable, Sendable { public var items: [Sms]; public var more: Bool }
-public struct SmsNew: Codable, Equatable, Sendable { public var item: Sms }
+public struct SmsBatch: Codable, Equatable, Sendable {
+    public var items: [Sms]; public var more: Bool
+    public init(items: [Sms], more: Bool) { self.items = items; self.more = more }
+}
+public struct SmsNew: Codable, Equatable, Sendable { public var item: Sms; public init(item: Sms) { self.item = item } }
 /// "Everything in this conversation up to message `upTo` has been read." Sent by the device where the
 /// user read it; the Android phone marks those messages read and forwards it to the other devices.
 public struct SmsRead: Codable, Equatable, Sendable {
@@ -274,10 +284,16 @@ public struct SmsSend: Codable, Equatable, Sendable {
     public var to: String; public var body: String; public var sub: Int?
     public init(to: String, body: String, sub: Int?) { self.to = to; self.body = body; self.sub = sub }
 }
-public struct SmsResult: Codable, Equatable, Sendable { public var ok: Bool; public var state: String; public var err: String? }
+public struct SmsResult: Codable, Equatable, Sendable {
+    public var ok: Bool; public var state: String; public var err: String?
+    public init(ok: Bool, state: String, err: String? = nil) { self.ok = ok; self.state = state; self.err = err }
+}
 
 public struct ContactsBatch: Codable, Equatable, Sendable {
     public var items: [Contact]; public var more: Bool; public var version: String; public var full: Bool
+    public init(items: [Contact], more: Bool, version: String, full: Bool) {
+        self.items = items; self.more = more; self.version = version; self.full = full
+    }
 }
 public struct ContactAdd: Codable, Equatable, Sendable {
     public var name: String; public var phones: [Phone]; public var emails: [String]
@@ -290,16 +306,22 @@ public struct ContactUpdate: Codable, Equatable, Sendable {
         self.id = id; self.name = name; self.phones = phones; self.emails = emails
     }
 }
-public struct ContactResult: Codable, Equatable, Sendable { public var ok: Bool; public var id: Int64?; public var err: String? }
+public struct ContactResult: Codable, Equatable, Sendable {
+    public var ok: Bool; public var id: Int64?; public var err: String?
+    public init(ok: Bool, id: Int64? = nil, err: String? = nil) { self.ok = ok; self.id = id; self.err = err }
+}
 
-public struct CallsBatch: Codable, Equatable, Sendable { public var items: [CallEntry]; public var more: Bool }
-public struct CallList: Codable, Equatable, Sendable { public var calls: [CallInfo] }
+public struct CallsBatch: Codable, Equatable, Sendable {
+    public var items: [CallEntry]; public var more: Bool
+    public init(items: [CallEntry], more: Bool) { self.items = items; self.more = more }
+}
+public struct CallList: Codable, Equatable, Sendable { public var calls: [CallInfo]; public init(calls: [CallInfo]) { self.calls = calls } }
 public struct CallRef: Codable, Equatable, Sendable { public var cid: String; public init(cid: String) { self.cid = cid } }
 public struct CallHold: Codable, Equatable, Sendable { public var cid: String; public var on: Bool; public init(cid: String, on: Bool) { self.cid = cid; self.on = on } }
 public struct CallMute: Codable, Equatable, Sendable { public var on: Bool; public init(on: Bool) { self.on = on } }
 public struct CallDtmf: Codable, Equatable, Sendable { public var cid: String; public var d: String; public init(cid: String, d: String) { self.cid = cid; self.d = d } }
 public struct CallDial: Codable, Equatable, Sendable { public var num: String; public var sub: Int?; public init(num: String, sub: Int?) { self.num = num; self.sub = sub } }
-public struct OkResult: Codable, Equatable, Sendable { public var ok: Bool; public var err: String? }
+public struct OkResult: Codable, Equatable, Sendable { public var ok: Bool; public var err: String?; public init(ok: Bool, err: String? = nil) { self.ok = ok; self.err = err } }
 
 public struct AudioStart: Codable, Equatable, Sendable {
     public var codec: String; public var rate: Int; public var ms: Int; public var up: Bool
@@ -331,8 +353,14 @@ public struct NetState: Codable, Equatable, Sendable {
     public var rat: [SlotRat]?
     /// What the phone can tether at all (nil from older Android builds: assume yes).
     public var can: Capabilities?
-    public struct Capabilities: Codable, Equatable, Sendable { public var hotspot: Bool?; public var bt: Bool? }
-    public struct SlotRat: Codable, Equatable, Sendable, Hashable { public var slot: Int; public var mode: String }
+    public struct Capabilities: Codable, Equatable, Sendable {
+        public var hotspot: Bool?; public var bt: Bool?
+        public init(hotspot: Bool? = nil, bt: Bool? = nil) { self.hotspot = hotspot; self.bt = bt }
+    }
+    public struct SlotRat: Codable, Equatable, Sendable, Hashable {
+        public var slot: Int; public var mode: String
+        public init(slot: Int, mode: String) { self.slot = slot; self.mode = mode }
+    }
     public init(data: Bool? = nil, hotspot: Bool? = nil, bt: Bool? = nil, err: String? = nil, dataSub: Int? = nil,
                 vpn: Bool? = nil, share: Bool? = nil, proxy: ShareProxyInfo? = nil, airplane: Bool? = nil, rat: [SlotRat]? = nil) {
         self.data = data; self.hotspot = hotspot; self.bt = bt; self.err = err; self.dataSub = dataSub
@@ -385,12 +413,21 @@ public struct UssdResult: Codable, Equatable, Sendable {
 }
 /// Make the Android phone ring on its alarm stream (at most 30 s) / stop; answered, and later changed, by `phone.finding`.
 public struct PhoneFind: Codable, Equatable, Sendable { public var on: Bool; public init(on: Bool) { self.on = on } }
-public struct PhoneFinding: Codable, Equatable, Sendable { public var on: Bool; public var err: String? }
+public struct PhoneFinding: Codable, Equatable, Sendable { public var on: Bool; public var err: String?; public init(on: Bool, err: String? = nil) { self.on = on; self.err = err } }
 /// `mode` is "normal", "vibrate" or "silent"; answered with `ringer.result`.
 public struct RingerSet: Codable, Equatable, Sendable { public var mode: String; public init(mode: String) { self.mode = mode } }
-public struct RingerResult: Codable, Equatable, Sendable { public var ok: Bool; public var mode: String?; public var err: String? }
-public struct SelftestMethod: Codable, Equatable, Sendable, Hashable { public var name: String; public var ok: Bool; public var note: String? }
-public struct SelftestResult: Codable, Equatable, Sendable { public var methods: [SelftestMethod]; public var chosen: String? }
+public struct RingerResult: Codable, Equatable, Sendable {
+    public var ok: Bool; public var mode: String?; public var err: String?
+    public init(ok: Bool, mode: String? = nil, err: String? = nil) { self.ok = ok; self.mode = mode; self.err = err }
+}
+public struct SelftestMethod: Codable, Equatable, Sendable, Hashable {
+    public var name: String; public var ok: Bool; public var note: String?
+    public init(name: String, ok: Bool, note: String? = nil) { self.name = name; self.ok = ok; self.note = note }
+}
+public struct SelftestResult: Codable, Equatable, Sendable {
+    public var methods: [SelftestMethod]; public var chosen: String?
+    public init(methods: [SelftestMethod], chosen: String? = nil) { self.methods = methods; self.chosen = chosen }
+}
 /// Delete messages by id, or a whole conversation (`thread`). The Android phone deletes them and sends
 /// `sms.deleted` to every client, so a deletion on the iPhone also disappears from the Mac.
 public struct SmsDelete: Codable, Equatable, Sendable {

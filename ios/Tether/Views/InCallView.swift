@@ -1,6 +1,6 @@
 import Perception
 import SwiftUI
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// Full-screen call UI in the style of the iOS Phone app: caller and status on top, a 3×2 grid of
 /// round controls, the red end button centred below. Actions go through CallKit so the system

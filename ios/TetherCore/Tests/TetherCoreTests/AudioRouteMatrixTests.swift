@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import TetherCore
+@_spi(TetherApp) @testable import TetherCore
 
 /// The call screen's audio menu for every combination of accessories, and the engine rules that once looped.
 final class AudioRouteMatrixTests: XCTestCase {

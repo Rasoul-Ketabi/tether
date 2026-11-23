@@ -1,7 +1,7 @@
 import AVFoundation
 import CallKit
 import Foundation
-import TetherCore
+@_spi(TetherApp) import TetherCore
 import UIKit
 
 /// What the in-app call screen shows.

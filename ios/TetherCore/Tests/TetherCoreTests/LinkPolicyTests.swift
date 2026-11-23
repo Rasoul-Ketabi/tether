@@ -50,9 +50,11 @@ final class LinkPolicyTests: XCTestCase {
         XCTAssertEqual(seen.max(), 1001)
     }
 
+    #if canImport(CoreBluetooth)
     func testStateIsConnected() {
         XCTAssertTrue(TetherLink.State.connected(transport: "l2cap").isConnected)
         XCTAssertFalse(TetherLink.State.connecting.isConnected)
         XCTAssertFalse(TetherLink.State.handshaking.isConnected)
     }
+    #endif
 }

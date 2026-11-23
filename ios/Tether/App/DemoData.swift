@@ -1,7 +1,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
-import TetherCore
+@_spi(TetherApp) import TetherCore
 
 /// Debug builds only: `-TetherDemo` fills the UI with made-up data and `-TetherDemoCall` opens the call
 /// screen, so the interface can be checked in the Simulator (which has no Bluetooth).

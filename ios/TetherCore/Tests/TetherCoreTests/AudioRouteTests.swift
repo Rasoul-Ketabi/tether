@@ -1,5 +1,5 @@
 import XCTest
-@testable import TetherCore
+@_spi(TetherApp) @testable import TetherCore
 
 final class AudioRouteTests: XCTestCase {
     let mic = RoutePort(type: "MicrophoneBuiltIn", uid: "Built-In Microphone", name: "iPhone Microphone")
