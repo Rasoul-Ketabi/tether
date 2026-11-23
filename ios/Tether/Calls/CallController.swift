@@ -16,6 +16,10 @@ struct CallScreen: Equatable {
     var muted = false
     var held = false
     var speaker = false
+    /// Where the call's audio is now, the routes on offer and the selected one (the audio menu).
+    var route: RouteKind = .receiver
+    var routes: [RouteOption] = []
+    var selectedRoute = RouteOption.iPhoneID
 }
 
 /// Maps the Android phone's calls onto CallKit (native incoming screen, lock screen too) and drives the in-app
@@ -73,8 +77,9 @@ final class CallController: NSObject {
         super.init()
         provider.setDelegate(self, queue: nil)
         // The speaker button follows the real route (CallKit's own speaker button, AirPods, a cable…).
-        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.routeChanged() }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
+            let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+            MainActor.assumeIsolated { self?.routeChanged(reason: reason) }
         }
     }
 
@@ -99,18 +104,73 @@ final class CallController: NSObject {
         }
     }
 
-    private func routeChanged() {
+    private var lastLoggedRoute: RouteKind?
+
+    /// The call screen follows the real route, whoever chose it: CallKit's screen, Control Center, a car head unit,
+    /// a headset connecting mid-call, or our own menu.
+    func routeChanged(reason: AVAudioSession.RouteChangeReason? = nil) {
         defer { updateProximity() }
         guard model.callScreen != nil else { return }
-        let onSpeaker = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-TetherDemoRoutes") { return }
+        #endif
+        let s = AVAudioSession.sharedInstance()
+        let outs = s.currentRoute.outputs.map { RoutePort(type: $0.portType.rawValue, uid: $0.uid, name: $0.portName) }
+        let ins = s.currentRoute.inputs.map { RoutePort(type: $0.portType.rawValue, uid: $0.uid, name: $0.portName) }
+        let available = (s.availableInputs ?? []).map { RoutePort(type: $0.portType.rawValue, uid: $0.uid, name: $0.portName) }
+        let hasReceiver = UIDevice.current.userInterfaceIdiom == .phone
+        let options = AudioRoutes.options(inputs: available, hasReceiver: hasReceiver)
+        let kind = AudioRoutes.current(outputs: outs.map(\.type))
+        let onSpeaker = AudioRoutes.speakerOn(outputs: outs.map(\.type))
         speakerWanted = onSpeaker
-        if model.callScreen?.speaker != onSpeaker { model.callScreen?.speaker = onSpeaker }
+        var screen = model.callScreen
+        screen?.speaker = onSpeaker
+        screen?.route = kind
+        screen?.routes = options
+        screen?.selectedRoute = AudioRoutes.selected(outputs: outs, inputs: ins, options: options)
+        if screen != model.callScreen { model.callScreen = screen }
+        if kind != lastLoggedRoute {
+            lastLoggedRoute = kind
+            // Port types only: device names stay out of the log.
+            LinkJournal.shared.add("audio route \(kind.rawValue) (out \(outs.map(\.type).joined(separator: "+")), in \(ins.map(\.type).joined(separator: "+")))\(reason.map { ", reason \(Self.reasonName($0))" } ?? "")")
+        }
     }
 
-    /// Re-applies the speaker choice (an override only works on an active session).
+    private static func reasonName(_ r: AVAudioSession.RouteChangeReason) -> String {
+        switch r {
+        case .newDeviceAvailable: "new device"
+        case .oldDeviceUnavailable: "device gone"
+        case .categoryChange: "category"
+        case .override: "override"
+        case .wakeFromSleep: "wake"
+        case .noSuitableRouteForCategory: "no route"
+        case .routeConfigurationChange: "configuration"
+        default: "other"
+        }
+    }
+
+    /// Re-applies the speaker choice when the session is (re)activated, unless a headset or car has the call.
     func applySpeaker() {
-        do { try AVAudioSession.sharedInstance().overrideOutputAudioPort(speakerWanted ? .speaker : .none) }
-        catch { NSLog("[calls] speaker override failed: %@", "\(error)") }
+        let outs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+        if AudioRoutes.reapplySpeaker(wanted: speakerWanted, outputs: outs) { selectRoute(RouteOption.speakerID) }
+        else { routeChanged() }
+    }
+
+    /// Moves the call's audio to an option of the audio menu (iPhone, Speaker, a headset or the car).
+    func selectRoute(_ id: String) {
+        let s = AVAudioSession.sharedInstance()
+        let mic = s.availableInputs?.first { $0.portType == .builtInMic }
+        let plan = AudioRoutes.plan(for: id, builtInMicUID: mic?.uid)
+        speakerWanted = plan.speakerOverride
+        model.callScreen?.speaker = plan.speakerOverride   // at once; the route notification confirms or corrects it
+        model.callScreen?.selectedRoute = id
+        do {
+            let port = plan.preferredInputUID.flatMap { uid in s.availableInputs?.first { $0.uid == uid } }
+            if plan.preferredInputUID != nil && port == nil { NSLog("[calls] route %@ no longer available", id) }
+            if !plan.speakerOverride { try s.overrideOutputAudioPort(.none) }
+            try s.setPreferredInput(port)
+            if plan.speakerOverride { try s.overrideOutputAudioPort(.speaker) }
+        } catch { NSLog("[calls] route change failed: %@", "\(error)") }
         routeChanged()
     }
 
@@ -306,11 +366,14 @@ final class CallController: NSObject {
         // Close the call screen at once (another call takes it over if there is one).
         if model.callScreen?.uuid == uuid {
             model.callScreen = nextScreen()
+            if model.callScreen != nil { routeChanged() }
             if model.callScreen == nil { model.showCallScreen = false; if flash { model.flash(String(localized: "Call ended")) } }
         }
         if !hasCalls {
             model.audio.stop()
             speakerWanted = false
+            lastLoggedRoute = nil
+            try? AVAudioSession.sharedInstance().setPreferredInput(nil)   // the next call starts on the system's route
         }
     }
 
@@ -336,8 +399,10 @@ final class CallController: NSObject {
         if c.state == "active", s.connectedAt == nil { s.connectedAt = c.since.map { Date(millis: $0) } ?? Date() }
         // Only take over the screen for the current call, or when nothing is shown.
         if force || model.callScreen == nil || model.callScreen?.uuid == uuid || model.callScreen?.state == "ended" {
-            if model.callScreen?.uuid != uuid { model.callScreenDismissed = false }
+            let fresh = model.callScreen?.uuid != uuid
+            if fresh { model.callScreenDismissed = false }
             model.callScreen = s
+            if fresh { routeChanged() }   // a new screen: fill in the route and the audio menu
         }
     }
 
@@ -445,11 +510,7 @@ final class CallController: NSObject {
     /// Ends a call by its Android-side id (debug auto hang-up).
     func end(cid: String) { if let u = uuids[cid] { end(u) } }
 
-    func setSpeaker(_ on: Bool) {
-        speakerWanted = on
-        model.callScreen?.speaker = on    // at once; the route notification confirms or corrects it
-        applySpeaker()
-    }
+    func setSpeaker(_ on: Bool) { selectRoute(on ? RouteOption.speakerID : RouteOption.iPhoneID) }
 
     func cid(for uuid: UUID) -> String? { cids[uuid] }
 }
@@ -505,7 +566,7 @@ extension CallController: CXProviderDelegate {
         Task { @MainActor in
             LinkJournal.shared.add("audio session activated")
             self.model.audio.sessionActivated()
-            if self.speakerWanted { self.applySpeaker() }   // chosen while the call was still connecting
+            self.applySpeaker()   // a speaker choice made while connecting; a headset or car keeps the call
         }
     }
 

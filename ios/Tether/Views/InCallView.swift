@@ -104,8 +104,12 @@ struct InCallView: View {
         let enabled = call.state != "ended"
         return Grid(horizontalSpacing: 26, verticalSpacing: 26) {
             GridRow {
-                RoundControl(icon: call.speaker ? "speaker.wave.3.fill" : "speaker.wave.2.fill", label: "Speaker", on: call.speaker) {
-                    model.calls.setSpeaker(!call.speaker)
+                if call.routes.contains(where: { !$0.kind.isBuiltIn }) {
+                    AudioRouteMenu(call: call) { model.calls.selectRoute($0) }
+                } else {
+                    RoundControl(icon: call.speaker ? "speaker.wave.3.fill" : "speaker.wave.2.fill", label: "Speaker", on: call.speaker) {
+                        model.calls.setSpeaker(!call.speaker)
+                    }
                 }
                 RoundControl(icon: call.held ? "pause.fill" : "pause", label: "Hold", on: call.held) {
                     model.calls.setHeld(call.uuid, !call.held)
@@ -182,6 +186,51 @@ struct CallStatusText: View {
                 Duration.seconds(Int(now.timeIntervalSince(t))).formatted(.time(pattern: .minuteSecond))
             } else { "" }
         }
+    }
+}
+
+/// The call's audio menu once a headset, car or other accessory is available (like the Phone app's "Audio"):
+/// iPhone, Speaker and each accessory, with the current one checked. It follows routes chosen elsewhere.
+struct AudioRouteMenu: View {
+    let call: CallScreen
+    let select: (String) -> Void
+    @Environment(\.isEnabled) private var enabled
+
+    static func icon(_ k: RouteKind) -> String {
+        switch k {
+        case .receiver: "iphone"
+        case .speaker: "speaker.wave.3.fill"
+        case .bluetooth: "headphones"
+        case .car: "car.fill"
+        case .wired: "headphones"
+        case .usb: "cable.connector"
+        case .airPlay: "airplayaudio"
+        case .other: "speaker.wave.2.fill"
+        }
+    }
+
+    var body: some View {
+        let onAccessory = !call.route.isBuiltIn
+        Menu {
+            ForEach(call.routes) { r in
+                Button { select(r.id) } label: {
+                    if r.id == call.selectedRoute { Label(r.id == RouteOption.speakerID ? String(localized: "Speaker") : r.name, systemImage: "checkmark") }
+                    else { Label(r.id == RouteOption.speakerID ? String(localized: "Speaker") : r.name, systemImage: Self.icon(r.kind)) }
+                }
+            }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: Self.icon(call.route == .receiver ? .speaker : call.route))
+                    .font(.system(size: 28, weight: .regular))
+                    .frame(width: 78, height: 78)
+                    .foregroundStyle(onAccessory || call.speaker ? Color.black : Color.white)
+                    .background(onAccessory || call.speaker ? Color.white : Color.white.opacity(0.16), in: Circle())
+                Text("Audio").font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityLabel(Text("Audio"))
     }
 }
 

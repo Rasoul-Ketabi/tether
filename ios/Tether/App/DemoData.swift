@@ -100,6 +100,13 @@ extension AppModel {
             callScreen = CallScreen(uuid: UUID(), number: "+15550101", name: "Sara Ahmadi", state: dialing ? "dialing" : "active",
                                     incoming: !dialing, connectedAt: dialing ? nil : Date().addingTimeInterval(-42), sub: 3)
             showCallScreen = !args.contains("-TetherDemoBanner")
+            if args.contains("-TetherDemoRoutes") {   // the audio menu with a headset and a car (no Bluetooth in the simulator)
+                callScreen?.routes = AudioRoutes.options(inputs: [
+                    RoutePort(type: "BluetoothHFP", uid: "00:11:22:33:44:55-tsco", name: "Headset"),
+                    RoutePort(type: "CarAudio", uid: "00:11:22:33:44:66-car", name: "Car")])
+                callScreen?.route = .bluetooth
+                callScreen?.selectedRoute = "00:11:22:33:44:55-tsco"
+            }
         }
     }
 }
