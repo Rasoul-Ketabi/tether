@@ -80,4 +80,9 @@
     <string name="audio_android11_12">Call audio on Android 11 and 12 uses the phone\'s call recorder path and works only if this phone allows it. Run the self-test during a call to check.</string>
     <string name="audio_needs_android13">Call audio needs Android 13 or later. On this phone, calls are still answered, placed and ended from the iPhone, but their audio stays on this phone.</string>
     <string name="audio_local_stays_on">During a bridged call this phone\'s own earpiece and microphone may stay on (only Samsung phones let Tether mute them): keep it in a bag or pocket.</string>
+    <string name="adb_code_format">Type the 6-digit code shown under Pair device with pairing code.</string>
+    <string name="adb_no_wifi">Wireless debugging needs Wi-Fi. Connect to a Wi-Fi network, open Pair device with pairing code again and enter the new code.</string>
+    <string name="adb_no_service">The pairing window was not found. Keep Pair device with pairing code open on screen (pull this notification down over it, or use split screen) and enter the code while it is shown.</string>
+    <string name="adb_wrong_code">The code was wrong or has expired. Open Pair device with pairing code again and enter the new 6-digit code.</string>
+    <string name="adb_paired_no_connect">Paired, but could not connect yet (%1$s). Tether tries again while Wireless debugging is on.</string>
 </resources>

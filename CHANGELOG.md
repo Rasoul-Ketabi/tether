@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Wireless debugging pairing from the notification no longer closes the app (#1): the work runs in a short foreground
+  service instead of the notification's broadcast, a wrong or expired code is reported instead of being taken as
+  success, and each failure (no Wi-Fi, pairing window closed, wrong code, connected later) says what to do, in English
+  and Persian.
 - Dates (also Persian calendar ones), version numbers, IP addresses and amounts in texts are no longer shown as
   phone numbers on the iPhone or the Android client, or picked by "Call with"; numbers written with dots
   (555.123.4567) now are.

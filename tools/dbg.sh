@@ -4,7 +4,7 @@
 #   tools/dbg.sh fake_incoming [ring-iphone] [num] | fake_outgoing [ring-iphone] | fake_end | dryrun_on | dryrun_off
 #     (test line only; ring-iphone lets the ring / call reach a linked iPhone on purpose)
 #   tools/dbg.sh loopback_call [answer|decline|remote|outgoing|selftest|during-sync] | loopback_handover   (test line only)
-#   tools/dbg.sh adb_pair <code> | adb_shell "<cmd>"
+#   tools/dbg.sh adb_pair <code> | adb_pair_clear | adb_shell "<cmd>"
 #   tools/dbg.sh net [data|hotspot|bt on|off] | airplane on|off | share on|off|loopback|noloopback|state
 #   tools/dbg.sh drop (close live sessions from the Android side)
 #   tools/dbg.sh inject_ms 20..200|off (uplink playback buffer cap for the next calls; default 40)

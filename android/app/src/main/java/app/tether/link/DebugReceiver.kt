@@ -1,5 +1,6 @@
 package app.tether.link
 
+import app.tether.adb.AdbPairing
 import app.tether.adb.Adb
 import app.tether.core.Phone as PhoneEntry
 import android.content.BroadcastReceiver
@@ -216,9 +217,12 @@ class DebugReceiver : BroadcastReceiver() {
         "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full", intent.getStringExtra("mode") ?: "answer")
         "loopback_handover" -> loopbackHandover(app)
         "adb_pair" -> {
-            val code = intent.getStringExtra("code") ?: error("--es code required")
-            app.adbPairAndBootstrap(code)
+            // The notification's path (a short foreground service), so this hook never blocks its broadcast either.
+            val code = AdbPairing.normalizeCode(intent.getStringExtra("code")) ?: error("--es code with 6 digits required")
+            AdbPairing.start(app, code); "started (see the notification and the log)"
         }
+        // adb_pair_clear: removes the pairing notification (after testing adb_pair on a phone that is already paired).
+        "adb_pair_clear" -> { app.getSystemService(android.app.NotificationManager::class.java).cancel(Adb.NOTIF_ADB); "cleared" }
         "adb_shell" -> app.adbShell(intent.getStringExtra("sh") ?: "id")
         "helper_start" -> app.hub.helper.ensureRunning() ?: "helper running"
         "helper_quit" -> if (app.hub.helper.quit()) "quit sent" else "helper not connected"
