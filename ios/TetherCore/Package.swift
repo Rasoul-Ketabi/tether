@@ -10,7 +10,12 @@ let package = Package(
         .executable(name: "tether-central", targets: ["tether-central"]),
     ],
     targets: [
-        .target(name: "TetherCore"),
+        // libopus 1.5.2 (BSD-3-Clause), vendored, floating point, no assembly.
+        .target(name: "COpus", path: "Sources/COpus", publicHeadersPath: "include",
+                cSettings: [.headerSearchPath("config"), .headerSearchPath("celt"), .headerSearchPath("silk"),
+                            .headerSearchPath("silk/float"), .headerSearchPath("src"),
+                            .define("HAVE_CONFIG_H")]),
+        .target(name: "TetherCore", dependencies: ["COpus"]),
         .executableTarget(name: "tether-vectors", dependencies: ["TetherCore"]),
         // Mac test central; the embedded Info.plist carries the Bluetooth usage string TCC requires.
         .executableTarget(name: "tether-central", dependencies: ["TetherCore"], exclude: ["Info.plist"],
