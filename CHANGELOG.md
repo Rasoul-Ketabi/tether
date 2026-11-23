@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Contacts: a number's custom kind ("Satellite") is shown on the iPhone and kept when a contact is edited there; the
+  Android phone now stores labels sent with `contact.add` / `contact.update`, and an empty label clears one.
 - Tests for future changes: protocol fixtures read by both implementations (old and newer app variants), an iPhone
   app test target (saved-data format, message handling, links), security and framing edge cases, the A54's safety
   guards and helper login, the Android client's synced state and call rules; about 380 automatic tests in all.

@@ -75,15 +75,24 @@ class DebugReceiver : BroadcastReceiver() {
         // deletes it again. Touches no existing contact.
         "contact_test" -> {
             val repo = app.contacts
-            // Two numbers; the edit keeps the first (new type), drops the second, adds a third: only changed rows move.
-            val id = repo.add("Tether Test", listOf(PhoneEntry("+10000000006", "mobile"), PhoneEntry("+10000000007", "home")), emptyList())
-            val err = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"),
-                PhoneEntry("+10000000008", "home")), listOf("test@example.com"))
+            // Three numbers, one with a custom kind. Edit 1 (as an older iPhone, no labels): the first changes type, the
+            // labelled one must keep "Satellite", the third is dropped, a new labelled one is added. Edit 2 clears the
+            // label (""). Only throw-away +1000000000x numbers; the contact is deleted at the end.
+            val id = repo.add("Tether Test", listOf(PhoneEntry("+10000000006", "mobile"), PhoneEntry("+10000000007", "other", "Satellite"),
+                PhoneEntry("+10000000009", "home")), emptyList())
+            fun shown() = repo.all(withPhotos = false).firstOrNull { it.id == id }?.phones?.sortedBy { it.n }?.map { it.n.takeLast(1) + "/" + it.type + (it.label?.let { l -> "/$l" } ?: "") }
+            val added = shown()
+            val err = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"), PhoneEntry("+10000000007", "other"),
+                PhoneEntry("+10000000008", "home", "Studio")), listOf("test@example.com"))
+            val edited = shown()
+            val err2 = repo.update(id, "Tether Test Edited", listOf(PhoneEntry("+10000000006", "work"), PhoneEntry("+10000000007", "home", ""),
+                PhoneEntry("+10000000008", "home", "Studio")), listOf("test@example.com"))
+            val cleared = shown()
             val after = repo.all(withPhotos = false).firstOrNull { it.id == id }
             val deleted = app.contentResolver.delete(android.provider.ContactsContract.RawContacts.CONTENT_URI.buildUpon()
                 .appendQueryParameter(android.provider.ContactsContract.CALLER_IS_SYNCADAPTER, "true").build(),
                 "${android.provider.ContactsContract.RawContacts.CONTACT_ID} = ?", arrayOf(id.toString()))
-            "id=$id update=${err ?: "ok"} after=${after?.name} phones=${after?.phones?.map { it.n + "/" + it.type }} emails=${after?.emails} deleted=$deleted"
+            "id=$id added=$added update=${err ?: "ok"} edited=$edited update2=${err2 ?: "ok"} cleared=$cleared after=${after?.name} emails=${after?.emails} deleted=$deleted"
         }
         // sms_read <thread> <upTo>: what an sms.read from the iPhone does (mark read, granting the app-op if needed)
         "sms_read" -> {

@@ -549,7 +549,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     }
 
     private fun addContact(c: Connection, m: Message) {
-        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile")) } } ?: emptyList()
+        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile"), if (p.has("label")) p.optString("label") else null) } } ?: emptyList()
         val emails = m.b.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
         val res = try {
             val id = app.contacts.add(m.b.optString("name"), phones, emails, dry(c))
@@ -561,7 +561,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     }
 
     private fun updateContact(c: Connection, m: Message) {
-        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile")) } } ?: emptyList()
+        val phones = m.b.optJSONArray("phones")?.let { a -> (0 until a.length()).map { val p = a.getJSONObject(it); PhoneEntry(p.getString("n"), p.optString("type", "mobile"), if (p.has("label")) p.optString("label") else null) } } ?: emptyList()
         val emails = m.b.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
         val res = try {
             val err = app.contacts.update(m.b.optLong("id", -1), m.b.optString("name"), phones, emails, dry(c))
