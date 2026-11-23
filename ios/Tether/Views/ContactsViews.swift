@@ -113,7 +113,11 @@ struct ContactDetailView: View {
                 ForEach(contact.phones, id: \.self) { p in
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(LocalizedStringKey(p.type.capitalized)).font(.caption).foregroundStyle(.secondary)
+                            Group {
+                                if let label = p.label, !label.trimmingCharacters(in: .whitespaces).isEmpty { Text(verbatim: label) }
+                                else { Text(LocalizedStringKey(p.type.capitalized)) }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
                             Text(model.formatted(p.n)).environment(\.layoutDirection, .leftToRight)
                         }
                         Spacer()
@@ -224,12 +228,24 @@ struct EditContactView: View {
     @Environment(\.dismiss) private var dismiss
     let contact: Contact
 
-    private struct PhoneRow: Identifiable { let id = UUID(); var number: String; var type: String }
+    /// `label`: the number's custom kind from the Android phone ("Satellite"); kept unless another kind is picked.
+    struct PhoneRow: Identifiable { let id = UUID(); var number: String; var type: String; var label: String? = nil }
     private struct EmailRow: Identifiable { let id = UUID(); var address: String }
     @State private var name = ""
     @State private var phones: [PhoneRow] = []
     @State private var emails: [EmailRow] = []
     private let types = ["mobile", "home", "work", "main", "other"]
+
+    /// Picker tag for "keep the custom kind" (never sent: it goes out as type "other" with the label).
+    static let custom = "custom"
+
+    /// What the Android phone stores: a kept custom kind is sent with its label; picking a standard kind for a
+    /// custom one sends an empty label (clears it); otherwise no label (protocol §5 contact.update).
+    static func phone(from row: PhoneRow) -> Phone {
+        let n = row.number.trimmingCharacters(in: .whitespaces)
+        if row.type == custom, let label = row.label { return Phone(n: n, type: "other", label: label) }
+        return Phone(n: n, type: row.type, label: row.label != nil ? "" : nil)
+    }
 
     var body: some View { WithPerceptionTracking { bodyContent } }
 
@@ -245,6 +261,7 @@ struct EditContactView: View {
                     ForEach($phones) { $p in
                         HStack {
                             Picker("", selection: $p.type) {
+                                if let label = p.label { Text(verbatim: label).tag(Self.custom) }
                                 ForEach(types, id: \.self) { Text(LocalizedStringKey($0.capitalized)).tag($0) }
                             }
                             .labelsHidden().fixedSize()
@@ -276,7 +293,7 @@ struct EditContactView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        let ps = phones.map { Phone(n: $0.number.trimmingCharacters(in: .whitespaces), type: $0.type) }.filter { !$0.n.isEmpty }
+                        let ps = phones.map { Self.phone(from: $0) }.filter { !$0.n.isEmpty }
                         let es = emails.map { $0.address.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                         model.updateContact(id: contact.id, name: name.trimmingCharacters(in: .whitespaces), phones: ps, emails: es)
                         dismiss()
@@ -286,7 +303,10 @@ struct EditContactView: View {
             }
             .onAppear {
                 name = contact.name
-                phones = contact.phones.map { PhoneRow(number: $0.n, type: types.contains($0.type) ? $0.type : "other") }
+                phones = contact.phones.map { p in
+                    let label = p.label.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+                    return PhoneRow(number: p.n, type: label != nil ? Self.custom : (types.contains(p.type) ? p.type : "other"), label: label)
+                }
                 emails = contact.emails.map { EmailRow(address: $0) }
             }
         }

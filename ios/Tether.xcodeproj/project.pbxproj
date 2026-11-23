@@ -17,6 +17,7 @@
 		603FD7C492722E6BCC58DF92 /* TetherApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59E78B07440A9F776F7720DC /* TetherApp.swift */; };
 		83B205328808D1436E1B8387 /* LinkJournalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */; };
 		8DC705297C3FC4B035C0F1FC /* Compat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FEECE0003BC61F76A0EAD2 /* Compat.swift */; };
+		916C565D48ECFEDC9E18052B /* ContactLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1D0F65D7009320B615590F /* ContactLabelTests.swift */; };
 		9A394F51878AC0F2FC796A3D /* LinkViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B780AAA1432D833E27C1DAB /* LinkViews.swift */; };
 		A5120646391E346F5BC0F6FF /* AppModelReceivedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E9230950F516251A08C469 /* AppModelReceivedTests.swift */; };
 		A6CC9975EFEB03431DC3A4AD /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B65CC0FCBA237E0DB09A99 /* AppModel.swift */; };
@@ -78,6 +79,7 @@
 		8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = fa.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A086C56F3615B86DD44C390C /* snapshot-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "snapshot-v1.json"; sourceTree = "<group>"; };
 		A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntents.swift; sourceTree = "<group>"; };
+		AB1D0F65D7009320B615590F /* ContactLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactLabelTests.swift; sourceTree = "<group>"; };
 		AD9B3C59F18C986266338486 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B322450F8CAE816DA2C624CA /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		C0FEECE0003BC61F76A0EAD2 /* Compat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Compat.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				89E9230950F516251A08C469 /* AppModelReceivedTests.swift */,
+				AB1D0F65D7009320B615590F /* ContactLabelTests.swift */,
 				81CED4113375A394DEACC546 /* DisplayTests.swift */,
 				C567AA851BD82FCD74E3DFEA /* LinkJournalTests.swift */,
 				6854E54209D961EA1D57080D /* RouterTests.swift */,
@@ -357,6 +360,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A5120646391E346F5BC0F6FF /* AppModelReceivedTests.swift in Sources */,
+				916C565D48ECFEDC9E18052B /* ContactLabelTests.swift in Sources */,
 				F5F980AA00C9F35EA8DBD777 /* DisplayTests.swift in Sources */,
 				83B205328808D1436E1B8387 /* LinkJournalTests.swift in Sources */,
 				BBA8E43F55388B4A3CC4527D /* RouterTests.swift in Sources */,
