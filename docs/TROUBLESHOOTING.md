@@ -95,3 +95,10 @@ pairing dialog is not success; open a fresh pairing dialog and retry. The input 
 or written to logs. The floating card can be closed manually and is automatically removed after
 five minutes. If no overlay or notification is usable on the device, use supported Android
 split-screen with Tether and Settings, or enable notification permissions and retry.
+
+The pairing notification runs as a short-lived `connectedDevice` foreground service when
+Android allows it. It has an inline **Enter code** reply and **Stop pairing** action, and
+is removed after five minutes or when stopped. Notification importance is high, but
+Android controls heads-up banner duration and may suppress banners or notification
+channels based on user settings. Do not use full-screen intent or accessibility tricks
+to override the protected Wireless debugging Settings UI.
