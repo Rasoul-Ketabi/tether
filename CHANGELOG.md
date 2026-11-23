@@ -13,6 +13,10 @@
 - The Android phone kept failing to advertise after many link changes ("too many advertisers"): fixed.
 - Calls: the fast Bluetooth connection interval is requested at the first ring, and the iPhone's playout buffer
   adapts to bursty arrival (about 1 % of a call concealed instead of 4-6 %).
+- iPhone: call numbers from other apps. `tel:` links (as the iOS 18.2+ default calling app, paid accounts only),
+  the `tether://dial?number=` scheme, a "Call a Number" Shortcuts / Siri action that also finds a number in text,
+  and optional call-backs from the Phone app's Recents. Links always ask before dialling; service codes and
+  extensions are kept.
 - A "Calls paused" notification when the app is closed while running; docs on what happens when it is swiped away.
 
 ## 1.0.0 — first public release

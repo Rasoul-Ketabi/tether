@@ -77,6 +77,7 @@ General › VPN & Device Management › your Apple account › Trust. iOS 16 and
 | --- | --- | --- |
 | Signature valid for | 7 days: run `tools/reinstall-ios.sh` again before it ends (data and pairing are kept) | 1 year |
 | Sender pictures in message notifications (Communication Notifications entitlement) | Not allowed: the script builds without it automatically | Yes |
+| Default calling app on iOS 18.2+ (`com.apple.developer.calling-app`, same build variant) | Not allowed: built without it | Yes |
 | Everything else | Same | Same |
 
 The Link tab shows how many days the current signature has left.

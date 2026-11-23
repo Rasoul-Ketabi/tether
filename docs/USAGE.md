@@ -17,6 +17,24 @@ what you do on the Android phone shows up on the iPhone, and the other way round
 - **Audio** is Opus at 16 kHz in both directions. The Link log lists, after each call, frames sent and received,
   gaps concealed and the link's round-trip time.
 
+## Calling numbers from other apps
+
+Numbers tapped elsewhere on the iPhone (Safari, Mail, Notes, a contact card, a `tel:` link) can be called through the
+Android phone. A link never dials by itself: Tether shows "Call …?" and calls when you tap **Call**; if the Android
+phone is not connected it says so and **Show in Keypad** (or Cancel) leaves the number in the Keypad. Service codes
+(`*140*1#`) and extensions (`;ext=12`, pauses `p` / `,`) are kept.
+
+| Route | What you do once | Account |
+| --- | --- | --- |
+| Default calling app (iOS 18.2 or later): every phone number you tap opens Tether | Settings › Apps › Default Apps › Calling › choose Tether (shown under its display name) | Paid developer program only (`com.apple.developer.calling-app`); with a free account the app is not offered there |
+| The Phone app's Recents: tap a Tether call there to call back through the Android phone | Link tab › Numbers in other apps › **Show calls in the Phone app** | Any |
+| Shortcuts / Siri: "Call with Tether" | Nothing (the App Shortcut is built in). Siri asks for the number. In a shortcut, pass a number or any text containing one, e.g. *Receive text from Share Sheet → Call a Number*, to call a number selected in any app via Share | Any |
+| URL scheme: `tether://dial?number=%2B15550100` (also `tether:call?number=…`, `tether://dial/<number>`) | Use it from Shortcuts (Open URL) or a link; iOS asks "Open in …?" first | Any |
+
+Shortcuts, Siri and the Phone app's Recents dial at once when the Android phone is linked (they are your own taps
+in system UI), waiting a few seconds for the link after a cold start; links always ask. Without the paid account
+there is no way to put Tether in the button list of the Contacts app or to make plain `tel:` links open it.
+
 ## Messages
 
 - All conversations, with new texts arriving live. Long texts, emoji and right-to-left text are shown as in
