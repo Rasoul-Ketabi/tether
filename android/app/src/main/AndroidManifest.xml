@@ -7,6 +7,8 @@
 
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Optional, explicitly consented floating code-entry window during ADB pairing. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -141,6 +143,7 @@
 
         <receiver android:name=".data.SmsStatusReceiver" android:exported="false" />
         <receiver android:name=".adb.AdbPairingReceiver" android:exported="false" />
+        <service android:name=".adb.PairingOverlayService" android:exported="false" />
 
         <!-- Debug hooks for adb only (the DUMP permission is held by the shell, not by apps). -->
         <receiver
