@@ -137,6 +137,8 @@ final class CallAudio: @unchecked Sendable {
     private(set) var stats = Stats()
     struct Stats { var ioBufferMs = 0.0; var inputLatencyMs = 0.0; var outputLatencyMs = 0.0; var playoutMs = 0.0
         var underruns = 0; var trimmedMs = 0.0; var lost = 0
+        /// Mean playout delay the listener had (the buffer's level), and quiet audio added to reach the target.
+        var delayMs = 0.0; var addedMs = 0.0
         /// Frame arrival spacing over the link: mean |gap − 20 ms| and the worst gap seen (BLE jitter).
         var jitterMs = 0.0; var worstGapMs = 0.0; var frames = 0 }
     private var lastArrival: UInt64 = 0
@@ -144,6 +146,9 @@ final class CallAudio: @unchecked Sendable {
     /// Debug (-TetherEcho): send every received frame straight back with the same sequence number instead of
     /// the microphone, so the Android phone can time the whole link round trip (its encode → BLE → our decode/encode → BLE → its decode).
     static let echoTest = ProcessInfo.processInfo.arguments.contains("-TetherEcho")
+    /// Debug (-TetherAudioTrace): every 2 s of a call, one console line with the playout's level, target and arrival spread.
+    static let trace = ProcessInfo.processInfo.arguments.contains("-TetherAudioTrace")
+    private var pumps = 0
 
     init(model: AppModel, link: TetherLink) {
         self.model = model
@@ -174,10 +179,13 @@ final class CallAudio: @unchecked Sendable {
         try? s.setPreferredIOBufferDuration(0.01) // 10 ms I/O buffer
     }
 
-    /// From the link queue: decode right away (Opus decoding is cheap) and queue PCM for playout.
+    /// From the link queue: decode right away (Opus decoding is cheap) and queue PCM for playout. The arrival time is
+    /// taken here, not when the audio queue gets to the frame: that queue also encodes the microphone and restarts the
+    /// engine, and its delays are not the link's (the playout's arrival statistics are about the link).
     static func incoming(_ f: AudioFrame) {
         guard let c = current else { return }
-        c.q.async { c.receive(f) }
+        let at = DispatchTime.now().uptimeNanoseconds
+        c.q.async { c.receive(f, at: at) }
     }
 
     @MainActor func configure(_ start: AudioStart) {
@@ -395,22 +403,25 @@ final class CallAudio: @unchecked Sendable {
         stats.underruns = playout.underruns
         stats.trimmedMs = Double(playout.trimmed) / playRate * 1000
         stats.playoutMs = Double(playout.target) / playRate * 1000
+        stats.delayMs = playout.meanBuffered / playRate * 1000
+        stats.addedMs = Double(playout.inserted) / playRate * 1000
         stats.jitterMs = stats.frames > 1 ? jitterSum / Double(stats.frames - 1) : 0
-        NSLog("[audio] stopped: playout target %.0f ms, underruns %d, trimmed %.0f ms, lost %d, frames %d, jitter %.1f ms, worst gap %.0f ms",
-              stats.playoutMs, stats.underruns, stats.trimmedMs, stats.lost, stats.frames, stats.jitterMs, stats.worstGapMs)
+        NSLog("[audio] stopped: playout delay %.0f ms (target %.0f), underruns %d, concealed %.0f ms, trimmed %.0f ms, added %.0f ms, lost %d, frames %d, jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
+              stats.delayMs, stats.playoutMs, stats.underruns, Double(playout.concealedSamples) / playRate * 1000, stats.trimmedMs, stats.addedMs,
+              stats.lost, stats.frames, stats.jitterMs, stats.worstGapMs, playout.driftPpm)
         let snapshot = stats
         let concealedMs = Double(playout.concealedSamples) / playRate * 1000
         let rtt = link.lastRoundTripMs.map { "\($0) ms" } ?? "-"
         // Call statistics in the Link log: what a real call measured on this iPhone.
         let spreadMs = Double(playout.jitterFloor) / playRate * 1000
         if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
-        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms (arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
-                                      rtt, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
-                                      snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, snapshot.ioBufferMs, snapshot.outputLatencyMs))
+        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
+                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.addedMs, snapshot.lost,
+                                      snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, playout.driftPpm, snapshot.ioBufferMs, snapshot.outputLatencyMs))
         DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
 
-    private func receive(_ f: AudioFrame) {
+    private func receive(_ f: AudioFrame, at now: UInt64) {
         guard running, let coder, f.codec == coder.id else { return }
         var missing = 0
         if let last = lastSeq {
@@ -419,8 +430,7 @@ final class CallAudio: @unchecked Sendable {
             if gap > 1 { stats.lost += gap - 1; missing = min(gap - 1, 50) }
         }
         lastSeq = f.seq
-        let now = DispatchTime.now().uptimeNanoseconds
-        if lastArrival != 0 {
+        if lastArrival != 0 && now > lastArrival {
             let gap = Double(now - lastArrival) / 1e6
             jitterSum += abs(gap - 20)
             stats.worstGapMs = max(stats.worstGapMs, gap)
@@ -451,6 +461,7 @@ final class CallAudio: @unchecked Sendable {
     }
 
     private func drainCapture() {
+        if Self.trace, running { pumps += 1; if pumps % 400 == 0 { traceLine() } }
         guard running, let coder, let conv = captureConverter, let format = captureFormat, let mono = captureMono else { return }
         let n = captureRing.available
         guard n > 0, let buf = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(n)) else { return }
@@ -475,6 +486,13 @@ final class CallAudio: @unchecked Sendable {
                 seq &+= 1
             }
         }
+    }
+
+    private func traceLine() {
+        let ms = { (s: Int) in Double(s) / self.playRate * 1000 }
+        NSLog("[audio] trace: level %.0f ms (mean %.0f), target %.0f, floor %.0f, drained %.0f, added %.0f, concealed %.0f ms; %@",
+              ms(playout.buffered), playout.meanBuffered / playRate * 1000, ms(playout.target), ms(playout.jitterFloor),
+              ms(playout.trimmed), ms(playout.inserted), ms(playout.concealedSamples), playout.arrivalSummary())
     }
 
     /// 425 Hz, 1 s on / 4 s off (the ITU-recommended ringback used by Iranian and most European networks).

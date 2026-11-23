@@ -115,7 +115,7 @@ struct LinkView: View {
                         }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
-                                Text(String(format: "buffer %.0f ms · jitter %.1f ms · gaps %d", a.playoutMs, a.jitterMs, a.underruns))
+                                Text(String(format: "buffer %.0f ms · jitter %.1f ms · gaps %d", a.delayMs, a.jitterMs, a.underruns))
                                     .font(.caption.monospacedDigit())
                             }
                         }
