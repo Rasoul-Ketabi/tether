@@ -208,9 +208,9 @@ class MainActivity : Activity() {
     private fun openPairingSettings() {
         // RemoteInput stays available as a fallback, including when protected system UI hides overlays.
         Adb.showPairingNotification(this)
-        if (Settings.canDrawOverlays(this)) {
-            runCatching { PairingOverlayService.show(this) }
-        }
+        // Start the short-lived pairing foreground session even if overlay access is denied.
+        // Android may hide the overlay on protected Settings screens; notification reply remains usable.
+        runCatching { PairingOverlayService.show(this) }
         if (!WirelessDebuggingSettings.open(this)) {
             AlertDialog.Builder(this).setMessage(R.string.adb_overlay_settings_unavailable)
                 .setPositiveButton(android.R.string.ok, null).show()
