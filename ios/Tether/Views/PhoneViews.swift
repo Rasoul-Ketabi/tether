@@ -116,6 +116,7 @@ struct RecentsView: View {
 
 struct KeypadView: View {
     @Environment(AppModel.self) private var model
+    @Environment(Router.self) private var router
     @State private var number = ""
     @State private var longPressedZero = false
     @State private var sub: Int?
@@ -189,6 +190,15 @@ struct KeypadView: View {
             let args = ProcessInfo.processInfo.arguments
             if number.isEmpty, let i = args.firstIndex(of: "-TetherDemoKeypad"), i + 1 < args.count { number = args[i + 1] }
             #endif
+            takeRouted()
         }
+        .onChange(of: router.keypadNumber) { _, _ in takeRouted() }
+    }
+
+    /// A number from a link the owner did not call yet (cancelled, or the Android phone was not connected).
+    private func takeRouted() {
+        guard let n = router.keypadNumber else { return }
+        number = n
+        router.keypadNumber = nil
     }
 }

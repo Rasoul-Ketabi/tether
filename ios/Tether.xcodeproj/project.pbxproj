@@ -20,6 +20,7 @@
 		C22F6862E55A15AB8541D008 /* ContactsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8B6670F2FFC88848754BEC /* ContactsViews.swift */; };
 		C576804291F0EE67B09C8D12 /* CallAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78614E20208D5CDF9156E4CC /* CallAudio.swift */; };
 		C8336A6FBBB7A8F6D9A61D16 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD9B3C59F18C986266338486 /* Assets.xcassets */; };
+		C88E157636357DF6C84662CB /* CallIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */; };
 		D72AB016847427FC1CDBCA98 /* PhoneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8299BCD38C963DC339407E1 /* PhoneViews.swift */; };
 		E6A8FCAC1B885D30583D39F2 /* RichText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037EF8B195543E690E67E6E9 /* RichText.swift */; };
 		E93D3DA259746DD05104C371 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4C01CCD9ED68CA7601027F9B /* Localizable.strings */; };
@@ -50,6 +51,7 @@
 		888EDF1A791F4ABFC8A4EE65 /* Signing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Signing.swift; sourceTree = "<group>"; };
 		8C59C237747EA4A637D46326 /* Tether.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tether.xcconfig; sourceTree = "<group>"; };
 		8E8CD87AE84C4513E44FBE37 /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = fa.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntents.swift; sourceTree = "<group>"; };
 		AD9B3C59F18C986266338486 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D07D9884FDEFAA158C1A7DF1 /* Tether.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tether.entitlements; sourceTree = "<group>"; };
 		D8299BCD38C963DC339407E1 /* PhoneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneViews.swift; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 		5AFBFA9D48F1FF4F439C4FBD /* App */ = {
 			isa = PBXGroup;
 			children = (
+				A7DDE2E11FA91B8017FCCFAF /* CallIntents.swift */,
 				522AC4E6B519039B26F69B68 /* DemoData.swift */,
 				7E080E7A804FAA834C5B422C /* Notifications.swift */,
 				888EDF1A791F4ABFC8A4EE65 /* Signing.swift */,
@@ -258,6 +261,7 @@
 				A6CC9975EFEB03431DC3A4AD /* AppModel.swift in Sources */,
 				C576804291F0EE67B09C8D12 /* CallAudio.swift in Sources */,
 				F5C87C5424AE219E0C83D698 /* CallController.swift in Sources */,
+				C88E157636357DF6C84662CB /* CallIntents.swift in Sources */,
 				C22F6862E55A15AB8541D008 /* ContactsViews.swift in Sources */,
 				BF683EE7C0251D5E5FFFDA52 /* DemoData.swift in Sources */,
 				FAE810BB4A344D52557B9E5D /* InCallView.swift in Sources */,

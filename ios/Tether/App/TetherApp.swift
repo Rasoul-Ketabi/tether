@@ -1,3 +1,4 @@
+import Intents
 import UserNotifications
 import Observation
 import SwiftUI
@@ -44,6 +45,48 @@ final class Router {
         openThread = thread
     }
 
+    /// A number to call that came from outside the app, waiting for the owner's tap ("Call …?").
+    var dialRequest: DialRequest?
+    /// A number for the Keypad to show (the Keypad takes it and clears it).
+    var keypadNumber: String?
+
+    struct DialRequest: Identifiable, Equatable {
+        let id = UUID()
+        let number: String
+    }
+
+    /// tel: / telprompt: (as the default calling app) and tether:// links. Any web page can open these, so they
+    /// never dial by themselves: the number is shown and the owner taps Call.
+    func open(url: URL) {
+        guard let n = DialLink.number(from: url) else { return }
+        ask(n)
+    }
+
+    /// A tap in the Phone app's Recents, Siri or the Contacts app: an INStartCallIntent. The owner chose to call
+    /// in system UI, so it dials at once when the Android phone is linked (waiting a few seconds for the link
+    /// after a cold launch), and asks otherwise.
+    func continueActivity(_ activity: NSUserActivity) {
+        let intent = activity.interaction?.intent
+        let handle = (intent as? INStartCallIntent)?.contacts?.first?.personHandle?.value
+            ?? (intent as? INStartAudioCallIntent)?.contacts?.first?.personHandle?.value
+        guard let h = handle, let n = DialLink.dialable(h) else { return }
+        callNow(n)
+    }
+
+    /// Dials at once if the link comes up within a few seconds, else asks.
+    func callNow(_ number: String) {
+        Task { @MainActor in
+            let m = AppModel.shared
+            for _ in 0..<16 where !m.linkState.isConnected { try? await Task.sleep(for: .milliseconds(500)) }
+            if m.linkState.isConnected && m.callScreen == nil { m.dial(number, sub: nil) } else { ask(number) }
+        }
+    }
+
+    func ask(_ number: String) {
+        tab = .keypad
+        dialRequest = DialRequest(number: number)
+    }
+
     /// A number to write to (from a bubble's phone-number menu).
     var composeTo: String?
     func compose(to number: String) {
@@ -62,6 +105,9 @@ struct TetherApp: App {
             RootView()
                 .environment(AppModel.shared)
                 .environment(Router.shared)
+                .onOpenURL { Router.shared.open(url: $0) }
+                .onContinueUserActivity("INStartCallIntent") { Router.shared.continueActivity($0) }
+                .onContinueUserActivity("INStartAudioCallIntent") { Router.shared.continueActivity($0) }
         }
         .onChange(of: phase) { _, p in
             AppModel.shared.appActive = p == .active

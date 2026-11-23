@@ -53,6 +53,19 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .alert(item: $router.dialRequest) { req in
+            let linked = model.linkState.isConnected
+            let who = model.name(for: req.number)
+            return Alert(
+                title: Text("Call \(who ?? req.number)?"),
+                message: Text(linked
+                    ? (who == nil ? "The call goes through your Android phone." : "\(req.number) · through your Android phone.")
+                    : "The Android phone is not connected. Keep it nearby and open the Link tab, then call from the Keypad."),
+                primaryButton: .default(Text(linked ? "Call" : "Show in Keypad")) {
+                    if linked { model.dial(req.number, sub: nil) } else { router.keypadNumber = req.number }
+                },
+                secondaryButton: .cancel { router.keypadNumber = req.number })
+        }
         .animation(.default, value: model.lastError)
         .animation(.default, value: model.notice)
         .fullScreenCover(isPresented: Binding(get: { model.showCallScreen && model.callScreen != nil },

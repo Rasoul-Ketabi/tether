@@ -62,7 +62,9 @@ final class CallController: NSObject {
         config.maximumCallGroups = 2
         config.maximumCallsPerCallGroup = 1
         config.supportedHandleTypes = [.phoneNumber]
-        config.includesCallsInRecents = false // the app has its own Recents synced from the Android phone
+        // The app has its own Recents synced from the Android phone; the Phone app's Recents are optional (a tap there
+        // comes back as an INStartCallIntent activity, see Router.continueActivity).
+        config.includesCallsInRecents = UserDefaults.standard.bool(forKey: Self.phoneRecentsKey)
         // Template glyph CallKit shows on the incoming screen / in the call banner (our own handset artwork).
         if let icon = UIImage(named: "CallKitIcon")?.pngData() { config.iconTemplateImageData = icon }
         // Note: CallKit labels the call "<CFBundleDisplayName> Audio". Since iOS 14 there is no API to change or
@@ -389,8 +391,18 @@ final class CallController: NSObject {
 
     // MARK: from the iPhone UI
 
+    static let phoneRecentsKey = "callsInPhoneRecents"
+
+    /// The "Show calls in the Phone app" switch: CallKit reads the configuration again when it is replaced.
+    func applyRecentsSetting() {
+        let config = provider.configuration
+        config.includesCallsInRecents = UserDefaults.standard.bool(forKey: Self.phoneRecentsKey)
+        provider.configuration = config
+    }
+
     func startOutgoing(number: String, sub: Int?) {
-        let clean = PhoneNumber.digits(number)
+        // Keeps *, # and pauses (",") for service codes and extensions; the Android phone dials those as given.
+        let clean = DialLink.dialable(number) ?? ""
         guard !clean.isEmpty else { return }
         let uuid = UUID()
         pendingSub = sub

@@ -125,6 +125,8 @@ struct LinkView: View {
                     }
                 }
 
+                PhoneLinksSection()
+
                 Section {
                     NavigationLink {
                         BlockedListView()
@@ -331,6 +333,23 @@ struct BlockedListView: View {
 }
 
 /// How long this build's free signature still lasts (renewed by running tools/reinstall-ios.sh on the Mac).
+/// Calling numbers from other apps (tel: links, Shortcuts, the Phone app's Recents); docs/USAGE.md.
+struct PhoneLinksSection: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(CallController.phoneRecentsKey) private var inPhoneRecents = false
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $inPhoneRecents) { Label("Show calls in the Phone app", systemImage: "clock.arrow.circlepath") }
+                .onChange(of: inPhoneRecents) { _, _ in model.calls.applyRecentsSetting() }
+        } header: {
+            Text("Numbers in other apps")
+        } footer: {
+            Text("Calls made here also appear in the Phone app's Recents; tapping one calls back through the Android phone. To call numbers you tap in other apps, choose this app in Settings › Apps › Default Apps › Calling (needs a paid Apple developer account), or use the \"Call with\" shortcut in the Shortcuts app.")
+        }
+    }
+}
+
 struct SigningSection: View {
     var body: some View {
         if let expiry = Signing.expiry, let days = Signing.daysLeft {

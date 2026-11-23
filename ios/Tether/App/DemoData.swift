@@ -71,6 +71,19 @@ extension AppModel {
             else if args.contains("-TetherDemoRecents") { Router.shared.tab = .recents }
             else if args.contains("-TetherDemoPair") || args.contains("-TetherDemoPairManual") { Router.shared.tab = .link }
         }
+        // -TetherDemoOpen <url> opens a link as if another app had (tel:, tether://dial?number=…); with
+        // -TetherDemoOpenCancel the question is cancelled after 3 s, which leaves the number in the Keypad.
+        if let i = args.firstIndex(of: "-TetherDemoOpen"), i + 1 < args.count, let url = URL(string: args[i + 1]) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Router.shared.open(url: url)
+                if args.contains("-TetherDemoOpenCancel") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        Router.shared.keypadNumber = Router.shared.dialRequest?.number
+                        Router.shared.dialRequest = nil
+                    }
+                }
+            }
+        }
         if args.contains("-TetherDemoNotify") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 Notifications.shared.showSms(Sms(id: 9001, thread: 1, addr: "+15550101", body: "Running five minutes late, order for me?",
