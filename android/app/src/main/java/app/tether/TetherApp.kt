@@ -40,7 +40,7 @@ class TetherApp : Application() {
 
     /** Same path as the notification's RemoteInput: pair with adbd, grant ourselves what we need, start the helper. */
     fun adbPairAndBootstrap(code: String): String {
-        app.tether.adb.Adb.get(this).pairWithCode(code)
+        check(app.tether.adb.Adb.get(this).pairWithCode(code)) { "Wireless debugging rejected the pairing code" }
         prefs.edit().putBoolean("adb_paired", true).apply()
         val grants = app.tether.adb.Adb.bootstrap(this)
         val helper = hub.helper.ensureRunning() ?: "helper running"
