@@ -135,9 +135,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         exclusiveSet.let { it == null || c.transport in it }
 
     /** Clients that get broadcasts; a test holding the link exclusively gets them alone (the iPhone never rings). */
-    fun targets(): List<Connection> = conns.filter { it.isUp && admits(it) && (onlyKind == null || it.kind == onlyKind) }
+    fun targets(): List<Connection> = conns.filter { it.isUp && admits(it) && (onlyKind == null || it.kind == onlyKind || it.transport.dry) }
 
-    /** Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see calls and messages, so test calls never ring the iPhone. */
+    /** Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see calls and messages, so test calls never
+     *  ring the iPhone. On-device test clients (dry transports) are never filtered: `only none` must not silence them. */
     @Volatile var onlyKind: String? = null
 
     fun broadcast(m: Message) = targets().forEach { it.send(m) }
