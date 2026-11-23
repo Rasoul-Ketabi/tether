@@ -71,7 +71,9 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
         val (host, port) = discover(AdbMdns.SERVICE_TYPE_TLS_PAIRING, 15)
             ?: throw IllegalStateException("pairing service not found; keep the pairing dialog open")
         Log.i(TAG, "pairing with $host:$port")
-        return pair(host, port, code.trim())
+        val normalized = AdbPairingCode.normalize(code)
+            ?: throw IllegalArgumentException(ctx.getString(R.string.adb_invalid_code))
+        return pair(host, port, normalized)
     }
 
     @Synchronized fun ensureConnected(): Boolean {
@@ -190,25 +192,8 @@ class Adb private constructor(private val ctx: Context) : AbsAdbConnectionManage
 
 class AdbPairingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val code = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Adb.KEY_CODE)?.toString()?.filter { it.isDigit() }
-        if (code.isNullOrEmpty()) return
-        val app = context.applicationContext as TetherApp
-        Adb.updateNotification(context, context.getString(R.string.adb_pairing), false)
+        val code = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Adb.KEY_CODE)?.toString() ?: return
         val pending = goAsync()
-        Thread {
-            try {
-                Adb.get(context).pairWithCode(code)
-                app.prefs.edit().putBoolean("adb_paired", true).apply()
-                Adb.bootstrap(context)
-                Adb.updateNotification(context, context.getString(R.string.adb_paired), true)
-                app.hub.helper.ensureRunning()
-                app.hub.refresh()
-            } catch (t: Throwable) {
-                Log.w(Adb.TAG, "pairing failed", t)
-                Adb.updateNotification(context, context.getString(R.string.adb_failed, t.message ?: t.javaClass.simpleName), false)
-            } finally {
-                pending.finish()
-            }
-        }.start()
+        AdbPairingTask.submit(context, code) { pending.finish() }
     }
 }
