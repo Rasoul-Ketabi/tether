@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directories: ["/android", "/examples/kotlin-jvm"]
+    schedule: {interval: weekly}
+    labels: ["dependencies"]
+    groups:
+      gradle:
+        patterns: ["*"]
+  - package-ecosystem: swift
+    directories: ["/", "/ios/TetherCore"]
+    schedule: {interval: weekly}
+    labels: ["dependencies"]
+    groups:
+      swift:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: {interval: weekly}
+    labels: ["dependencies", "ci"]
+    groups:
+      actions:
+        patterns: ["*"]
