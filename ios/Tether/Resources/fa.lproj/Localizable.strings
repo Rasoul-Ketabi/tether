@@ -29,7 +29,6 @@
 "Message" = "پیام";
 "Message not sent" = "پیام ارسال نشد";
 "Messages" = "پیام‌ها";
-"Method" = "روش";
 "Missed" = "بی‌پاسخ";
 "Mobile" = "موبایل";
 "Name" = "نام";
@@ -225,3 +224,14 @@
 /* iOS 16 stand-ins */
 "No Results for “%@”" = "نتیجه‌ای برای «%@» نیست";
 "Check the spelling or try a new search." = "املا را بررسی کنید یا جست‌وجوی دیگری امتحان کنید.";
+"Inject method" = "روش ارسال صدا";
+"Capture method" = "روش دریافت صدا";
+"Mute the Android phone's microphone" = "بی‌صدا کردن میکروفون گوشی اندروید";
+"Your voice in the call" = "صدای شما در تماس";
+"Reaches the other side" = "به طرف مقابل می‌رسد";
+"Checking…" = "در حال بررسی…";
+"Was muted by the phone; fixed" = "گوشی آن را قطع کرده بود؛ درست شد";
+"Not muted by the phone" = "گوشی آن را قطع نمی‌کند";
+"Not checked" = "بررسی نشده";
+"Tether may not use this iPhone's microphone, so the other side hears nothing. Allow it in Settings › Privacy & Security › Microphone." = "تتر اجازهٔ استفاده از میکروفون این آیفون را ندارد، برای همین طرف مقابل چیزی نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
+"Off is safest: on some Android phones muting their microphone also mutes your voice for the other side. When it is on, Tether checks during each call and turns the mute off if your voice does not get through." = "خاموش امن‌تر است: در بعضی گوشی‌های اندروید بی‌صدا کردن میکروفون، صدای شما را هم برای طرف مقابل قطع می‌کند. وقتی روشن است، تتر در هر تماس بررسی می‌کند و اگر صدای شما نرسد، بی‌صدا کردن را خاموش می‌کند.";

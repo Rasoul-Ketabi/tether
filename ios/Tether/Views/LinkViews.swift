@@ -106,12 +106,24 @@ struct LinkView: View {
                     if let t = s.tools, t.ussd == true || t.find == true || t.ringer == true {
                         PhoneToolsSection(status: s, tools: t).id("phonetools")
                     }
-                    Section("Call audio") {
+                    Section {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
-                        if let m = s.helper.method { LabeledContent("Method", value: m) }
+                        if let m = s.helper.method { LabeledContent("Inject method", value: m) }
+                        if let m = s.helper.capture { LabeledContent("Capture method", value: m) }
                         if let q = s.helper.silent {
                             LabeledContent("Android phone silent", value: q == "full" ? String(localized: "Yes") :
                                 q == "earpiece" ? String(localized: "Earpiece only") : String(localized: "No"))
+                        }
+                        if CallAudioRows.showsMicToggle(s), let on = s.helper.micMute {
+                            Toggle("Mute the Android phone's microphone", isOn: Binding(get: { on }, set: { model.setPhoneMicMute($0) }))
+                                .tint(.green).disabled(!model.linkState.isConnected)
+                        }
+                        if let u = s.helper.uplink {
+                            LabeledContent("Your voice in the call", value: CallAudioRows.uplinkText(u))
+                        }
+                        if CallAudioRows.microphoneDenied() {
+                            Text("Tether may not use this iPhone's microphone, so the other side hears nothing. Allow it in Settings › Privacy & Security › Microphone.")
+                                .font(.footnote).foregroundStyle(.red)
                         }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
@@ -127,10 +139,16 @@ struct LinkView: View {
                                     Image(systemName: m.ok ? "checkmark.circle.fill" : "xmark.circle").foregroundStyle(m.ok ? .green : .secondary)
                                     VStack(alignment: .leading) {
                                         Text(m.name).font(.subheadline)
-                                        if let n = m.note { Text(n).font(.caption).foregroundStyle(.secondary) }
+                                        if let n = m.note { Text(n).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                                     }
                                 }
                             }
+                        }
+                    } header: {
+                        Text("Call audio")
+                    } footer: {
+                        if CallAudioRows.showsMicToggle(s) {
+                            Text("Off is safest: on some Android phones muting their microphone also mutes your voice for the other side. When it is on, Tether checks during each call and turns the mute off if your voice does not get through.")
                         }
                     }
                 }
@@ -412,6 +430,28 @@ struct SigningSection: View {
                 Text("A free Apple account's signature lasts 7 days. Renew it by running tools/reinstall-ios.sh on your Mac with this device unlocked and connected.")
             }
         }
+    }
+}
+
+/// What the Call audio section shows of the Android phone's microphone mute and the uplink check.
+enum CallAudioRows {
+    /// The switch only when the Android phone reports the setting (older Android builds do not: hidden).
+    static func showsMicToggle(_ s: StatusBody?) -> Bool { s?.helper.micMute != nil }
+
+    static func uplinkText(_ u: String) -> String {
+        switch u {
+        case "ok": return String(localized: "Reaches the other side")
+        case "checking": return String(localized: "Checking…")
+        case "muted-locally-fixed": return String(localized: "Was muted by the phone; fixed")
+        case "off": return String(localized: "Not muted by the phone")
+        default: return String(localized: "Not checked")
+        }
+    }
+
+    /// This iPhone refused Tether the microphone: every call's uplink is silent.
+    static func microphoneDenied() -> Bool {
+        if #available(iOS 17, *) { return AVAudioApplication.shared.recordPermission == .denied }
+        return AVAudioSession.sharedInstance().recordPermission == .denied
     }
 }
 

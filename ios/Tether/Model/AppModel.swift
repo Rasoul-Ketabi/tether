@@ -554,6 +554,14 @@ final class AppModel {
         link.send(MsgType.ringerSet, RingerSet(mode: mode), expectReply: true)
     }
 
+    /// The Android phone's "mute its own microphone during bridged calls"; shown at once, confirmed by its next status.
+    func setPhoneMicMute(_ on: Bool) {
+        guard linkState.isConnected, var st = data.lastStatus, st.helper.micMute != nil else { return }
+        link.send(MsgType.audioSet, AudioSet(micMute: on))
+        st.helper.micMute = on
+        data.lastStatus = st
+    }
+
     func runSelftest() {
         selftest = nil
         link.send(MsgType.selftest, Empty(), expectReply: true)
