@@ -77,3 +77,21 @@ Android phone disappear from the iPhone at the next sync.
 - The iPhone's Link log and the output of `tools/dbg.sh linklog` (they contain no message text; check them for
   anything you do not want to share before posting).
 - For audio problems: the self-test result.
+
+
+## Wireless debugging code entry card not visible
+
+Tether can show a small floating code-entry card while Developer options is open (requires the
+optional **Display over other apps** permission). Tap **Pair** again in Tether to launch it. If
+permission was just granted, return to Tether before opening the Wireless debugging pairing dialog.
+
+Android and some manufacturers deliberately hide third-party overlays on protected Settings
+screens. This is an OS security control, **not** a permission to bypass. If the card disappears,
+open the notification shade **while the six-digit pairing dialog remains open**, use Tether's
+**Enter code** RemoteInput action, and submit the code. Make sure Tether notifications are allowed.
+
+Pairing must use exactly six digits. A rejected code, missing pairing service, or expired system
+pairing dialog is not success; open a fresh pairing dialog and retry. The input code is never saved
+or written to logs. The floating card can be closed manually and is automatically removed after
+five minutes. If no overlay or notification is usable on the device, use supported Android
+split-screen with Tether and Settings, or enable notification permissions and retry.
