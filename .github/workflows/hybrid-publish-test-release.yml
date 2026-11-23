@@ -1,0 +1,213 @@
+name: Publish Tether Hybrid Android + iPhone Test Builds
+
+on:
+  push:
+    branches:
+      - build/hybrid-release-2026-11-23
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tether-hybrid-test-release-2026-11-23
+  cancel-in-progress: false
+
+env:
+  SOURCE_SHA: b0aead74c4ddcdebe209757cf7a782488ccded53
+  RELEASE_TAG: hybrid-ble-wifi-test-2026-11-23
+  TETHER_MAVEN_CENTRAL_MIRROR: https://maven-central.storage-download.googleapis.com/maven2/
+
+jobs:
+  android:
+    name: Build Android Host (temporary debug signing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build from the exact CI-passing source
+        working-directory: android
+        run: ./gradlew --console=plain :core:testDebugUnitTest :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - name: Package Android test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Tether-Hybrid-Android-Host-Debug-Signed.apk
+          test -s dist/Tether-Hybrid-Android-Host-Debug-Signed.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tether-hybrid-android-release-asset
+          path: dist/Tether-Hybrid-Android-Host-Debug-Signed.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  iphone:
+    name: Build iPhone app (unsigned, NOT directly installable)
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Build iOS app with known-good CI Xcode settings
+        working-directory: ios
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate --quiet
+          xcodebuild -project Tether.xcodeproj -scheme Tether -destination 'generic/platform=iOS' \
+            -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet
+      - name: Package explicitly unsigned iOS app for later signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=ios/build-gen/Build/Products/Debug-iphoneos/Tether.app
+          test -d "$app"
+          mkdir -p dist ios-unsigned/Payload
+          cp -R "$app" ios-unsigned/Payload/Tether.app
+          (cd ios-unsigned && zip -qr ../dist/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa Payload)
+          test -s dist/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tether-hybrid-iphone-unsigned-release-asset
+          path: dist/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish new prerelease, then delete only three obsolete fork test releases
+    needs: [android, iphone]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/download-artifact@v7
+        with:
+          name: tether-hybrid-android-release-asset
+          path: dist/android
+      - uses: actions/download-artifact@v7
+        with:
+          name: tether-hybrid-iphone-unsigned-release-asset
+          path: dist/ios
+      - name: Verify assets and write manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dist/android/Tether-Hybrid-Android-Host-Debug-Signed.apk dist/
+          cp dist/ios/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa dist/
+          test -s dist/Tether-Hybrid-Android-Host-Debug-Signed.apk
+          test -s dist/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa
+          (
+            cd dist
+            sha256sum Tether-Hybrid-Android-Host-Debug-Signed.apk Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa > SHA256SUMS.txt
+          )
+          cat > dist/README-START-HERE.md <<'DOC'
+          # Tether Hybrid BLE + Wi-Fi — experimental builds
+          
+          Source: b0aead74c4ddcdebe209757cf7a782488ccded53
+          These Android and iPhone packages are built from the exact same
+          CI-passing source commit; this is a prerelease for device testing.
+          
+          ## Android
+          Tether-Hybrid-Android-Host-Debug-Signed.apk uses a TEMPORARY debug
+          signing certificate. It may not update a previously installed app
+          if its signing certificate differs. Uninstalling an old app can
+          erase local app data and BLE pairing information.
+          
+          ## iPhone
+          Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa is intentionally
+          UNSIGNED. It CANNOT be installed or sideloaded onto an iPhone as-is.
+          An authorized Apple Developer signing/provisioning process is
+          required to produce a device-installable IPA.
+          
+          ## Functionality and limitations
+          BLE still handles pairing, notifications, locked-screen wake,
+          and call/SMS control. Local Wi-Fi is an optional mutually
+          authenticated lane for voice audio and bulk synchronization.
+          Both phones must use the Hybrid build for Wi-Fi acceleration.
+          End-to-end calls, two-way audio, hotspot, and live failover have
+          not yet been confirmed on real devices. Do not use as production.
+          DOC
+          cat > /tmp/hybrid-release-notes.md <<'NOTES'
+          ## Experimental Tether Hybrid BLE + Wi-Fi
+          
+          This release packages **Android Host** and **iPhone Client** from the
+          same CI-validated Hybrid source commit. BLE remains active for
+          pairing, background wake, call/SMS notifications and call control;
+          authenticated local Wi-Fi is an optional fast lane for audio and
+          large data synchronization.
+          
+          **Android**: `Tether-Hybrid-Android-Host-Debug-Signed.apk` is signed
+          using a temporary debug certificate; it is not a production build.
+          It may not upgrade an existing installation signed with another key.
+          
+          **iPhone**: `Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa` is
+          explicitly **unsigned** and **not installable on a physical iPhone**
+          without valid Apple Developer signing and provisioning.
+          
+          Checksums and usage warnings are attached. **No real-device
+          end-to-end calling, SMS wake, audio or failover tests yet.**
+          
+          Source: b0aead74c4ddcdebe209757cf7a782488ccded53
+          NOTES
+          ls -lh dist/*.apk dist/*.ipa dist/SHA256SUMS.txt
+      - name: Create and verify new release BEFORE deleting any old release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite it or delete older releases"
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Tether Hybrid BLE + Wi-Fi — Test Build (Android + unsigned iOS)" \
+            --draft --prerelease \
+            --notes-file /tmp/hybrid-release-notes.md
+          gh release upload "$RELEASE_TAG" \
+            dist/Tether-Hybrid-Android-Host-Debug-Signed.apk \
+            dist/Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa \
+            dist/SHA256SUMS.txt \
+            dist/README-START-HERE.md \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          assets="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          for item in Tether-Hybrid-Android-Host-Debug-Signed.apk \
+                      Tether-Hybrid-iOS-UNSIGNED-NOT-INSTALLABLE.ipa \
+                      SHA256SUMS.txt README-START-HERE.md; do
+            printf '%s\n' "$assets" | grep -Fx "$item" >/dev/null
+          done
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq 'select(.isDraft == false and .isPrerelease == true)' >/dev/null
+          echo "New prerelease published and all four assets verified."
+      - name: Remove obsolete test releases ONLY AFTER verified new release exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' | grep -Fx false
+          for old_tag in \
+            adb-overlay-test-45142071396 \
+            adb-notification-test-45148435275 \
+            v1.0.0-test-ci.45048249440; do
+            if gh release view "$old_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              echo "Deleted old test release: $old_tag"
+            fi
+          done
+          echo "Resulting releases:"
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 20
