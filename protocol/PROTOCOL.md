@@ -184,7 +184,7 @@ stored on the Android phone.
 | `audio.start` | P→C | `{codec: "opus"\|"pcmu", rate, ms, up, bitrate?}` (`bitrate`: what the Android phone encodes at; the client uses it for the uplink) |
 | `audio.stop` | P→C | `{}` |
 | `audio.stats` | P→C | `{summary, helper?}`: the Android phone's half of a call's audio statistics, sent ~0.5 s after `audio.stop` to the client that had the audio (`summary`: one line for its log; `helper`: the shell helper's figures). Optional, informational |
-| `selftest` | C→P | `{}` → `selftest.result` `{methods:[{name, ok, note}], chosen?}` |
+| `selftest` | C→P | `{}` → `selftest.result` `{methods:[{name, ok, note, delayMs?}], chosen?}` (`delayMs`: an inject method's measured delay into the call uplink) |
 | `sms.read` | both | `{thread, upTo}`: read on a client; the Android phone marks it read and forwards it to the other clients |
 | `sms.unread` | P→C | `{ids:[id], all}`: the Android phone's unread incoming texts, after every sync and within ~2 s of a read-state change there; everything else is read (`all` false: list capped at 3000, only ids ≥ its smallest are known) |
 | `sms.delete` | C→P | `{ids?:[id], thread?}` → `sms.deleted` `{ok, ids:[id], thread?, err?}` to the asking client (with `re`) and to every other client (see §5.2) |
@@ -291,7 +291,7 @@ Frames: `type: u8 ‖ len: u32 ‖ payload`.
 | type | Dir | Payload |
 |---|---|---|
 | 1 HELLO | H→A | JSON `{pid, uid, sdk, version, apk}` (`apk`: the helper's class path; a different one means a stale helper, relaunched) |
-| 2 START | A→H | JSON `{rate, capture, inject}` (`auto` tries every method in order) |
+| 2 START | A→H | JSON `{rate, capture, inject, injectMs?}` (`auto` tries every method in order; `injectMs`: cap of the uplink playback buffer, default 40) |
 | 3 STOP | A→H | – |
 | 4 DOWN | H→A | PCM 16-bit LE mono, 20 ms |
 | 5 UP | A→H | PCM 16-bit LE mono, 20 ms |

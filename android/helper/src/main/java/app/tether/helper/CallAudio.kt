@@ -38,6 +38,8 @@ interface Inject {
     fun latencyMs(): Int
     /** Written but not yet played, in frames. */
     fun queuedFrames(): Int = -1
+    /** Times the track ran dry since it started (-1 if unknown). */
+    fun underruns(): Int = -1
     fun stop()
 }
 
@@ -146,7 +148,8 @@ object CallAudio {
 
     // ---------------------------------------------------------------- inject
 
-    fun openInject(method: String, rate: Int): Inject {
+    /** Opens an uplink injection; [bufferMs] caps the playback buffer (what the uplink waits in it at most). */
+    fun openInject(method: String, rate: Int, bufferMs: Int = 40): Inject {
         var policy: Any? = null
         val track: AudioTrack = when (method) {
             "intercept" -> AudioManager::class.java
@@ -167,7 +170,9 @@ object CallAudio {
             track.release(); policy?.let { unregisterPolicy(it) }; error("AudioTrack not initialized")
         }
         // Cap the playback buffer to ~40 ms (2 frames) to keep uplink latency low.
-        runCatching { track.bufferSizeInFrames = maxOf(rate / 25, track.bufferSizeInFrames.coerceAtMost(rate / 25)) }
+        // Cap the playback buffer (default ~40 ms, 2 frames) to keep uplink latency low; never below one frame.
+        val cap = rate * bufferMs.coerceIn(20, 200) / 1000
+        runCatching { track.bufferSizeInFrames = maxOf(cap, track.bufferSizeInFrames.coerceAtMost(cap)) }
         track.play()
         val p = policy
         return object : Inject {
@@ -175,6 +180,7 @@ object CallAudio {
             private var written = 0L
             override fun write(buf: ShortArray, n: Int) { val w = track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING); if (w > 0) written += w }
             override fun queuedFrames(): Int = (written - (track.playbackHeadPosition.toLong() and 0xffffffffL)).toInt()
+            override fun underruns(): Int = runCatching { track.underrunCount }.getOrDefault(-1)
             override fun routedTo(): String = track.routedDevice?.let { "${it.type}:${it.productName}" } ?: "none"
             override fun bufferFrames() = track.bufferSizeInFrames
             override fun latencyMs(): Int = try {
@@ -290,14 +296,22 @@ object CallAudio {
                 inj = openInject(m, rate)
                 val tone = tone(1000.0, rate, frame, amp = 8000.0)
                 var hit = 0.0
-                repeat(25) {
+                // Each frame's tone level and when it was read: the first frame with the tone clearly in it, against
+                // the first write, is the inject → uplink delay (± one frame).
+                val level = DoubleArray(40); val readAt = LongArray(40)
+                val t0 = System.nanoTime()
+                repeat(40) {
                     inj.write(tone)
                     val n = cap.read(buf)
-                    if (it >= 10 && n > 0) hit += goertzel(buf, n, 1000.0, rate)
+                    readAt[it] = System.nanoTime()
+                    if (n > 0) level[it] = goertzel(buf, n, 1000.0, rate)
+                    if (it >= 25 && n > 0) hit += level[it]
                 }
                 val ratio = (hit / 15) / (base / 10 + 1e-3)
                 val ok = ratio > 20
-                r.put("ok", ok).put("note", "tone/base=%.1f routed=%s".format(ratio, inj.routedTo()))
+                val delayMs = if (ok) onsetMs(level, readAt, t0, threshold = hit / 15 / 2) else null
+                if (delayMs != null) r.put("delayMs", delayMs)
+                r.put("ok", ok).put("note", "tone/base=%.1f routed=%s%s".format(ratio, inj.routedTo(), delayMs?.let { " delay≈$it ms" } ?: ""))
                 if (ok && chosen == null) chosen = m
             } catch (t: Throwable) {
                 r.put("ok", false).put("note", describe(t))
@@ -320,6 +334,13 @@ object CallAudio {
             res.put(r)
         }
         return JSONObject().put("methods", res).apply { chosen?.let { put("chosen", it) } }
+    }
+
+    /** Milliseconds from [t0] to the read of the first frame whose level reaches [threshold] (null when none does). */
+    fun onsetMs(level: DoubleArray, readAt: LongArray, t0: Long, threshold: Double): Long? {
+        if (threshold <= 0) return null
+        val i = level.indexOfFirst { it >= threshold }
+        return if (i < 0) null else (readAt[i] - t0) / 1_000_000
     }
 
     private fun devices(flag: Int) = JSONArray().apply {

@@ -159,8 +159,8 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    fun start(rate: Int, capture: String = "auto", inject: String = "auto") =
-        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).toString().toByteArray())
+    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40) =
+        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs).toString().toByteArray())
 
     fun stop() = send(STOP)
 

@@ -251,7 +251,8 @@ object HelperMain {
                 return null
             }
             capture = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
-            inject = open(injOrder, "inject") { CallAudio.openInject(it, rate) }
+            val injectMs = cfg.optInt("injectMs", 40)
+            inject = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
             running = true
             localMuted = true
             upQueue.clear()
@@ -336,7 +337,8 @@ object HelperMain {
         @Volatile private var rate = 16000
 
         private fun stop() {
-            if (running) info(JSONObject().put("stats", stats.json(rate)))
+            if (running) info(JSONObject().put("stats", stats.json(rate).put("injectUnderruns", inject?.underruns() ?: -1)
+                .put("injectBufferFrames", inject?.bufferFrames() ?: -1)))
             running = false
             threads.forEach { it.join(500) }
             threads.clear()

@@ -778,9 +778,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }, "audio-stats").apply { isDaemon = true }.start()
         }
 
-        private fun helperSummary(h: JSONObject) = "capture backlog %d/%d ms, trimmed %d ms, inject queue %d/%d ms, uplink dropped %d trimmed %d".format(
+        private fun helperSummary(h: JSONObject) = "capture backlog %d/%d ms, trimmed %d ms, inject queue %d/%d ms (%d underruns), uplink dropped %d trimmed %d".format(
             h.optInt("captureBacklogMs"), h.optInt("captureBacklogMaxMs"), h.optInt("captureDroppedMs"),
-            h.optInt("injectQueuedMs"), h.optInt("injectQueuedMaxMs"), h.optInt("uplinkDroppedFrames"), h.optInt("uplinkTrimmedFrames"))
+            h.optInt("injectQueuedMs"), h.optInt("injectQueuedMaxMs"), h.optInt("injectUnderruns", -1), h.optInt("uplinkDroppedFrames"), h.optInt("uplinkTrimmedFrames"))
 
         /** A client reconnected (new link replacing its old one): the call audio follows it. */
         fun handOver(old: Connection, new: Connection) {
@@ -897,7 +897,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 }
             }
             quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
-            helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto")
+            helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto", app.prefs.getInt("inject_ms", 40))
             c.sendUrgent(startMessage(k))
             muteLocalMic(true)
             LinkService.running?.peripheral?.tune(c.transport.address, high = true)
@@ -932,7 +932,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             restarts++
             Log.w(TAG, "helper using capture=$capture inject=$inject; retry $restarts")
             startedAt = SystemClock.elapsedRealtime()
-            helper.start(codec?.rate ?: 16000, "auto", "auto")
+            helper.start(codec?.rate ?: 16000, "auto", "auto", app.prefs.getInt("inject_ms", 40))
         }
 
         fun stop(sendStop: Boolean = true) { lock.lock(); try { stopLocked(sendStop) } finally { lock.unlock() } }

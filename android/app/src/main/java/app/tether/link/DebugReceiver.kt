@@ -190,12 +190,18 @@ class DebugReceiver : BroadcastReceiver() {
         "loopback" -> loopback(app)
         "codec_bench" -> codecBench()
         "codec_bench_paced" -> codecBenchPaced()
+        // inject_ms <20..200|off>: cap of the helper's uplink playback buffer for the next calls (default 40 ms).
+        "inject_ms" -> {
+            val v = intent.getStringExtra("ms")?.toIntOrNull()
+            app.prefs.edit().apply { if (v == null) remove("inject_ms") else putInt("inject_ms", v.coerceIn(20, 200)) }.apply()
+            "inject_ms=${app.prefs.getInt("inject_ms", 40)}"
+        }
         "only" -> { app.hub.onlyKind = intent.getStringExtra("kind")?.takeIf { it != "off" }; "only=${app.hub.onlyKind}" }
         "audio_stats" -> "hub: down=${app.hub.audio.downFrames} up=${app.hub.audio.upFrames} " +
             "encode=%.2f ms decode=%.2f ms ".format(app.hub.audio.encodeNanos / maxOf(1, app.hub.audio.downFrames) / 1e6, app.hub.audio.decodeNanos / maxOf(1, app.hub.audio.upFrames) / 1e6) +
             "echo=%.1f ms over %d; concealed=%d; helper=${app.hub.helper.lastInfo} stats=${app.hub.helper.lastStats}".format(app.hub.audio.echoNanos / maxOf(1, app.hub.audio.echoCount) / 1e6, app.hub.audio.echoCount, app.hub.audio.upLost)
         "audio_reset" -> { app.hub.audio.resetStats(); "reset" }
-        // loopback_call [--es mode answer|decline|remote|outgoing]: answer = ring, answer, audio, keypad, end here;
+        // loopback_call [--es mode answer|decline|remote|outgoing|selftest]: answer = ring, answer, audio, keypad, end here;
         // decline = reject while ringing; remote = the far side hangs up; outgoing = a call placed on the test line.
         // drop: close every live session from this side (as a lost link would), to test the iPhone's reconnect.
         "drop" -> app.hub.conns.filter { it.isUp }.let { l -> l.forEach { it.close("dropped by test") }; "dropped ${l.size}" }
@@ -305,7 +311,9 @@ class DebugReceiver : BroadcastReceiver() {
             var codec = -1
             var downFrames = 0
             var states = ArrayList<String>()
-            val deadline = System.currentTimeMillis() + 25_000
+            val deadline = System.currentTimeMillis() + if (mode == "selftest") 45_000 else 25_000
+            var selftestSent = false
+            var selftestDone = false
             var phase = 0
             var audioSeq = 0
             var tEnd = 0L
@@ -329,6 +337,7 @@ class DebugReceiver : BroadcastReceiver() {
                         }
                         T.AUDIO_START -> { log.append("audio.start ${m.b}; "); codec = if (m.b.getString("codec") == "opus") 1 else 2 }
                         T.AUDIO_STOP -> log.append("audio.stop; ")
+                        T.SELFTEST_RESULT -> { log.append("selftest ${m.b}; "); selftestDone = true }
                     }
                 }
                 if (phase == 0 && mode == "decline" && states.lastOrNull() == "ringing") {
@@ -336,7 +345,11 @@ class DebugReceiver : BroadcastReceiver() {
                 }
                 if (phase == 0 && mode == "outgoing" && states.lastOrNull() == "active") phase = 1
                 if (phase == 0 && mode != "decline" && mode != "outgoing" && states.lastOrNull() == "ringing") { send(Message(T.CALL_ANSWER, JSONObject().put("cid", cid))); phase = 1 }
-                if (phase == 1 && downFrames >= 250) {
+                // selftest: the client runs the call-audio self-test in the middle of the call (as the iPhone's button does).
+                if (phase == 1 && mode == "selftest" && !selftestSent && downFrames >= 50) {
+                    send(Message(T.SELFTEST, JSONObject(), id = 2)); selftestSent = true
+                }
+                if (phase == 1 && downFrames >= 250 && (mode != "selftest" || selftestDone)) {
                     send(Message(T.CALL_DTMF, JSONObject().put("cid", cid).put("d", "5"))); tEnd = System.nanoTime()
                     if (mode == "remote") TestConnectionService.endCurrent() else send(Message(T.CALL_END, JSONObject().put("cid", cid)))
                     phase = 2
