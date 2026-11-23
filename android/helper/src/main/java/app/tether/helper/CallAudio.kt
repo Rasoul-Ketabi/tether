@@ -24,6 +24,8 @@ interface Capture {
     fun bufferFrames(): Int
     /** Audio captured by the system but not read by us yet, in frames (-1 if unknown). */
     fun backlogFrames(): Int = -1
+    /** Frames the system has captured so far, from its timestamp (-1 if unknown): the capture's sample clock. */
+    fun capturedFrames(): Long = -1
     /** Discards up to [max] frames that are already buffered, never waiting for new audio; returns how many. */
     fun drain(max: Int): Int = 0
     fun stop()
@@ -40,6 +42,13 @@ interface Inject {
     fun queuedFrames(): Int = -1
     /** Times the track ran dry since it started (-1 if unknown). */
     fun underruns(): Int = -1
+    /** Frames played so far, from the track's timestamp extrapolated to now (-1 if unknown): the call's sample clock. */
+    fun playedFrames(): Long = -1
+    /**
+     * Written and not yet played, from the timestamp (smoother than [queuedFrames]); -1 until the track is playing
+     * (its first timestamp), from [queuedFrames] when it never gives one.
+     */
+    fun pendingFrames(): Int = -1
     fun stop()
 }
 
@@ -117,6 +126,8 @@ object CallAudio {
             private val ts = android.media.AudioTimestamp()
             override fun read(buf: ShortArray) = rec.read(buf, 0, buf.size, AudioRecord.READ_BLOCKING).also { if (it > 0) readFrames += it }
             override fun bufferFrames() = rec.bufferSizeInFrames
+            override fun capturedFrames(): Long = if (rec.getTimestamp(ts, android.media.AudioTimestamp.TIMEBASE_MONOTONIC) != AudioRecord.SUCCESS) -1
+                else ts.framePosition + (System.nanoTime() - ts.nanoTime) * rec.sampleRate / 1_000_000_000L
             override fun backlogFrames(): Int {
                 if (rec.getTimestamp(ts, android.media.AudioTimestamp.TIMEBASE_MONOTONIC) != AudioRecord.SUCCESS) return -1
                 val now = System.nanoTime()
@@ -178,9 +189,22 @@ object CallAudio {
         val p = policy
         return object : Inject {
             override val name = method
-            private var written = 0L
-            override fun write(buf: ShortArray, n: Int) { val w = track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING); if (w > 0) written += w }
+            @Volatile private var written = 0L
+            override fun write(buf: ShortArray, n: Int) { val w = track.write(buf, 0, n, AudioTrack.WRITE_BLOCKING); if (w > 0) { written += w; writes++ } }
             override fun queuedFrames(): Int = (written - (track.playbackHeadPosition.toLong() and 0xffffffffL)).toInt()
+            private val ts = android.media.AudioTimestamp()
+            @Synchronized override fun playedFrames(): Long = if (!track.getTimestamp(ts)) -1 else ts.framePosition + (System.nanoTime() - ts.nanoTime) * track.sampleRate / 1_000_000_000L
+            @Volatile private var writes = 0
+            @Volatile private var timed = false
+            override fun pendingFrames(): Int {
+                val p = playedFrames()
+                if (p > 0) timed = true
+                return when {
+                    p > 0 -> (written - p).coerceIn(0L, written).toInt()
+                    timed || writes > 50 -> maxOf(0, queuedFrames())
+                    else -> -1
+                }
+            }
             override fun underruns(): Int = runCatching { track.underrunCount }.getOrDefault(-1)
             override fun routedTo(): String = track.routedDevice?.let { "${it.type}:${it.productName}" } ?: "none"
             override fun bufferFrames() = track.bufferSizeInFrames

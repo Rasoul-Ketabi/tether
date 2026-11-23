@@ -10,8 +10,6 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.security.MessageDigest
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -101,7 +99,8 @@ object HelperMain {
      */
     class Server(private val port: Int, private val token: String) {
         @Volatile private lateinit var out: DataOutputStream
-        private val upQueue = ArrayBlockingQueue<ShortArray>(8)   // room for a BLE burst; the up thread trims the standing level
+        /** The iPhone's voice on its way to the inject track (see UplinkBuffer); a new one per call. */
+        @Volatile private var up = UplinkBuffer()
         @Volatile private var capture: Capture? = null
         @Volatile private var inject: Inject? = null
         @Volatile private var running = false
@@ -190,11 +189,9 @@ object HelperMain {
                     F.STOP -> stop()
                     F.UP -> {
                         val sh = ShortArray(len / 2) { (payload[2 * it].toInt() and 0xff or (payload[2 * it + 1].toInt() shl 8)).toShort() }
-                        // Jitter buffer: frames arrive in bursts (BLE connection events every 15–30 ms carry 0–2
-                        // frames). Hold up to 5 (100 ms) so a burst is not thrown away; the writer trims the standing
-                        // level back to one frame when it stays higher (see the up thread).
-                        // Full: drop the oldest frame (keeps the delay low), never silently the newest.
-                        while (!upQueue.offer(sh)) { upQueue.poll(); stats.upDropped++ }
+                        // Frames arrive in bursts (Bluetooth connection events carry 0-3, more after a hold-up): the
+                        // buffer keeps them and steers the delay ahead of each frame (queue + track) in quiet frames.
+                        up.push(sh, System.nanoTime(), inject?.pendingFrames() ?: 0)
                     }
                     F.PROBE -> { stop(); info(JSONObject().put("probe", CallAudio.probe())) }
                     F.SELFTEST -> { stop(); info(JSONObject().put("selftest", CallAudio.selfTest())) }
@@ -253,9 +250,9 @@ object HelperMain {
             capture = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
             val injectMs = cfg.optInt("injectMs", 40)
             inject = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
+            up = UplinkBuffer(frame = rate / 50, rate = rate)
             running = true
             localMuted = true
-            upQueue.clear()
             // The call is bridged to the iPhone: silence the Android phone's own earpiece and microphone where the
             // phone has a way to (per vendor; see CallAudio.Silence). The downlink is still captured and the
             // injected uplink still goes out.
@@ -277,6 +274,7 @@ object HelperMain {
                     while (running) {
                         val n = c.read(buf)
                         if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
+                        stats.captureClock.mark(System.nanoTime(), c.capturedFrames())
                         val b = c.backlogFrames()
                         if (b >= 0) {
                             stats.backlog(b * 1000 / rate)
@@ -307,16 +305,19 @@ object HelperMain {
             inject?.let { inj ->
                 threads.add(Thread({
                     // No silence padding: an underrunning AudioTrack plays silence by itself, while padded
-                    // silence would sit in the buffer and push every later frame back.
+                    // silence would sit in the buffer and push every later frame back. The buffer corrects the delay
+                    // in quiet frames instead (see UplinkBuffer).
                     audioPriority("up")
+                    val buf = up
                     var writes = 0
-                    var highSince = 0
                     while (running) {
-                        val s = upQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
-                        // Standing delay guard: if ≥ 2 frames have stayed queued for a second, drop one (20 ms).
-                        if (upQueue.size >= 2) { if (++highSince >= 50) { upQueue.poll(); stats.upTrimmed++; highSince = 0 } } else highSince = 0
+                        val s = buf.take(100) ?: continue
+                        if (s.isEmpty()) continue   // a quiet frame cut whole
                         try { inj.write(s) } catch (e: Exception) { break }
+                        stats.injectClock.mark(System.nanoTime(), inj.playedFrames())
                         if (++writes % 10 == 0) inj.queuedFrames().takeIf { it >= 0 }?.let { stats.queued(it * 1000 / rate) }
+                        if (writes == 50) stats.startUnderruns = inj.underruns()   // the first second: the path starting up
+                        if (writes >= 50) buf.noteUnderruns(inj.underruns())
                     }
                 }, "up").apply { start() })
             }
@@ -331,26 +332,50 @@ object HelperMain {
         private class Stats {
             var backlogSum = 0L; var backlogN = 0; var backlogMax = 0
             var queuedSum = 0L; var queuedN = 0; var queuedMax = 0
-            @Volatile var capDropped = 0; @Volatile var upDropped = 0; @Volatile var upTrimmed = 0
+            @Volatile var capDropped = 0
             /** Capture trims: how often the guard fired, and how often its estimate found nothing buffered to drop. */
             var trims = 0; var trimMisses = 0
-            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; upDropped = 0; upTrimmed = 0; trims = 0; trimMisses = 0 }
+            /** The capture's and the track's sample clocks against the monotonic clock (a real call: the modem's). */
+            val captureClock = ClockRate(); val injectClock = ClockRate()
+            @Volatile var startUnderruns = -1
+            fun reset() { backlogSum = 0; backlogN = 0; backlogMax = 0; queuedSum = 0; queuedN = 0; queuedMax = 0; capDropped = 0; trims = 0; trimMisses = 0; captureClock.reset(); injectClock.reset(); startUnderruns = -1 }
             fun trim(estimated: Int, dropped: Int) {
                 trims++; capDropped += dropped
                 if (dropped * 2 < estimated) trimMisses++
             }
             fun backlog(ms: Int) { backlogSum += ms; backlogN++; backlogMax = maxOf(backlogMax, ms) }
             fun queued(ms: Int) { queuedSum += ms; queuedN++; queuedMax = maxOf(queuedMax, ms) }
-            fun json(rate: Int): JSONObject = JSONObject()
-                .put("captureBacklogMs", if (backlogN > 0) backlogSum / backlogN else -1).put("captureBacklogMaxMs", backlogMax)
-                .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
-                .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses).put("uplinkDroppedFrames", upDropped).put("uplinkTrimmedFrames", upTrimmed)
+            fun json(rate: Int, up: UplinkBuffer): JSONObject {
+                val ms = { samples: Int -> samples * 1000 / rate }
+                return JSONObject()
+                    .put("captureBacklogMs", if (backlogN > 0) backlogSum / backlogN else -1).put("captureBacklogMaxMs", backlogMax)
+                    .put("injectQueuedMs", if (queuedN > 0) queuedSum / queuedN else -1).put("injectQueuedMaxMs", queuedMax)
+                    .put("captureDroppedMs", capDropped * 1000L / rate).put("captureTrims", trims).put("captureTrimMisses", trimMisses)
+                    // Uplink: frames lost to a full buffer (voice), and what the delay steering did (quiet frames cut /
+                    // repeated, speech sped up / slowed down), the delay ahead of an arriving frame and its target.
+                    .put("uplinkFrames", up.arrived).put("uplinkDroppedFrames", up.overflowFrames)
+                    .put("uplinkQuietCutMs", ms(up.quietCut)).put("uplinkQuietAddedMs", ms(up.inserted))
+                    .put("uplinkSpedUpMs", ms(up.compressed)).put("uplinkSlowedMs", ms(up.stretched))
+                    .put("uplinkAheadMs", ms(up.levelAvg)).put("uplinkAheadMaxMs", ms(up.levelMax)).put("uplinkTargetMs", ms(up.target)).put("uplinkSinkExtraMs", ms(up.sinkExtra))
+                    .put("captureClockHz", captureClock.hz()).put("injectClockHz", injectClock.hz()).put("injectUnderrunsFirstSecond", startUnderruns)
+            }
+        }
+        /** Samples per second of a sample clock, from its first and latest position after a short settling time. */
+        class ClockRate {
+            private var n = 0; private var t0 = 0L; private var f0 = 0L; private var t1 = 0L; private var f1 = 0L
+            fun reset() { n = 0 }
+            fun mark(nowNs: Long, frames: Long) {
+                if (frames < 0) return
+                if (++n == 25) { t0 = nowNs; f0 = frames } else if (n > 25) { t1 = nowNs; f1 = frames }
+            }
+            /** Rounded to 0.1 Hz; -1 until ~1 s was seen. */
+            fun hz(): Double = if (n > 75 && t1 > t0) Math.round((f1 - f0) * 1e10 / (t1 - t0)) / 10.0 else -1.0
         }
         private val stats = Stats()
         @Volatile private var rate = 16000
 
         private fun stop() {
-            if (running) info(JSONObject().put("stats", stats.json(rate).put("injectUnderruns", inject?.underruns() ?: -1)
+            if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
                 .put("injectBufferFrames", inject?.bufferFrames() ?: -1)))
             running = false
             threads.forEach { it.join(500) }

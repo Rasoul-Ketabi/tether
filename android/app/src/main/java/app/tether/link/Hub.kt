@@ -784,9 +784,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             }, "audio-stats").apply { isDaemon = true }.start()
         }
 
-        private fun helperSummary(h: JSONObject) = "capture backlog %d/%d ms, trimmed %d ms, inject queue %d/%d ms (%d underruns), uplink dropped %d trimmed %d".format(
+        private fun helperSummary(h: JSONObject) = ("capture backlog %d/%d ms, trimmed %d ms, inject queue %d/%d ms (%d underruns, %d in the first second), " +
+            "uplink dropped %d of %d frames, ahead %d/%d ms (target %d), quiet cut %d ms added %d ms, speech sped up %d ms slowed %d ms" +
+            "; clocks capture %.1f inject %.1f Hz").format(
             h.optInt("captureBacklogMs"), h.optInt("captureBacklogMaxMs"), h.optInt("captureDroppedMs"),
-            h.optInt("injectQueuedMs"), h.optInt("injectQueuedMaxMs"), h.optInt("injectUnderruns", -1), h.optInt("uplinkDroppedFrames"), h.optInt("uplinkTrimmedFrames"))
+            h.optInt("injectQueuedMs"), h.optInt("injectQueuedMaxMs"), h.optInt("injectUnderruns", -1), h.optInt("injectUnderrunsFirstSecond", -1),
+            h.optInt("uplinkDroppedFrames"), h.optInt("uplinkFrames"), h.optInt("uplinkAheadMs"), h.optInt("uplinkAheadMaxMs"), h.optInt("uplinkTargetMs"),
+            h.optInt("uplinkQuietCutMs"), h.optInt("uplinkQuietAddedMs"), h.optInt("uplinkSpedUpMs"), h.optInt("uplinkSlowedMs"),
+            h.optDouble("captureClockHz", -1.0), h.optDouble("injectClockHz", -1.0))
 
         /** A client reconnected (new link replacing its old one): the call audio follows it. */
         fun handOver(old: Connection, new: Connection) {
