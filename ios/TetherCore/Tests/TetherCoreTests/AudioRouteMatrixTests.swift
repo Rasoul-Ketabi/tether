@@ -10,7 +10,7 @@ final class AudioRouteMatrixTests: XCTestCase {
         RoutePort(type: "CarAudio", uid: "CarAudioPort-0000000001", name: "Car"),
         RoutePort(type: "HeadsetMicrophone", uid: "Wired Headset Microphone", name: "Wired"),
         RoutePort(type: "USBAudio", uid: "AppleUSBAudioEngine:0001", name: "USB"),
-        RoutePort(type: "BluetoothLE", uid: "77:88:99:AA:BB:CC-le", name: "Earbuds"),
+        RoutePort(type: "BluetoothLE", uid: "AA:BB:CC:DD:EE:01-le", name: "Earbuds"),
     ]
 
     /// Every subset of accessories: iPhone and Speaker first, then each accessory once in the session's order;
