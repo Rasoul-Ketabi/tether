@@ -291,6 +291,19 @@ object HelperMain {
                     }
                 }, "down").apply { start() })
             }
+            // Tether's test line has no network behind it: on its VoIP path nothing reads the injected uplink, and an
+            // unread remote submix takes it ~10 % slower than real time (14.4 kHz for 16 kHz on the reference phone,
+            // 2026-11-23), which no real call does. Read it as the far end would, so test calls run at the call's clock.
+            val farEnd = cfg.optBoolean("testLine") && inject?.name == "intercept" && ShellEnv.audioManager.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+            // Opened on its own thread: start() does not wait for it.
+            if (farEnd) threads.add(Thread({
+                runCatching { CallAudio.openCapture("voice_communication", rate) }
+                    .onFailure { ShellEnv.log("test line far end: ${CallAudio.describe(it)}") }.getOrNull()?.let { far ->
+                        val b = ShortArray(rate / 50)
+                        while (running) { val n = far.read(b); if (n < 0) break; if (n == 0) Thread.sleep(2) }
+                        far.stop()
+                    }
+            }, "far-end").apply { start() })
             inject?.let { inj ->
                 threads.add(Thread({
                     // No silence padding: an underrunning AudioTrack plays silence by itself, while padded
@@ -307,7 +320,7 @@ object HelperMain {
                     }
                 }, "up").apply { start() })
             }
-            info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL)
+            info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL).put("testLineFarEnd", farEnd)
                 .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", local.silent)
                 .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", local.telecomMicMute).put("errors", errors)
                 .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)

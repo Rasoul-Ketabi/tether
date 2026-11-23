@@ -903,7 +903,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 }
             }
             quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
-            helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto", app.prefs.getInt("inject_ms", 40))
+            helper.start(k.rate, "auto", app.prefs.getString("inject", "auto") ?: "auto", app.prefs.getInt("inject_ms", 40), onlyTestLine())
             c.sendUrgent(startMessage(k))
             muteLocalMic(true)
             LinkService.running?.peripheral?.tune(c.transport.address, high = true)
@@ -929,6 +929,12 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             refresh()
         }
 
+        /** Every call that wants audio is on Tether's own test line (none reaches a SIM). */
+        private fun onlyTestLine(): Boolean {
+            val calls = CallRegistry.active()
+            return calls.isNotEmpty() && calls.all { CallRegistry.isTestCall(app, CallRegistry.cidOf(it)) }
+        }
+
         /** If the helper had to fall back from the interception API (e.g. started a moment too early), retry. */
         private fun checkMethods() {
             val info = helper.lastInfo ?: return
@@ -938,7 +944,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             restarts++
             Log.w(TAG, "helper using capture=$capture inject=$inject; retry $restarts")
             startedAt = SystemClock.elapsedRealtime()
-            helper.start(codec?.rate ?: 16000, "auto", "auto", app.prefs.getInt("inject_ms", 40))
+            helper.start(codec?.rate ?: 16000, "auto", "auto", app.prefs.getInt("inject_ms", 40), onlyTestLine())
         }
 
         fun stop(sendStop: Boolean = true) { lock.lock(); try { stopLocked(sendStop) } finally { lock.unlock() } }

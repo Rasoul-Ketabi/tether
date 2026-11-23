@@ -159,8 +159,10 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40) =
-        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs).toString().toByteArray())
+    /** [testLine]: the call is Tether's own test line (no network behind it): the helper plays the far end's listener. */
+    fun start(rate: Int, capture: String = "auto", inject: String = "auto", injectMs: Int = 40, testLine: Boolean = false) =
+        send(START, JSONObject().put("rate", rate).put("capture", capture).put("inject", inject).put("injectMs", injectMs)
+            .put("testLine", testLine).toString().toByteArray())
 
     fun stop() = send(STOP)
 

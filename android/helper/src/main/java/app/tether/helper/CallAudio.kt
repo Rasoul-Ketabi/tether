@@ -97,6 +97,7 @@ object CallAudio {
             "voice_downlink" -> buildRecord(MediaRecorder.AudioSource.VOICE_DOWNLINK, rate)
             "voice_call" -> buildRecord(MediaRecorder.AudioSource.VOICE_CALL, rate)
             "voice_uplink" -> buildRecord(MediaRecorder.AudioSource.VOICE_UPLINK, rate)
+            "voice_communication" -> buildRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, rate)
             "telephony_rx" -> buildRecord(MediaRecorder.AudioSource.DEFAULT, rate).also { r ->
                 val dev = telephonyDevice(false) ?: run { r.release(); error("no telephony input device") }
                 r.preferredDevice = dev
