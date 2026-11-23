@@ -17,6 +17,7 @@ import app.tether.core.T
 import app.tether.telecom.CallRegistry
 import app.tether.telecom.TestConnectionService
 import org.json.JSONObject
+import app.tether.data.UssdCode
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -134,6 +135,12 @@ class DebugReceiver : BroadcastReceiver() {
         }
         "mute" -> app.hub.applyListsSet(JSONObject().put("what", "mute").put("thread", intent.getStringExtra("thread")?.toLongOrNull() ?: -1)
             .put("on", intent.getStringExtra("on") != "off")).let { app.hub.broadcast(Message(T.LISTS, it)); "muted=${it.get("muted")}" }
+        // ussd_test <code>: DRY. Validates the way ussd.send does and logs; nothing ever reaches the network.
+        "ussd_test" -> intent.getStringExtra("code").orEmpty().let { c -> "valid=${UssdCode.valid(c)} sent=false" }
+            .also { android.util.Log.i("Tether", "ussd_test (dry) $it") }
+        // phone_find on|off: really rings the Android phone on the alarm stream (max 30 s); ringer: state only
+        "phone_find" -> if (intent.getStringExtra("on") == "on") (app.hub.finder.start() ?: "ringing") else { app.hub.finder.stop(); "stopped" }
+        "ringer" -> "mode=${app.hub.ringer.mode()} dnd=${app.hub.ringer.dndAccess()} finding=${app.hub.finder.active}"
         "lists" -> app.lists.json().let { j -> JSONObject().put("blockedCount", j.getJSONArray("blocked").length()).put("muted", j.get("muted")).put("system", j.get("system")) }.toString()
         // share on|off|loopback|noloopback|state: the Share VPN proxy (loopback = also on 127.0.0.1 for adb-forward tests)
         "share" -> {

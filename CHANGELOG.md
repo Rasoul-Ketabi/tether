@@ -13,6 +13,10 @@
   the incall-music inject path) and the app says clearly when the phone cannot bridge call audio (Android 10). Version
   guards for the newer Bluetooth, telephony, notification and Telecom APIs, legacy Bluetooth permissions below 12, and
   a lint check that fails on unguarded newer APIs. Feature table: [docs/devices/android-versions.md](docs/devices/android-versions.md).
+- iPhone Link tab › Phone tools: send carrier codes (balance etc.) on a chosen SIM and read the answer, "Find phone"
+  (rings the Android phone on the alarm stream for up to 30 s) and a ringer mode picker. New optional messages
+  `ussd.send` / `ussd.result`, `phone.find` / `phone.finding`, `ringer.set` / `ringer.result`, and `tools`, `ringer`,
+  `dnd` in `status`; the section is hidden when the Android phone does not report `tools`.
 - Phone numbers are shown grouped like phones show them ("+98 912 345 6789", "+1 (555) 010-0001"), on the
   iPhone's keypad as you type, in Recents, Contacts, Messages, the call screen, CallKit and notifications, and on
   the Android phone's call screen. National numbers follow the SIM's country (new optional `country` per SIM in

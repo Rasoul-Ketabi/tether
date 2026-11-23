@@ -16,6 +16,10 @@ import app.tether.core.T
 import app.tether.core.idRanges
 import app.tether.core.paginate
 import app.tether.data.ContactsRepo
+import app.tether.data.Ussd
+import app.tether.data.UssdCode
+import app.tether.telecom.FindPhone
+import app.tether.telecom.RingerControl
 import app.tether.telecom.CallRegistry
 import org.json.JSONArray
 import org.json.JSONObject
@@ -41,6 +45,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     val helper = HelperBridge(app)
     /** "Share VPN" proxy on the tethering interfaces (see ShareProxy). */
     val share = ShareProxy(app).apply { sharing = app.prefs.getBoolean("share_vpn", false) }
+    /** Carrier codes, "find my phone" and the ringer (iPhone Link tab › Phone). */
+    val ussd = Ussd(app)
+    private val ussdBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+    val ringer = RingerControl(app)
+    val finder = FindPhone(app).apply {
+        onChange = { on -> broadcast(Message(T.PHONE_FINDING, JSONObject().put("on", on))) }
+    }
     private val work = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "hub") }
     /** Call-audio control runs apart from sync/status work so it is never queued behind a big sync. */
     private val audioCtl = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "audio-ctl") }
@@ -302,6 +313,31 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 // Sharing changes show on the other client's switch at once.
                 if (what == "share" || what == "airplane") targets().filter { it !== c }.forEach { it.send(Message(T.NET_STATE, body)) }
             }
+            T.USSD_SEND -> {
+                val code = m.b.optString("code"); val sub = if (m.b.has("sub")) m.b.optInt("sub") else null
+                if (dry(c) || !UssdCode.valid(code) || !ussdBusy.compareAndSet(false, true)) {
+                    // Test clients and invalid codes never reach the network.
+                    val err = if (!UssdCode.valid(code)) "Not a carrier code (like *123#)" else if (dry(c)) "dry run: not sent" else "Another code is still waiting for its answer"
+                    c.send(Message(T.USSD_RESULT, JSONObject().put("ok", false).put("err", err), re = m.id))
+                } else Thread({
+                    val r = try { ussd.send(code, sub) } finally { ussdBusy.set(false) }
+                    Log.i(TAG, "ussd -> ok=${r.optBoolean("ok")}")
+                    c.send(Message(T.USSD_RESULT, r, re = m.id))
+                }, "ussd").start()
+            }
+            T.PHONE_FIND -> bg {
+                val on = m.b.optBoolean("on")
+                val err = if (dry(c)) "dry run" else if (on) finder.start() else { finder.stop(); null }
+                Log.i(TAG, "phone.find $on -> ${err ?: "ok"}")
+                c.send(Message(T.PHONE_FINDING, JSONObject().put("on", finder.active).apply { err?.let { put("err", it) } }, re = m.id))
+            }
+            T.RINGER_SET -> bg {
+                val mode = m.b.optString("mode")
+                val err = if (dry(c)) "dry run" else ringer.set(mode)
+                Log.i(TAG, "ringer.set $mode -> ${err ?: "ok"}")
+                c.send(Message(T.RINGER_RESULT, JSONObject().put("ok", err == null).put("mode", ringer.mode()).apply { err?.let { put("err", it) } }, re = m.id))
+                pushStatus()
+            }
             T.SELFTEST -> slowBg { c.send(Message(T.SELFTEST_RESULT, selftest(), re = m.id)) }
             T.UNPAIR -> if (!c.transport.dry) {
                 c.peerKey?.let { app.keys.removeCentral(it) }
@@ -541,7 +577,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     // ------------------------------------------------------------------ status, calls
 
+    /** `tools` says what the Phone section of the iPhone's Link tab may offer (absent from older builds: hidden there). */
     fun statusJson(): JSONObject = app.sims.status(helper.state())
+        .put("tools", JSONObject().put("ussd", true).put("find", true).put("ringer", true))
+        .put("ringer", ringer.mode()).put("dnd", ringer.dndAccess())
 
     /** Status plus the list of connected clients (each client sees which one is itself). */
     /** Synchronized: callers on other threads (battery, data SIM) must not send a stale status after a newer one. */

@@ -10,6 +10,7 @@
 #   tools/dbg.sh linklog [n] | only none|off | forget_kind <kind> | contact_test | test_contact +1000000000x | star <id> on|off
 #   tools/dbg.sh test_sms +10000000001 "text" | test_sms_delete <id|thread:N> | test_call +10000000001 | test_call_delete <id>
 #   tools/dbg.sh block +10000000001 on|off | mute <thread> on|off | lists      (test numbers +1000000000x only)
+#   tools/dbg.sh ussd_test '*123#' (dry: validates and logs, never sends) | phone_find on|off (rings the A54!) | ringer (state only)
 . "$(dirname -- "$0")/lib.sh"; pick_android
 cmd=${1:-state}; shift 2>/dev/null || true
 extra=""
@@ -26,6 +27,8 @@ case "$cmd" in
   test_sms_delete|test_call_delete) extra="--es what $1";;
   test_call) extra="--es num $1";;
   block) extra="--es num $1 --es on ${2:-on}";;
+  ussd_test) extra="--es code '$1'";;
+  phone_find) extra="--es on ${1:-off}";;
   mute) extra="--es thread $1 --es on ${2:-on}";;
   loopback_call) if [ "$1" = "during-sync" ]; then extra="--es sync full"; elif [ -n "$1" ]; then extra="--es mode $1"; fi;;
   only) extra="--es kind ${1:-off}";;

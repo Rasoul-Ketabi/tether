@@ -70,6 +70,11 @@ final class AppModel {
     var net: NetState?
     /// The switch that was just flipped and has not been confirmed yet ("data", "hotspot", "bt").
     var netPending: String?
+    /// Phone section (Link tab): the last carrier-code answer, whether the Android phone is ringing for "find my phone", errors.
+    var ussdResult: UssdResult?
+    var ussdPending = false
+    var finding = false
+    var phoneToolError: String?
     var syncing = false
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
@@ -459,6 +464,36 @@ final class AppModel {
         }
     }
 
+    /// Carrier code (balance etc.) on a SIM of the Android phone; the answer arrives as `ussd.result` (up to 30 s).
+    func sendUssd(_ code: String, sub: Int?) {
+        let code = code.trimmingCharacters(in: .whitespaces)
+        guard linkState.isConnected, !ussdPending else { return }
+        guard UssdCode.isValid(code) else {
+            ussdResult = UssdResult(ok: false, text: nil, err: String(localized: "Not a carrier code (like *123#)"))
+            return
+        }
+        ussdPending = true; ussdResult = nil
+        link.send(MsgType.ussdSend, UssdSend(code: code, sub: sub), expectReply: true)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(40))
+            guard let self, self.ussdPending else { return }
+            self.ussdPending = false
+            self.ussdResult = UssdResult(ok: false, text: nil, err: String(localized: "The Android phone did not answer."))
+        }
+    }
+
+    func setFinding(_ on: Bool) {
+        guard linkState.isConnected else { return }
+        phoneToolError = nil
+        link.send(MsgType.phoneFind, PhoneFind(on: on), expectReply: true)
+    }
+
+    func setRinger(_ mode: String) {
+        guard linkState.isConnected else { return }
+        phoneToolError = nil
+        link.send(MsgType.ringerSet, RingerSet(mode: mode), expectReply: true)
+    }
+
     func runSelftest() {
         selftest = nil
         link.send(MsgType.selftest, Empty(), expectReply: true)
@@ -634,6 +669,17 @@ final class AppModel {
                 } else { net = st }
                 // (A state pushed because the other client flipped a switch must not clear our own pending one.)
                 if h.re != nil { netPending = nil }
+            case MsgType.ussdResult:
+                ussdResult = try Control.body(UssdResult.self, from: payload)
+                ussdPending = false
+            case MsgType.phoneFinding:
+                let f = try Control.body(PhoneFinding.self, from: payload)
+                finding = f.on
+                if let e = f.err { phoneToolError = e }
+            case MsgType.ringerResult:
+                let r = try Control.body(RingerResult.self, from: payload)
+                if let m = r.mode, var st = data.lastStatus { st.ringer = m; data.lastStatus = st }
+                if let e = r.err { phoneToolError = e }
             case MsgType.selftestResult:
                 selftest = try Control.body(SelftestResult.self, from: payload)
             default:

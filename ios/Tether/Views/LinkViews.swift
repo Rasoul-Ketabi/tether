@@ -103,6 +103,9 @@ struct LinkView: View {
                         Text("Turn on the hotspot and join it in Settings › Wi-Fi to use the Android phone's internet here. Bluetooth tethering is slower: after switching it on, tap the Android phone in Settings › Bluetooth. Airplane mode keeps Bluetooth on so this link stays up; if the link is not back within 90 seconds it switches itself off. The hotspot and Bluetooth tethering come back on after it.")
                     }
                     VPNSection().id("vpn")
+                    if let t = s.tools, t.ussd == true || t.find == true || t.ringer == true {
+                        PhoneToolsSection(status: s, tools: t).id("phonetools")
+                    }
                     Section("Call audio") {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
                         if let m = s.helper.method { LabeledContent("Method", value: m) }
@@ -163,6 +166,9 @@ struct LinkView: View {
             .onAppear {
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoPair") || ProcessInfo.processInfo.arguments.contains("-TetherDemoPairManual") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { scanning = true }
+                }
+                if ProcessInfo.processInfo.arguments.contains("-TetherDemoPhoneTools") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("phonetools", anchor: .top) }
                 }
                 if ProcessInfo.processInfo.arguments.contains("-TetherDemoVPN") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("vpn", anchor: .top) }
@@ -377,6 +383,65 @@ struct SigningSection: View {
             } footer: {
                 Text("A free Apple account's signature lasts 7 days. Renew it by running tools/reinstall-ios.sh on your Mac with this device unlocked and connected.")
             }
+        }
+    }
+}
+
+/// Link tab › Phone tools: carrier codes (balance etc.) on a SIM, "find my phone" and the ringer mode. Each part shows
+/// only when the Android phone's status says it can (older Android builds of Tether do not say: the section is hidden).
+struct PhoneToolsSection: View {
+    @Environment(\.appModel) private var model
+    let status: StatusBody
+    let tools: StatusBody.PhoneTools
+    @State private var code = ""
+    @State private var sub: Int?
+
+    private var chosenSub: Int? { sub ?? status.defaultSub ?? status.sims.first?.sub }
+
+    var body: some View { WithPerceptionTracking { bodyContent } }
+
+    @ViewBuilder private var bodyContent: some View {
+        Section {
+            if tools.ussd == true {
+                HStack {
+                    TextField("*123#", text: $code)
+                        .keyboardType(.numbersAndPunctuation).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .font(.body.monospaced())
+                    Button("Send") { model.sendUssd(code, sub: chosenSub) }
+                        .disabled(!UssdCode.isValid(code.trimmingCharacters(in: .whitespaces)) || model.ussdPending || !model.linkState.isConnected)
+                }
+                if status.sims.count > 1 {
+                    Picker("SIM", selection: Binding(get: { chosenSub ?? -1 }, set: { sub = $0 })) {
+                        ForEach(status.sims) { sim in Text("SIM \(sim.slot + 1) · \(sim.name)").tag(sim.sub) }
+                    }
+                }
+                if model.ussdPending {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Waiting for the carrier…").foregroundStyle(.secondary) }
+                } else if let r = model.ussdResult {
+                    Text(r.ok ? (r.text ?? "") : (r.err ?? String(localized: "No answer")))
+                        .font(.callout).foregroundStyle(r.ok ? Color.primary : Color.red).textSelection(.enabled)
+                }
+            }
+            if tools.find == true {
+                Toggle(isOn: Binding(get: { model.finding }, set: { model.setFinding($0) })) {
+                    Label("Find phone", systemImage: "bell.and.waves.left.and.right")
+                }
+                .tint(.green).disabled(!model.linkState.isConnected)
+            }
+            if tools.ringer == true, let mode = status.ringer {
+                Picker(selection: Binding(get: { mode }, set: { model.setRinger($0) })) {
+                    Text("Ring").tag("normal"); Text("Vibrate").tag("vibrate"); Text("Silent").tag("silent")
+                } label: { Label("Ringer", systemImage: "bell") }
+                .disabled(!model.linkState.isConnected)
+                if status.dnd == false {
+                    Text("Silent needs Do Not Disturb access for Tether on the Android phone.").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if let e = model.phoneToolError { Text(e).font(.footnote).foregroundStyle(.red) }
+        } header: {
+            Text("Phone tools")
+        } footer: {
+            Text("Carrier codes are sent from the Android phone's SIM and may cost money. Find phone rings the Android phone loudly for up to 30 seconds, until it is unlocked or you switch it off.")
         }
     }
 }

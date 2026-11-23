@@ -5,6 +5,10 @@
     <string name="channel_link">Link</string>
     <string name="channel_calls">Calls</string>
     <string name="channel_setup">Setup</string>
+    <string name="channel_find">Find my phone</string>
+    <string name="find_title">Ringing: find my phone</string>
+    <string name="find_text">Unlock the phone or tap Stop</string>
+    <string name="find_stop">Stop</string>
     <string name="notif_link_waiting">Waiting for iPhone</string>
     <string name="notif_link_connected">Connected to iPhone</string>
     <string name="notif_link_unpaired">Not paired. Open Tether to pair.</string>

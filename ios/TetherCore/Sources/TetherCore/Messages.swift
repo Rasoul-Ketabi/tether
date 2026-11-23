@@ -47,6 +47,8 @@ public enum MsgType {
     public static let netGet = "net.get", netSet = "net.set", netState = "net.state"
     public static let smsDelete = "sms.delete", smsDeleted = "sms.deleted", callsDelete = "calls.delete", callsDeleted = "calls.deleted"
     public static let listsSet = "lists.set", lists = "lists", syncIds = "sync.ids"
+    public static let ussdSend = "ussd.send", ussdResult = "ussd.result"
+    public static let phoneFind = "phone.find", phoneFinding = "phone.finding", ringerSet = "ringer.set", ringerResult = "ringer.result"
     public static let unpair = "unpair", error = "error"
 }
 
@@ -188,9 +190,19 @@ public struct StatusBody: Codable, Equatable, Sendable {
     public var adbWifi: Bool
     /// Every client connected to the Android phone right now (this one has `self`).
     public var clients: [ClientInfo]?
+    /// What the Phone section may offer (nil from Android builds without carrier codes / find my phone / ringer: hide it).
+    public var tools: PhoneTools?
+    /// Ringer mode of the Android phone: "normal", "vibrate" or "silent"; `dnd` = Do Not Disturb access (needed for silent).
+    public var ringer: String?; public var dnd: Bool?
+    public struct PhoneTools: Codable, Equatable, Sendable {
+        public var ussd: Bool?; public var find: Bool?; public var ringer: Bool?
+        public init(ussd: Bool? = nil, find: Bool? = nil, ringer: Bool? = nil) { self.ussd = ussd; self.find = find; self.ringer = ringer }
+    }
 
     public init(device: String, battery: Int, charging: Bool, sims: [SimInfo], defaultSub: Int?, dialer: Bool,
-                helper: HelperInfo, wifi: Bool, adbWifi: Bool, clients: [ClientInfo]? = nil) {
+                helper: HelperInfo, wifi: Bool, adbWifi: Bool, clients: [ClientInfo]? = nil,
+                tools: PhoneTools? = nil, ringer: String? = nil, dnd: Bool? = nil) {
+        self.tools = tools; self.ringer = ringer; self.dnd = dnd
         self.device = device; self.battery = battery; self.charging = charging; self.sims = sims
         self.defaultSub = defaultSub; self.dialer = dialer; self.helper = helper; self.wifi = wifi; self.adbWifi = adbWifi
         self.clients = clients
@@ -342,6 +354,28 @@ public struct NetSet: Codable, Equatable, Sendable {
         self.what = what; self.on = on; self.sub = sub; self.slot = slot; self.mode = mode
     }
 }
+/// Carrier (USSD) codes: `ussd.send` → `ussd.result`. Codes are `*` or `#`, then digits / `*` / `#`, ending in `#`, at most 32 characters.
+public enum UssdCode {
+    public static func isValid(_ s: String) -> Bool {
+        let u = Array(s.utf8)
+        guard (3...32).contains(u.count), u.first == 0x2A || u.first == 0x23, u.last == 0x23 else { return false }
+        return u.dropFirst().allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x2A || $0 == 0x23 }
+    }
+}
+public struct UssdSend: Codable, Equatable, Sendable {
+    public var code: String; public var sub: Int?
+    public init(code: String, sub: Int? = nil) { self.code = code; self.sub = sub }
+}
+public struct UssdResult: Codable, Equatable, Sendable {
+    public var ok: Bool; public var text: String?; public var err: String?
+    public init(ok: Bool, text: String? = nil, err: String? = nil) { self.ok = ok; self.text = text; self.err = err }
+}
+/// Make the Android phone ring on its alarm stream (at most 30 s) / stop; answered, and later changed, by `phone.finding`.
+public struct PhoneFind: Codable, Equatable, Sendable { public var on: Bool; public init(on: Bool) { self.on = on } }
+public struct PhoneFinding: Codable, Equatable, Sendable { public var on: Bool; public var err: String? }
+/// `mode` is "normal", "vibrate" or "silent"; answered with `ringer.result`.
+public struct RingerSet: Codable, Equatable, Sendable { public var mode: String; public init(mode: String) { self.mode = mode } }
+public struct RingerResult: Codable, Equatable, Sendable { public var ok: Bool; public var mode: String?; public var err: String? }
 public struct SelftestMethod: Codable, Equatable, Sendable, Hashable { public var name: String; public var ok: Bool; public var note: String? }
 public struct SelftestResult: Codable, Equatable, Sendable { public var methods: [SelftestMethod]; public var chosen: String? }
 /// Delete messages by id, or a whole conversation (`thread`). The Android phone deletes them and sends

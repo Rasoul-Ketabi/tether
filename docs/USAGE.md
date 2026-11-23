@@ -59,6 +59,17 @@ there is no way to put Tether in the button list of the Contacts app or to make 
 - Blocking a number blocks it on the Android phone (Android's own block list), so it is blocked whichever phone
   you use.
 
+## Phone tools
+
+Link tab › **Phone tools** (shown when the Android phone's Tether supports it):
+
+- **Carrier codes**: type a code such as a balance check (`*123#`), pick the SIM and tap Send; the carrier's answer shows
+  below (30 s limit). Only `*` / `#` codes are accepted. Carrier codes may cost money.
+- **Find phone**: rings the Android phone loudly (alarm volume at maximum, restored afterwards) for up to 30 seconds. It
+  stops when you switch it off, tap Stop in its notification or unlock it.
+- **Ringer**: Ring, Vibrate or Silent. Silent needs Do Not Disturb access for Tether on the Android phone (Settings ›
+  Notifications › Do Not Disturb); without it the iPhone shows the reason.
+
 ## Internet sharing
 
 Use the Android phone's mobile data on the iPhone:

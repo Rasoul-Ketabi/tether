@@ -5,6 +5,10 @@
     <string name="channel_link">اتصال</string>
     <string name="channel_calls">تماس‌ها</string>
     <string name="channel_setup">راه‌اندازی</string>
+    <string name="channel_find">پیدا کردن گوشی</string>
+    <string name="find_title">در حال زنگ زدن: پیدا کردن گوشی</string>
+    <string name="find_text">قفل گوشی را باز کنید یا توقف را بزنید</string>
+    <string name="find_stop">توقف</string>
     <string name="notif_link_waiting">در انتظار آیفون</string>
     <string name="notif_link_connected">به آیفون وصل است</string>
     <string name="notif_link_unpaired">جفت نشده است. برای جفت کردن تتر را باز کنید.</string>
