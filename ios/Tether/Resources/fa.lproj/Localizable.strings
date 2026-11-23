@@ -207,3 +207,17 @@
 "Not a carrier code (like *123#)" = "کد اپراتور معتبر نیست (مثل ‎*123#‎)";
 "Silent needs Do Not Disturb access for Tether on the Android phone." = "برای حالت بی‌صدا، Tether روی گوشی اندرویدی باید به «مزاحم نشوید» دسترسی داشته باشد.";
 "Carrier codes are sent from the Android phone's SIM and may cost money. Find phone rings the Android phone loudly for up to 30 seconds, until it is unlocked or you switch it off." = "کدهای اپراتور از سیم‌کارت گوشی اندرویدی ارسال می‌شوند و ممکن است هزینه داشته باشند. «پیدا کردن گوشی» گوشی اندرویدی را تا ۳۰ ثانیه بلند زنگ می‌زند، تا وقتی قفلش باز شود یا آن را خاموش کنید.";
+
+/* Numbers from other apps (tel: links, Shortcuts, the Phone app's Recents) */
+"Call %@?" = "با %@ تماس گرفته شود؟";
+"The call goes through your Android phone." = "تماس از طریق گوشی اندرویدی شما برقرار می‌شود.";
+"%@ · through your Android phone." = "%@ · از طریق گوشی اندرویدی شما.";
+"The Android phone is not connected. Keep it nearby and open the Link tab, then call from the Keypad." = "گوشی اندرویدی وصل نیست. آن را نزدیک نگه دارید و زبانه «اتصال» را باز کنید، سپس از صفحه‌کلید تماس بگیرید.";
+"Show in Keypad" = "نمایش در صفحه‌کلید";
+"Show calls in the Phone app" = "نمایش تماس‌ها در برنامه Phone";
+"Numbers in other apps" = "شماره‌ها در برنامه‌های دیگر";
+"Calls made here also appear in the Phone app's Recents; tapping one calls back through the Android phone. To call numbers you tap in other apps, choose this app in Settings › Apps › Default Apps › Calling (needs a paid Apple developer account), or use the \"Call with\" shortcut in the Shortcuts app." = "تماس‌های این برنامه در «اخیر» برنامه Phone هم دیده می‌شوند و با لمس هرکدام، از طریق گوشی اندرویدی دوباره تماس گرفته می‌شود. برای تماس با شماره‌هایی که در برنامه‌های دیگر لمس می‌کنید، این برنامه را در Settings › Apps › Default Apps › Calling انتخاب کنید (به حساب پولی توسعه‌دهنده اپل نیاز دارد)، یا از میان‌بر «Call with» در برنامه Shortcuts استفاده کنید.";
+
+/* iOS 16 stand-ins */
+"No Results for “%@”" = "نتیجه‌ای برای «%@» نیست";
+"Check the spelling or try a new search." = "املا را بررسی کنید یا جست‌وجوی دیگری امتحان کنید.";
