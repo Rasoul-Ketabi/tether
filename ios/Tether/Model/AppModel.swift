@@ -72,6 +72,8 @@ final class AppModel {
     @PerceptionIgnored lazy var audio = CallAudio(model: self, link: link)
 
     private(set) var linkState: TetherLink.State = .unpaired
+    /** True only after the mutually authenticated Wi-Fi lane sends its sealed ready record. */
+    var wifiFastLane = false
     private(set) var data: Snapshot
     var status: StatusBody? { data.lastStatus }
     var lastError: String?
@@ -592,6 +594,7 @@ final class AppModel {
             flushOutbox()
         }
         if !s.isConnected && wasConnected {
+            wifiFastLane = false
             extensionPort.isUp = false
             extensions.linkDown()
             calls.linkLost()
@@ -614,7 +617,10 @@ final class AppModel {
     func received(_ h: MessageHeader, _ payload: Data) {
         do {
             switch h.t {
+            case "wifi.down":
+                wifiFastLane = false
             case "wifi.ready":
+                wifiFastLane = true
                 // The already-paired Android has authenticated its secondary LAN lane.
                 // Restart an incremental sync so the larger pages use Wi-Fi.
                 if linkState.isConnected && !syncing { requestSync() }
