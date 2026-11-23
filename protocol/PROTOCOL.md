@@ -164,7 +164,7 @@ stored on the Android phone.
 | Type | Dir | Body |
 |---|---|---|
 | `ping` / `pong` | both | `{ts}` |
-| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted) |
+| `status` | P→C | `{device, battery, charging, sims:[{slot, sub, name, carrier, number?, signal, net?, service?, roaming?, country?}], defaultSub?, dialer, helper:{state, method?, up, down, silent?}, wifi, adbWifi, clients?:[{name, kind, self?, audio?}]}` (`clients`: every connected client; `self` marks the receiver, `audio` the one call audio goes to; per SIM: `signal` 0–4, `net` "5G" \| "LTE+" \| "LTE" \| "H+" \| "H" \| "3G" \| "E" \| "2G", `service` "in" \| "none" \| "emergency" \| "off", `roaming`, `country` the SIM's lowercase ISO 3166 code (else the network's; optional, for grouping national numbers on display). Pushed again within ~2 s of a signal / network change). Optional, from builds with the phone tools: `tools:{ussd, find, ringer}` (clients hide the matching controls when absent), `ringer` "normal" \| "vibrate" \| "silent", `dnd` (Do Not Disturb access granted) |
 | `sync` | C→P | `{sms: lastId, calls: lastId, contacts: version, codecs: ["opus", "pcmu"], client?: {kind: "iphone" \| "android", name}}` (0 / "" for a full sync; `codecs` = what the client can decode/encode, best first; `client` names it in the Android phone's device list; `kind` "android" is the Android client, see §5.1) |
 | `sms.batch` | P→C | `{items:[Sms], more}` |
 | `sms.new` | P→C | `{item: Sms}` |
@@ -295,7 +295,7 @@ Frames: `type: u8 ‖ len: u32 ‖ payload`.
 | 3 STOP | A→H | – |
 | 4 DOWN | H→A | PCM 16-bit LE mono, 20 ms |
 | 5 UP | A→H | PCM 16-bit LE mono, 20 ms |
-| 6 INFO | H→A | JSON `{capture, inject, method, error?}`, or `{stats}` at stop; replies `{probe}`, `{selftest}`, `{net}` (a reply after its request timed out is dropped) |
+| 6 INFO | H→A | JSON `{capture, inject, method, earpiece, silent, silence, telecomMicMute, error?}` (`silence`: how the phone's own earpiece / mic are silenced: samsung, qualcomm, mediatek, other; `silent`: full, earpiece, none; `telecomMicMute` false: the app must not mute the mic through Telecom), or `{stats}` at stop; replies `{probe}`, `{selftest}`, `{net}` (a reply after its request timed out is dropped) |
 | 7 PROBE | A→H | – (answers INFO `{probe: …}`) |
 | 8 QUIT | A→H | – (helper exits) |
 | 9 SELFTEST | A→H | – (answers INFO `{selftest: …}`; needs a live call) |

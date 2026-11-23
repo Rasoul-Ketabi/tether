@@ -959,11 +959,15 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
         /**
          * While bridged, only the iPhone's microphone may reach the call: mute the Android phone's own mic through
-         * Telecom. The iPhone's mute button is separate (it silences the injected uplink).
+         * Telecom (besides the helper's own per-vendor silencing). The iPhone's mute button is separate (it silences
+         * the injected uplink).
          */
         private fun muteLocalMic(on: Boolean) {
             if (!app.prefs.getBoolean("mute_local_mic", true)) return
-            if (CallRegistry.isMuted() != on && CallRegistry.mute(on)) Log.i(TAG, "Android phone mic ${if (on) "muted" else "unmuted"} for bridged call")
+            // Where the Android mic mute also mutes the injected uplink (MediaTek), the helper silences the mic its own
+            // way and says so: then the phone's mic is never muted through Telecom (the far end would hear nothing).
+            val want = on && helper.lastInfo?.optBoolean("telecomMicMute", true) != false
+            if (CallRegistry.isMuted() != want && CallRegistry.mute(want)) Log.i(TAG, "Android phone mic ${if (want) "muted" else "unmuted"} through Telecom for bridged call")
         }
 
         /** While the call is bridged to the iPhone, the Android phone's own earpiece goes to its lowest volume. */

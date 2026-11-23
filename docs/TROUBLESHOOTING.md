@@ -55,8 +55,11 @@ card in the Android app says which case you are in.
 3. The Android version must be 13 or later, and the build must let the shell user intercept call audio. Not every
    manufacturer allows it. If no path works, calls still work from the iPhone but their audio stays on the
    Android phone. Please report your model and the self-test result.
-4. You hear the other side on the Android phone too: only Samsung phones let Tether mute the phone's own earpiece
-   and microphone during a bridged call.
+4. You hear the other side on the Android phone too: Tether mutes the phone's own earpiece and microphone during a
+   bridged call with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources,
+   untested). Other phones (Google Pixel and unknown chips) get the earpiece muted only. The Link tab shows it
+   under **Call audio › Android phone silent**. On MediaTek, Tether never mutes the microphone through Android,
+   because there that also mutes what the iPhone sends.
 
 ### Headset or car
 

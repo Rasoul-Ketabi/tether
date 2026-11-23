@@ -304,6 +304,7 @@ class HelperBridge(private val ctx: Context) {
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("down", info?.optString("capture")?.let { it.isNotEmpty() && it != "null" } ?: false)
             .put("audio", audioLevel())
+            .apply { info?.optString("silent")?.takeIf { it.isNotEmpty() }?.let { put("silent", it) } }
     }
 
     /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */

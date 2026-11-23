@@ -109,6 +109,10 @@ struct LinkView: View {
                     Section("Call audio") {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
                         if let m = s.helper.method { LabeledContent("Method", value: m) }
+                        if let q = s.helper.silent {
+                            LabeledContent("Android phone silent", value: q == "full" ? String(localized: "Yes") :
+                                q == "earpiece" ? String(localized: "Earpiece only") : String(localized: "No"))
+                        }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
                                 Text(String(format: "buffer %.0f ms · jitter %.1f ms · gaps %d", a.playoutMs, a.jitterMs, a.underruns))

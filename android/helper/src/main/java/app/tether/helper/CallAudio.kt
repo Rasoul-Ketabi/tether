@@ -234,7 +234,7 @@ object CallAudio {
     fun probe(rate: Int = 16000): JSONObject {
         val o = JSONObject()
         o.put("sdk", Build.VERSION.SDK_INT).put("model", Build.MODEL).put("uid", android.os.Process.myUid())
-        o.put("mode", am.mode).put("interceptable", isInterceptable())
+        o.put("mode", am.mode).put("interceptable", isInterceptable()).put("silence", silence.name.lowercase())
         o.put("outputs", devices(AudioManager.GET_DEVICES_OUTPUTS)).put("inputs", devices(AudioManager.GET_DEVICES_INPUTS))
         val caps = JSONArray()
         for (m in captureMethods + "voice_uplink") {
@@ -352,20 +352,88 @@ object CallAudio {
     val hasSamsungCallMute: Boolean get() = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
 
     /**
-     * Mutes / restores the Android phone's own earpiece (received voice) and microphone for a bridged call.
-     * Samsung: its vendor audio parameters (the ones its Text Call feature sets), rx/tx control mode 1 = muted.
-     * Other phones have no known equivalent the shell may set: the call is still bridged, and the phone's own
-     * earpiece and microphone stay on (keep it in a bag or pocket, volume down).
+     * How this phone's own earpiece and microphone are silenced while a call is bridged (the downlink is still
+     * captured, the injected uplink still goes out). Chosen per vendor from their audio HAL sources:
+     * - Samsung: its vendor parameters (the ones its Text Call feature sets), rx/tx control mode 1 = muted. Verified
+     *   on the reference phone.
+     * - Qualcomm: voice-call stream muted (HAL voice volume 0 sets the "Voice Rx Device Mute" mixer control); the
+     *   Android mic mute is safe there, because while the in-call music uplink is open the HAL mutes the mic device
+     *   only, not the mixed uplink (hardware/qcom/audio voice.c, voice_set_mic_mute).
+     * - MediaTek: Set_SpeechCall_DL_Mute / Set_SpeechCall_UL_Mute (the UL key mutes the microphone source only). The
+     *   Android mic mute must NOT be used: there it mutes the whole uplink, injected audio included.
+     * - Others (Google Tensor, unknown): voice-call stream muted; nothing for the mic that is known to keep the
+     *   injected audio, so the Android mic mute stays as before.
+     * Only the Samsung path is verified on a device; the others follow the vendors' sources and field reports.
      */
-    fun localCallAudio(muted: Boolean, errors: org.json.JSONArray): String {
-        if (!hasSamsungCallMute) return "not available on this phone"
+    enum class Silence(val telecomMicMuteSafe: Boolean) { SAMSUNG(true), QUALCOMM(true), MEDIATEK(false), OTHER(true) }
+
+    /** Overridable for tests on one phone (`TETHER_SILENCE=qualcomm|mediatek|other|samsung` in the helper's environment). */
+    val silence: Silence by lazy { System.getenv("TETHER_SILENCE")?.let { e -> Silence.entries.firstOrNull { it.name.equals(e, true) } } ?: pickSilence(Build.MANUFACTURER, socManufacturer(), prop("ro.board.platform"), prop("ro.hardware")) }
+
+    fun pickSilence(manufacturer: String?, soc: String?, platform: String?, hardware: String?): Silence {
+        if (manufacturer.equals("samsung", ignoreCase = true)) return Silence.SAMSUNG
+        val s = (soc ?: "").lowercase(); val p = (platform ?: "").lowercase(); val h = (hardware ?: "").lowercase()
+        return when {
+            s.contains("mediatek") || p.startsWith("mt") || h.startsWith("mt") -> Silence.MEDIATEK
+            s == "qti" || s.contains("qualcomm") || h == "qcom" ||
+                Regex("^(msm|sdm|sm|apq|qcs|lahaina|kona|taro|kalama|pineapple|sun|lito|bengal|holi|trinket|atoll|parrot|crow|blair)").containsMatchIn(p) -> Silence.QUALCOMM
+            else -> Silence.OTHER
+        }
+    }
+
+    private fun socManufacturer(): String? = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MANUFACTURER else null
+
+    private fun prop(name: String): String? = try {
+        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, name) as String
+    } catch (t: Throwable) { null }
+
+    /** Whether the voice-call stream is muted by us (restored at stop and whenever the helper starts). */
+    @Volatile private var streamMuted = false
+
+    private fun muteVoiceStream(on: Boolean) {
+        // Muting STREAM_VOICE_CALL needs MODIFY_PHONE_STATE (the shell has it); an app can only lower it to index 1.
+        am.adjustStreamVolume(AudioManager.STREAM_VOICE_CALL, if (on) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+        streamMuted = on
+    }
+
+    /** Result of [localCallAudio]: what was done, and how silent the phone is ("full", "earpiece", "none"). */
+    data class Local(val note: String, val silent: String, val telecomMicMute: Boolean)
+
+    /** Mutes / restores the phone's own earpiece and microphone for a bridged call (see [Silence]). */
+    fun localCallAudio(muted: Boolean, errors: org.json.JSONArray): Local {
         val v = if (muted) "1" else "0"
+        val mode = silence
         return try {
-            am.setParameters("l_voice_rx_control_mode=$v")
-            am.setParameters("l_voice_tx_control_mode=$v")
-            "rx=$v tx=$v"
+            when (mode) {
+                Silence.SAMSUNG -> {
+                    am.setParameters("l_voice_rx_control_mode=$v")
+                    am.setParameters("l_voice_tx_control_mode=$v")
+                    Local("rx=$v tx=$v", "full", mode.telecomMicMuteSafe)
+                }
+                Silence.MEDIATEK -> {
+                    am.setParameters("Set_SpeechCall_DL_Mute=$v")
+                    am.setParameters("Set_SpeechCall_UL_Mute=$v")
+                    Local("mediatek dl=$v ul=$v", "full", mode.telecomMicMuteSafe)
+                }
+                Silence.QUALCOMM, Silence.OTHER -> {
+                    // Unmute also when another helper process muted it (a crash mid-call): nobody else mutes this stream.
+                    if (muted || streamMuted || am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) muteVoiceStream(muted)
+                    Local("voice stream ${if (muted) "muted" else "restored"}",
+                        if (mode == Silence.QUALCOMM) "full" else "earpiece", mode.telecomMicMuteSafe)
+                }
+            }
         } catch (t: Throwable) {
-            errors.put("local mute ${describe(t)}"); "failed"
+            errors.put("local mute ${describe(t)}"); Local("failed", "none", true)
+        }
+    }
+
+    /** A helper that died mid-call would leave the phone silent for its next own call: always start clean. */
+    fun restoreLocalCallAudio() {
+        when (silence) {
+            Silence.SAMSUNG, Silence.MEDIATEK -> localCallAudio(muted = false, errors = org.json.JSONArray())
+            else -> runCatching {
+                if (am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) { streamMuted = true; muteVoiceStream(false) }
+            }
         }
     }
 }

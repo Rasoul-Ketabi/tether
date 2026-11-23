@@ -173,8 +173,10 @@ public struct HelperInfo: Codable, Equatable, Sendable {
     public var method: String?
     public var up: Bool
     public var down: Bool
-    public init(state: String, method: String? = nil, up: Bool = false, down: Bool = false) {
-        self.state = state; self.method = method; self.up = up; self.down = down
+    /// During a bridged call: how silent the Android phone itself is ("full", "earpiece", "none").
+    public var silent: String?
+    public init(state: String, method: String? = nil, up: Bool = false, down: Bool = false, silent: String? = nil) {
+        self.state = state; self.method = method; self.up = up; self.down = down; self.silent = silent
     }
 }
 

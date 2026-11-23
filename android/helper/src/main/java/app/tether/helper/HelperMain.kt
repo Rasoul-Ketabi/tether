@@ -20,7 +20,7 @@ import kotlin.system.exitProcess
  *   CLASSPATH=$(pm path app.tether.android | cut -d: -f2) app_process / app.tether.helper.HelperMain <cmd>
  *
  * Commands: `serve <port> <token>` (talks to the app over 127.0.0.1), `probe`, `selftest`,
- * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`.
+ * `record <method> <seconds> <file.pcm>`, `tone <method> <seconds>`, `silence [on|off]`.
  */
 object HelperMain {
     const val VERSION = 3   // 3: mutual challenge-response instead of a token on the wire
@@ -46,6 +46,10 @@ object HelperMain {
                         val k = kv.substringBefore('=')
                         println("$k -> '${ShellEnv.audioManager.getParameters(k)}'")
                     }
+                }
+                "silence" -> { // silence [on|off] : the phone's own call silencing (CallAudio.Silence) without a call, for testing
+                    println("silence mode: ${CallAudio.silence.name.lowercase()}")
+                    if (args.size >= 2) println(CallAudio.localCallAudio(args[1] == "on", JSONArray()))
                 }
                 "net" -> { // net [data|hotspot|bt on|off] : flip a network switch, then print the state
                     if (args.size >= 3 && args[1] == "datasub") println("data SIM ${args[2]}: ${Net.setDataSub(args[2].toInt()) ?: "ok"}")
@@ -111,7 +115,7 @@ object HelperMain {
             val ss = ServerSocket().apply { reuseAddress = true; bind(java.net.InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8) }
             ShellEnv.log("listening on 127.0.0.1:$port")
             // A helper that died mid-call would leave the phone muted for its next call: always start clean.
-            if (CallAudio.hasSamsungCallMute) CallAudio.localCallAudio(muted = false, errors = JSONArray())
+            CallAudio.restoreLocalCallAudio()
             // At most a few connections authenticating at once, each with one 2 s deadline for the whole exchange
             // (not per read). When all are taken the oldest is dropped, so a local app holding them open cannot lock
             // the real app out; it can only slow its connect a little.
@@ -252,9 +256,9 @@ object HelperMain {
             localMuted = true
             upQueue.clear()
             // The call is bridged to the iPhone: silence the Android phone's own earpiece and microphone where the
-            // phone has a way to (Samsung; see CallAudio.localCallAudio). The downlink is still captured and the
+            // phone has a way to (per vendor; see CallAudio.Silence). The downlink is still captured and the
             // injected uplink still goes out.
-            val earpiece = CallAudio.localCallAudio(muted = true, errors = errors)
+            val local = CallAudio.localCallAudio(muted = true, errors = errors)
             stats.reset()
             capture?.let { c ->
                 threads.add(Thread({
@@ -303,7 +307,8 @@ object HelperMain {
                 }, "up").apply { start() })
             }
             info(JSONObject().put("capture", capture?.name ?: JSONObject.NULL).put("inject", inject?.name ?: JSONObject.NULL)
-                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", earpiece).put("errors", errors)
+                .put("routed", inject?.routedTo() ?: JSONObject.NULL).put("earpiece", local.note).put("silent", local.silent)
+                .put("silence", CallAudio.silence.name.lowercase()).put("telecomMicMute", local.telecomMicMute).put("errors", errors)
                 .put("buffers", JSONObject().put("captureFrames", capture?.bufferFrames() ?: 0)
                     .put("injectFrames", inject?.bufferFrames() ?: 0).put("injectLatencyMs", inject?.latencyMs() ?: -1)))
         }
