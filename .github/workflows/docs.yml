@@ -15,9 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: macos-15
-    timeout-minutes: 40
+  # The Markdown site (GitHub's Jekyll action runs in a container, so on Linux) and the Kotlin reference.
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
@@ -28,15 +29,6 @@ jobs:
           destination: ./site
       - name: Make the site writable
         run: sudo chown -R "$(id -u)" site
-      - name: Swift API reference (DocC)
-        run: |
-          if [ ! -f Package.swift ] || ! grep -q swift-docc-plugin Package.swift; then
-            echo "::error::No root Package.swift with swift-docc-plugin; the Swift reference cannot be generated."
-            exit 1
-          fi
-          swift package --allow-writing-to-directory site/swift generate-documentation \
-            --target TetherCore --output-path site/swift \
-            --transform-for-static-hosting --hosting-base-path tether/swift
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -45,17 +37,48 @@ jobs:
       - name: Kotlin API reference (Dokka)
         working-directory: android
         run: |
-          if ! ./gradlew --console=plain -q :core:tasks --all | grep -q '^dokkaGenerate'; then
-            echo "::error::The :core:dokkaGenerate task is missing (Dokka not applied to android/core)."
-            exit 1
-          fi
-          ./gradlew --console=plain :core:dokkaGenerate
+          ./gradlew --console=plain -Ptether.libraryOnly=true :core:dokkaGenerate
           out=core/build/dokka/html
           if [ ! -d "$out" ]; then
             echo "::error::Dokka ran but $out does not exist."
             exit 1
           fi
           mkdir -p ../site/kotlin && cp -R "$out"/. ../site/kotlin/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: site
+          retention-days: 1
+
+  # The Swift reference needs DocC from Xcode's toolchain, so macOS.
+  swift-reference:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Swift API reference (DocC)
+        run: |
+          swift package --allow-writing-to-directory swift-docs generate-documentation \
+            --target TetherCore --output-path swift-docs \
+            --transform-for-static-hosting --hosting-base-path tether/swift
+      - uses: actions/upload-artifact@v7
+        with:
+          name: swift-reference
+          path: swift-docs
+          retention-days: 1
+
+  build:
+    needs: [site, swift-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: site
+      - uses: actions/download-artifact@v8
+        with:
+          name: swift-reference
+          path: site/swift
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
