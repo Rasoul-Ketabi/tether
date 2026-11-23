@@ -58,7 +58,7 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation(project(":helper"))
-    implementation(project(":core")) // protocol and codecs, shared with the Android client
+    implementation(project(":core")) { exclude(group = "org.json") } // protocol and codecs, shared with the Android client
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")

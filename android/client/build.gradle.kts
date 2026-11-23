@@ -53,7 +53,7 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
-    implementation(project(":core"))
+    implementation(project(":core")) { exclude(group = "org.json") }
     implementation("com.google.zxing:core:3.5.4")   // reading the pairing QR code
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
