@@ -53,6 +53,20 @@ class DebugReceiver : BroadcastReceiver() {
         }.start()
     }
 
+    /** x.tether.echo to every client that announced it: round trip, clock offset and transport per answer. */
+    private fun extEcho(app: TetherApp, data: String?): String {
+        val echo = app.hub.extensions.extensions.filterIsInstance<app.tether.core.ext.EchoExtension>().firstOrNull() ?: return "echo not registered"
+        val results = LinkedBlockingQueue<app.tether.core.ext.EchoExtension.Result>()
+        echo.onResult = { results.put(it) }
+        try {
+            val sent = app.hub.extensions.sessions(echo).count { echo.ping(it, data) != null }
+            val got = (1..sent).mapNotNull { results.poll(3, TimeUnit.SECONDS) }
+            return "sent $sent, answered ${got.size}" + got.joinToString("") { r ->
+                if (r.error != null) "; error ${r.error}" else "; rtt ${r.rttMs} ms, offset ${r.offsetMs} ms, via ${r.via}, ${r.bytes} bytes"
+            }
+        } finally { echo.onResult = null }
+    }
+
     private fun run(app: TetherApp, cmd: String, intent: Intent): String = when (cmd) {
         "state" -> (LinkService.running?.debugState() ?: JSONObject().put("service", false))
             .put("status", app.hub.statusJson().also { st ->
@@ -188,6 +202,9 @@ class DebugReceiver : BroadcastReceiver() {
         "airplane" -> app.hub.helper.ensureRunning()?.let { "helper: $it" } ?: app.hub.setAirplane(intent.getStringExtra("on") == "on").toString()
         // linklog [n]: the persistent Bluetooth link event log
         "linklog" -> LinkLog.tail(intent.getStringExtra("n")?.toIntOrNull() ?: 120)
+        // Extensions (protocol §7): what is registered, what each client announced, counters; no message contents.
+        "ext" -> app.hub.extensions.debug().toString()
+        "ext_echo" -> extEcho(app, intent.getStringExtra("data"))
         // net datasub <subId>: choose the SIM that carries mobile data
         "net_datasub" -> app.hub.helper.ensureRunning()?.let { "helper: $it" }
             ?: app.hub.helper.net("dataSub", true, intent.getStringExtra("sub")?.toIntOrNull()).toString()

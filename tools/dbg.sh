@@ -12,6 +12,7 @@
 #   tools/dbg.sh test_sms +10000000001 "text" | test_sms_delete <id|thread:N> | test_call +10000000001 | test_call_delete <id>
 #   tools/dbg.sh block +10000000001 on|off | mute <thread> on|off | lists      (test numbers +1000000000x only)
 #   tools/dbg.sh ussd_test '*123#' (dry: validates and logs, never sends) | phone_find on|off (rings the A54!) | ringer (state only)
+#   tools/dbg.sh ext (extensions, what each client announced, counters) | ext_echo [data] (x.tether.echo round trip)
 . "$(dirname -- "$0")/lib.sh"; pick_android
 cmd=${1:-state}; shift 2>/dev/null || true
 extra=""
@@ -36,6 +37,7 @@ case "$cmd" in
   inject_ms) extra="--es ms ${1:-off}";;
   forget_kind) extra="--es kind $1";;
   linklog) extra="--es n ${1:-120}";;
+  ext_echo) [ -n "$1" ] && extra="--es data '$1'";;
   airplane) extra="--es on ${1:-on}";;
   test_contact) extra="--es num $1";;
   star) extra="--es id $1 --es on ${2:-on}";;

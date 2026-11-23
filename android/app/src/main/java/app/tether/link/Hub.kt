@@ -12,8 +12,12 @@ import app.tether.audio.PcmuCodec
 import app.tether.audio.VoiceCodec
 import app.tether.core.AudioFrame
 import app.tether.core.CallInfo
+import app.tether.core.Ext
 import app.tether.core.Message
 import app.tether.core.T
+import app.tether.core.ext.ExtensionLink
+import app.tether.core.ext.ExtensionRegistry
+import app.tether.ext.phoneExtensions
 import app.tether.core.idRanges
 import app.tether.core.paginate
 import app.tether.data.ContactsRepo
@@ -77,6 +81,29 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         try { block() } catch (t: Throwable) { Log.e(TAG, "hub task failed", t) }
     }
 
+    /** Extensions (protocol §7, docs/EXTENDING.md): their handlers run on their own thread, never on a link's reader. */
+    private val extThread = Executors.newSingleThreadExecutor { r -> Thread(r, "ext") }
+    val extensions = ExtensionRegistry(log = { Log.i(TAG, "ext: $it") }, clock = SystemClock::elapsedRealtime,
+        dispatch = { extThread.execute(it) }, onStatusChanged = { bg { pushStatus() } }).apply {
+        for (e in phoneExtensions(app)) runCatching { register(e) }.onFailure { Log.e(TAG, "extension not registered", it) }
+    }
+    private val extLinks = ConcurrentHashMap<Connection, ExtensionLink>()
+
+    /** A connection as the extensions see it. Unsolicited extension messages follow the broadcast rules (test isolation). */
+    private fun ext(c: Connection): ExtensionLink = extLinks.getOrPut(c) {
+        object : ExtensionLink {
+            override val peerName get() = c.name
+            override val peerKind get() = c.kind
+            override val transport get() = c.transport.label
+            override val inCall get() = audio.running && audio.target === c
+            override val dry get() = dry(c)
+            override fun send(m: Message): Boolean {
+                if (!c.isUp || (m.re == null && c !in targets())) return false
+                c.send(m); return true
+            }
+        }.also { extensions.linkUp(it) }
+    }
+
     fun addListener(l: () -> Unit) = listeners.add(l)
     fun removeListener(l: () -> Unit) = listeners.remove(l)
     fun refresh() = listeners.forEach { runCatching { it() } }
@@ -86,6 +113,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     /** Once per process: a recreated LinkService must not add a second set of listeners and timers. */
     fun startBackground() {
         if (!started.compareAndSet(false, true)) return
+        extensions.start()
         helper.listen()
         helper.onChange = { refresh(); bg { pushStatus() } }
         // Airplane mode switched on from a client before a restart: keep the fail-safe running.
@@ -166,6 +194,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
         // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
         if (newlyPaired) kindPending.add(c) else holdLeFor(c)
+        ext(c)
         LinkService.running?.peripheral?.tune(c.transport.address, high = audio.target === c || audio.owner === c)
         audioCtl.execute { audio.reconcile() }
         bg { pushStatus() }
@@ -188,6 +217,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
     override fun onClosed(c: Connection) {
         kindPending.remove(c)
+        extLinks.remove(c)?.let(extensions::linkDown)
         lastClientSeen = SystemClock.elapsedRealtime()
         if (conns.remove(c)) {
             if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
@@ -236,6 +266,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     refresh()
                 }
                 if (kindPending.remove(c) && c.isUp) holdLeFor(c)
+                extensions.peerCaps(ext(c), m.b.optJSONArray(Ext.CAPS))   // absent (older clients): no extensions
                 bg { sync(c, m.b.optLong("sms"), m.b.optLong("calls"), m.b.optString("contacts")) }
             }
             T.SMS_SEND -> bg { sendSms(c, m) }
@@ -342,7 +373,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 c.close("unpaired by ${c.name}")
                 refresh()
             }
-            else -> Log.d(TAG, "ignored message ${m.t}")
+            // Extension types (x.…) and errors answering an extension's request; everything else stays ignored.
+            else -> if (!extensions.route(ext(c), m)) Log.d(TAG, "ignored message ${m.t}")
         }
     }
 
@@ -579,6 +611,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     fun statusJson(): JSONObject = app.sims.status(helper.state())
         .put("tools", JSONObject().put("ussd", true).put("find", true).put("ringer", true))
         .put("ringer", ringer.mode()).put("dnd", ringer.dndAccess())
+        .put(Ext.CAPS, extensions.capsJson())
 
     /** Status plus the list of connected clients (each client sees which one is itself). */
     /** Synchronized: callers on other threads (battery, data SIM) must not send a stale status after a newer one. */
@@ -590,6 +623,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val clients = JSONArray(live.map { o -> JSONObject().put("name", o.name).put("kind", o.kind)
                 .put("self", o === c).put("audio", o === audio.target) })
             val body = JSONObject(base).put("clients", clients)
+            extensions.statusFor(ext(c))?.let { body.put(Ext.STATUS, it) }
             // Only when something changed: every status wakes the iPhone app and makes it save.
             val key = body.toString()
             if (lastStatusSent[c] == key) continue
