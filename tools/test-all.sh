@@ -35,7 +35,7 @@ step() {   # step <name> <command...>: runs it, keeps going on failure, prints t
 }
 
 step "whitespace (git diff --check)" git diff --check HEAD
-step "script syntax" sh -c 'sh -n tools/dbg.sh && sh -n tools/lib.sh && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/check-private.sh'
+step "script syntax" sh -c 'sh -n tools/dbg.sh && sh -n tools/lib.sh && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/check-private.sh && zsh -n tools/release.sh'
 step "privacy scan (tracked changes)" tools/check-private.sh
 
 gradle_tasks=(:core:testDebugUnitTest :app:testDebugUnitTest :helper:testDebugUnitTest :client:testDebugUnitTest)

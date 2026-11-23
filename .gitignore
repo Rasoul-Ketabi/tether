@@ -16,6 +16,7 @@ ios/build-check/
 ios/build-sim/
 ios/build-gen/
 ios/build-test/
+ios/build-release/
 __pycache__/
 ios/build-sim-ent/
 
