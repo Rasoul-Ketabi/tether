@@ -33,6 +33,8 @@ and call history. The SIM phone stays in a bag; you use the other phone.
   and gain control) → Opus (Concentus, the codec code shared with the SIM phone) → link; link → Opus → the playout
   buffer ported from TetherCore (same numbers, same tests) → `AudioTrack` (voice communication). A local ringback
   plays while dialing until the far end is audible. Call statistics go to the Link log at the end of each call.
+  The playout matches the iPhone's tuning of 2026-11-23: arrivals stamped off the link, depth from the arrival
+  spread around the far clock's drift (first 2 s left out), frames dropped for lateness filled by Opus concealment.
 - **Keypad** with DTMF during calls; **Recents** (search, delete, clear, missed-call badge); **Contacts** with
   Favourites (search, add, edit, star, block); **Messages** (conversations, send from either SIM, outbox while out of
   reach, "Not delivered" for a text whose answer was lost, read state both ways, delete, mute, block).

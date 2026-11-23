@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android client: the iPhone's playout tuning ported (arrival-spread depth around a drift line, first 2 s left out,
+  quiet-frame fill for a slow far clock, concealment of frames dropped for lateness, arrivals stamped off the link,
+  the same call statistics); its trace tests give the same numbers as TetherCore's.
 - Call audio, uplink (the iPhone's voice to the far end): no voice frames are thrown away any more. The Android
   phone's helper kept 8 frames and dropped the oldest when full, plus a frame whenever 2 stayed queued for a second:
   5-7 % of the iPhone's voice was lost on real-iPhone test calls (42-54 dropped and 13-17 trimmed of ~975 frames). It
