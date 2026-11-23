@@ -71,35 +71,48 @@ card in the Android app says which case you are in.
 ## The other side cannot hear me
 
 You hear the other side, but they hear nothing (or only the Android phone's surroundings) of what you say on the
-iPhone. The iPhone's voice is injected into the call's uplink by the Android phone; three things can stop it:
+iPhone. The iPhone's voice is injected into the call's uplink by the Android phone. Things that can stop it:
 
-- **The Android phone's microphone mute.** On several phones (MediaTek for certain, Qualcomm audio systems, possibly
-  Samsung's own key) muting the phone's microphone also mutes the injected voice. Tether therefore leaves the
-  microphone on by default. If you turned **Mute this phone's microphone during bridged calls** on (Android app ›
-  Call audio, or the switch in the iPhone's Link tab), Tether checks during each call whether your speech reaches
-  the uplink, turns the mute off when it does not, and remembers that for the phone model (**Your voice in the
-  call** then says it was fixed). Some phones cannot show their uplink to this check ("Not checked"): there, keep
-  the switch off.
 - **The injection did not open.** Some phones refuse it, or refuse it until the call is fully connected.
+- **The redirect audio mode on a phone that mishandles it.** By default (**This phone's microphone during bridged
+  calls: Off during calls**, Android app › Call audio, or the picker in the iPhone's Link tab) Tether puts the call in
+  Android's redirect audio mode (Android 13+), in which the phone's own microphone and earpiece leave the call. Tether
+  checks every call: when the downlink goes silent in that mode, or your speech stops reaching the uplink, it gives
+  the call its own mode back and remembers that for the phone model; the next calls try the next mode or keep the
+  microphone on. Some phones cannot show their uplink to this check: there Tether keeps the mode once nothing else went
+  wrong.
+- **The Android phone's microphone mute** (only with **Muted**). On several phones (MediaTek for certain, Qualcomm
+  audio systems, possibly Samsung's own key) muting the phone's microphone also mutes the injected voice. Tether
+  checks during each call, turns the mute off when your voice does not get through and remembers it.
 - **The iPhone sends silence**: Tether may not use the iPhone's microphone (Settings › Privacy & Security ›
   Microphone; the Link tab warns in red), or the call is muted on the iPhone.
 
+With **On** the Android phone's own microphone stays in the call: the other side may hear your voice twice (the
+phone in the room hears you too), the bag's noise, and their own voice from the iPhone's speaker. **Off during
+calls** avoids that where the phone allows it.
+
 What to do:
 
-1. Make sure **Mute this phone's microphone during bridged calls** is **off** (the default) and call again.
+1. Make sure the setting is **Off during calls** (the default) and call again. If the other side still hears
+   nothing, try **On**: if that helps, please report it (step 4).
 2. During a call, on the iPhone: **Link › Call audio › Run call-audio self-test** (or the same button in the Android
-   app). It pauses the call audio for a few seconds, plays a tone through each inject method and listens for it in
-   the call's uplink. Its first row, `call-audio`, says how your call ran until then: the inject and capture methods
-   (`NONE` when the injection did not open) and whether the phone's microphone was muted. A last row
-   `inject:<method>, phone mic muted` repeats the working method with the microphone muted; Tether remembers its
-   answer for the phone model.
+   app). It pauses the call audio for a few seconds and plays tones the other side may hear. Its rows:
+   - `call-audio`: how your call ran until then: the inject and capture methods (`NONE` when the injection did not
+     open) and what the phone's microphone did (out of the call in which mode, muted, or on).
+   - `inject:<method>`: a tone through each inject method, listened for in the call's uplink.
+   - `mic:call_redirect` (and `mic:call_screening` where the phone declares it): the phone's microphone level, the
+     tone and the downlink without and with that mode, and a verdict: `ok` (the microphone left the call, or the tone
+     still gets through), `no-effect` (the microphone stays in the call), `breaks-uplink` / `breaks-downlink` (a
+     direction went silent), `refused`, `unverified` (this phone shows neither). Tether remembers it for the model.
+   - `inject:<method>, phone mic muted`: the working method once more with the microphone muted.
 3. Open **Link › Link log** on the iPhone (or `tools/dbg.sh linklog` on the Android phone). Each call writes a line
-   starting `call audio path:` (whether the uplink injection opened, with which method, which mute was on), `uplink
-   check …` lines when the check acted, and a `call audio:` summary at the end with the uplink figures (`uplink
-   speech N frames`: 0 means the iPhone sent only silence).
+   starting `call audio path:` (whether the uplink injection opened, with which method, what the microphone does),
+   `call audio: call_redirect on` / `reverted` lines when the mode changed (with the reason), `uplink check …` lines,
+   `remembered for this phone …` when a result was stored, and a `call audio:` summary at the end with the uplink
+   figures (`uplink speech N frames`: 0 means the iPhone sent only silence).
 4. Report it (GitHub issue) with: the Android phone's model and Android version, the iPhone model and iOS version,
-   whether the mute switch was on, every self-test row (name, ✓ / ✗ and its note), and the `call audio path:`,
-   `uplink check` and `call audio:` lines of one failed call. Leave out phone numbers.
+   the microphone setting, every self-test row (name, ✓ / ✗ and its note), and the `call audio path:`,
+   `call audio: …` and `uplink check` lines of one failed call. Leave out phone numbers.
 
 ## The audio helper does not start
 
