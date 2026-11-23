@@ -1,0 +1,111 @@
+name: Publish Wireless ADB overlay test build
+
+on:
+  push:
+    branches:
+      - fix/wireless-adb-pairing-overlay
+    paths:
+      - .github/workflows/publish-adb-overlay-test.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish tested overlay binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN_ID: "45142071396"
+      SOURCE_SHA: "13a973010dfb8b8b326020c520ae7a308b0d4121"
+      RELEASE_TAG: "adb-overlay-test-45142071396"
+
+    steps:
+      - name: Verify exact successful CI run and commit
+        env:
+          GH_TOKEN: GITHUB_TOKEN_PLACEHOLDER
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.conclusion')" = "success"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.head_sha')" = "$SOURCE_SHA"
+
+      - name: Download the tested Android and iOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45142071396
+          github-token: GITHUB_TOKEN_PLACEHOLDER
+          path: downloaded
+
+      - name: Prepare assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          copy_exact() {
+            local source_dir="$1" file_name="$2" dest="$3"
+            local count source
+            count="$(find "$source_dir" -type f -name "$file_name" | wc -l)"
+            test "$count" -eq 1
+            source="$(find "$source_dir" -type f -name "$file_name" -print -quit)"
+            cp -- "$source" "release-assets/$dest"
+            test -s "release-assets/$dest"
+          }
+          copy_exact downloaded/tether-android-apks app-debug.apk Tether-Android-ADB-Overlay-Debug.apk
+          copy_exact downloaded/tether-android-apks app-release.apk Tether-Android-ADB-Overlay-Release-Temporary-Signing.apk
+          copy_exact downloaded/tether-ios-unsigned Tether-UNSIGNED-NOT-INSTALLABLE.ipa Tether-iOS-UNSIGNED-NOT-INSTALLABLE.ipa
+          (cd release-assets && sha256sum *.apk *.ipa > SHA256SUMS.txt)
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Wireless Debugging floating pairing code entry — test build
+
+          Built and unit-tested by [GitHub Actions run 45142071396](https://github.com/Rasoul-Ketabi/tether/actions/runs/45142071396), source SHA `13a973010dfb8b8b326020c520ae7a308b0d4121`.
+
+          ### Android
+          - Optional draggable six-digit code card shown over Developer options after explicit **Display over other apps** permission.
+          - Notification inline reply remains available when permission is denied or Android hides overlays over protected Settings.
+          - Exactly six digits accepted (including Persian / Arabic-Indic numerals).
+          - A rejected ADB pairing code no longer marks setup as successful.
+          - The card closes on successful pairing, manual dismissal, or five-minute timeout.
+
+          Download **Tether-Android-ADB-Overlay-Debug.apk** for initial device testing.
+
+          **Important:** The APKs were signed with GitHub runner's temporary debug signing key.
+          They **cannot reliably update** an installed APK signed by a different CI runner.
+          If Android says App not installed due to mismatched signatures, back up needed
+          app data and uninstall the previous Tether APK before installing this one.
+          Uninstalling deletes internal app data and pairing state. A persistent signing
+          key has NOT yet been configured.
+
+          ### iOS
+          iOS app logic is unchanged. The included IPA is **unsigned and not directly installable**.
+          Existing iOS app versions may be used with the updated Android app, since the
+          Bluetooth pairing protocol was not modified.
+
+          ### Safety and verification
+          This is a **prerelease for controlled testing**, not a production-security-certified build.
+          CI passed Android unit tests and APK compilation, and iOS Swift tests and compilation.
+          Overlay visibility, real ADB pairing, and live call audio still require physical-device tests.
+          Some protected Android Settings screens can intentionally hide third-party overlay windows.
+          Keep Share VPN disabled on initial devices due to previously identified proxy risks.
+          EOF
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Refusing to overwrite an existing release" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" release-assets/*.apk release-assets/*.ipa release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "Tether — Wireless ADB overlay (Test build)" \
+            --notes-file release-notes.md \
+            --prerelease
