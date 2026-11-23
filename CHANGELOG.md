@@ -16,6 +16,14 @@
   one), cap sizes (16 KiB, 2 KiB during a call) and rates (20/s), answer an unknown extension request with
   `error {t, code}` and switch off an extension that keeps failing. Built in on every side: `x.tether.echo` (round
   trip, clock offset, transport); `tools/dbg.sh ext` / `ext_echo`, and a Developer row in Debug iPhone builds.
+- Swift SDK: TetherCore can be added to any package with `.package(url: "https://github.com/amirwmr/tether",
+  from: "1.1.0")` (root `Package.swift`). Everything except the Bluetooth client builds and passes its tests on
+  Linux (swift-crypto in place of CryptoKit, a portable lock, a regular-expression fallback where NSDataDetector does
+  not exist); the package builds for iOS, macOS, tvOS, watchOS and visionOS. DocC documentation with four articles,
+  public initialisers for every message body, `TetherPrivateKey`, `SyncBody.codecs` / `client`, and two examples:
+  `examples/swift/Loopback` (a whole session in memory, macOS and Linux) and `examples/swift/MacCentral` (a Mac
+  Bluetooth client). See docs/SDK-swift.md. The iPhone app's behaviour is unchanged.
+
 - Wireless debugging pairing from the notification no longer closes the app (#1): the work runs in a short foreground
   service instead of the notification's broadcast, a wrong or expired code is reported instead of being taken as
   success, and each failure (no Wi-Fi, pairing window closed, wrong code, connected later) says what to do, in English
