@@ -9,7 +9,11 @@ protocol VoiceCoder: AnyObject {
     var rate: Double { get }
     func encode(_ pcm: [Int16]) -> Data?
     func decode(_ data: Data) -> [Int16]
+    /// The codec's own concealment for one lost 20 ms frame (nil: none).
+    func conceal() -> [Int16]?
 }
+
+extension VoiceCoder { func conceal() -> [Int16]? { nil } }
 
 final class PcmuCoder: VoiceCoder {
     let id = AudioFrame.Codec.pcmu
@@ -26,6 +30,9 @@ final class OpusCoder: VoiceCoder {
     private let opusFormat: AVAudioFormat
     private let encoder: AVAudioConverter
     private let decoder: AVAudioConverter
+    /// libopus decoder when available: the same packets, plus packet-loss concealment that continues the voice
+    /// (AudioToolbox has none). AudioToolbox decodes only if libopus cannot start.
+    private let lib: LibOpusDecoder?
 
     init?(rate: Double = 16000, bitrate: Int = 32000) {
         self.rate = rate
@@ -38,6 +45,7 @@ final class OpusCoder: VoiceCoder {
               let dec = AVAudioConverter(from: opus, to: pcm) else { return nil }
         enc.bitRate = bitrate
         pcmFormat = pcm; opusFormat = opus; encoder = enc; decoder = dec
+        lib = LibOpusDecoder(rate: Int(rate))
     }
 
     func encode(_ pcm: [Int16]) -> Data? {
@@ -59,6 +67,7 @@ final class OpusCoder: VoiceCoder {
 
     func decode(_ data: Data) -> [Int16] {
         guard !data.isEmpty else { return [] }
+        if let lib { return lib.decode(data) }
         let cb = AVAudioCompressedBuffer(format: opusFormat, packetCapacity: 1, maximumPacketSize: max(1, data.count))
         data.withUnsafeBytes { cb.data.copyMemory(from: $0.baseAddress!, byteCount: data.count) }
         cb.packetDescriptions?[0] = AudioStreamPacketDescription(mStartOffset: 0, mVariableFramesInPacket: 0,
@@ -76,6 +85,10 @@ final class OpusCoder: VoiceCoder {
         }
         return Array(UnsafeBufferPointer(start: out.int16ChannelData![0], count: Int(out.frameLength)))
     }
+}
+
+extension OpusCoder {
+    func conceal() -> [Int16]? { lib.map { $0.conceal(samples: Int(rate / 50)) }.flatMap { $0.isEmpty ? nil : $0 } }
 }
 
 /// Two-way call audio. The engine starts when CallKit activates the audio session:
@@ -370,6 +383,7 @@ final class CallAudio: @unchecked Sendable {
         let rtt = link.lastRoundTripMs.map { "\($0) ms" } ?? "-"
         // Call statistics in the Link log: what a real call measured on this iPhone.
         let spreadMs = Double(playout.jitterFloor) / playRate * 1000
+        if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
         LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout target %.0f ms (arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, io %.1f ms, out latency %.1f ms",
                                       rtt, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, snapshot.ioBufferMs, snapshot.outputLatencyMs))
@@ -405,8 +419,14 @@ final class CallAudio: @unchecked Sendable {
                 NSLog("[audio] far end audible: local ringback off")
             }
         }
+        // Frames the Android phone dropped for lateness: the decoder's concealment takes their place (up to two, as the
+        // Android phone does for the uplink), which also lets the decoder continue smoothly into this frame.
+        var filled = 0
+        if missing > 0 && missing <= 2 {
+            for _ in 0..<missing { if let plc = coder.conceal() { playout.push(plc, at: now, concealed: true); filled += 1 } }
+        }
         // Arrival time and lost frames feed the playout's jitter statistics (its target follows the arrival spread).
-        playout.push(pcm, at: now, missing: missing)
+        playout.push(pcm, at: now, missing: missing - filled)
     }
 
     private func drainCapture() {

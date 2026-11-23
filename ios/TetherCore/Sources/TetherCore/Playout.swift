@@ -90,11 +90,14 @@ public final class PlayoutBuffer: @unchecked Sendable {
     /// The target the arrival statistics ask for (samples); `target` never shrinks below it and jumps up to it.
     /// Written on the audio queue, read for statistics.
     public private(set) var jitterFloor: Int
+    /// Lost frames filled in by the decoder's concealment (pushed with `concealed`).
+    public private(set) var concealedFrames = 0
 
     /// Audio queue (not real-time): converts outside any lock the render thread uses. `at`: when the frame arrived
     /// (uptime ns); `missing`: frames lost just before this one (they never come, so they do not count as late).
-    public func push(_ pcm: [Int16], at: UInt64 = DispatchTime.now().uptimeNanoseconds, missing: Int = 0) {
-        noteArrival(samples: pcm.count, missing: missing, at: at)
+    /// `concealed`: decoder concealment standing in for a lost frame (fills its place, is no arrival).
+    public func push(_ pcm: [Int16], at: UInt64 = DispatchTime.now().uptimeNanoseconds, missing: Int = 0, concealed: Bool = false) {
+        if concealed { expectedSamples += pcm.count; concealedFrames += 1 } else { noteArrival(samples: pcm.count, missing: missing, at: at) }
         let f = pcm.map { Float($0) / 32768 }
         let energy = f.reduce(Float(0)) { $0 + $1 * $1 } / Float(max(1, f.count))
         os_unfair_lock_lock(&lock)

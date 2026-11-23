@@ -79,3 +79,22 @@ final class PlayoutTests: XCTestCase {
         XCTAssertLessThan(b.target, deep, "and it shrinks back once arrival is smooth")
     }
 }
+
+final class PlayoutConcealedFrameTests: XCTestCase {
+    /// A lost frame filled by the decoder's concealment takes its place on the timeline: the frames after it are
+    /// not taken for late ones (the arrival spread stays at the minimum).
+    func testConcealedFramesKeepTheTimeline() {
+        let b = PlayoutBuffer(rate: 16000)
+        let frame = [Int16](repeating: 1000, count: 320)
+        var t: UInt64 = 1_000_000_000
+        var out = [Float](repeating: 0, count: 320)
+        for k in 0..<200 {
+            if k % 10 == 5 { b.push(frame, at: t, concealed: true) }      // frame k was lost: concealment instead
+            else { b.push(frame, at: t) }
+            out.withUnsafeMutableBufferPointer { _ = b.pull(into: $0.baseAddress!, count: 320) }
+            t += 20_000_000
+        }
+        XCTAssertEqual(b.concealedFrames, 20)
+        XCTAssertEqual(b.jitterFloor, b.minTarget)
+    }
+}
