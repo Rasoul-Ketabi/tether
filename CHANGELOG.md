@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Tests for future changes: protocol fixtures read by both implementations (old and newer app variants), an iPhone
+  app test target (saved-data format, message handling, links), security and framing edge cases, the A54's safety
+  guards and helper login, the Android client's synced state and call rules; about 380 automatic tests in all.
+  `tools/test-all.sh` runs every check, `tools/check-private.sh` scans changes for private values,
+  `tools/device-test.sh` runs the test-line checks on the phone, and CI runs on every push. See docs/TESTING.md.
+- Fixed by those tests: a damaged iPhone data file is now kept aside instead of being overwritten; the Android
+  client no longer deletes all local texts or calls on a malformed `sync.ids` page; a `tel:` link holding only an
+  extension no longer dials the extension; the debug hooks no longer accept `+10000000000`.
 - Android client: the iPhone's playout tuning ported (arrival-spread depth around a drift line, first 2 s left out,
   quiet-frame fill for a slow far clock, concealment of frames dropped for lateness, arrivals stamped off the link,
   the same call statistics); its trace tests give the same numbers as TetherCore's.
