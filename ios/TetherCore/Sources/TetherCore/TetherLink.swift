@@ -280,8 +280,9 @@ public final class TetherLink: NSObject {
     /// next wake-up). After repeated failures a short timer adds a pause before the next attempt.
     private func reconnectSoon() {
         let now = Date()
-        failures = failures.filter { now.timeIntervalSince($0) < 60 } + [now]
-        if failures.count <= 3 {
+        let step = ReconnectPolicy.next(failures: failures, now: now)
+        failures = step.failures
+        if case .atOnce = step.action {
             if let id = store.peripheralID, central.state == .poweredOn, isPaired,
                let p = central.retrievePeripherals(withIdentifiers: [id]).first {
                 log("reconnecting at once")
@@ -292,7 +293,7 @@ public final class TetherLink: NSObject {
             // Backing off: no pending connect, but a scan, which iOS keeps running while we are suspended and
             // which wakes us when the Android phone advertises (a timer alone would not run until the app is opened).
             if central.state == .poweredOn, isPaired { central.scanForPeripherals(withServices: [TetherUUID.service], options: nil) }
-            scheduleRetry(after: Double(min(30, 2 * failures.count)))
+            if case .backOff(let seconds) = step.action { scheduleRetry(after: seconds) }
         }
     }
 
@@ -662,4 +663,15 @@ final class RequestIds: @unchecked Sendable {
     private var lock = os_unfair_lock()
     private var last = 1
     func next() -> Int { os_unfair_lock_lock(&lock); defer { os_unfair_lock_unlock(&lock) }; last += 1; return last }
+}
+
+/// When to try the link again after a failure (pure, for tests): the failures of the last minute decide. Up to three
+/// reconnect at once (a pending connect, plus a scan after 1 s); more back off 2 s per failure, at most 30 s.
+enum ReconnectPolicy {
+    enum Action: Equatable { case atOnce, backOff(Double) }
+    static let window: TimeInterval = 60
+    static func next(failures: [Date], now: Date) -> (failures: [Date], action: Action) {
+        let recent = failures.filter { now.timeIntervalSince($0) < window } + [now]
+        return (recent, recent.count <= 3 ? .atOnce : .backOff(Double(min(30, 2 * recent.count))))
+    }
 }
