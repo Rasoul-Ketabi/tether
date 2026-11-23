@@ -407,6 +407,13 @@ final class CallAudio: @unchecked Sendable {
         }
         lastArrival = now
         stats.frames += 1
+        // Frames the Android phone dropped for lateness: the decoder's concealment takes their place (up to two, as the
+        // Android phone does for the uplink). It must run before this frame is decoded: concealment continues from the
+        // last decoded frame, and the decoder then moves smoothly into this one.
+        var filled = 0
+        if missing > 0 && missing <= 2 {
+            for _ in 0..<missing { if let plc = coder.conceal() { playout.push(plc, at: now, concealed: true); filled += 1 } }
+        }
         let pcm = coder.decode(f.payload)
         if Self.echoTest, let back = coder.encode(pcm) {
             link.sendAudio(AudioFrame(codec: coder.id, seq: f.seq, payload: back))
@@ -418,12 +425,6 @@ final class CallAudio: @unchecked Sendable {
                 flags { heardRemote = true; _ringback = false }
                 NSLog("[audio] far end audible: local ringback off")
             }
-        }
-        // Frames the Android phone dropped for lateness: the decoder's concealment takes their place (up to two, as the
-        // Android phone does for the uplink), which also lets the decoder continue smoothly into this frame.
-        var filled = 0
-        if missing > 0 && missing <= 2 {
-            for _ in 0..<missing { if let plc = coder.conceal() { playout.push(plc, at: now, concealed: true); filled += 1 } }
         }
         // Arrival time and lost frames feed the playout's jitter statistics (its target follows the arrival spread).
         playout.push(pcm, at: now, missing: missing - filled)
