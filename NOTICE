@@ -15,7 +15,11 @@ Gradle at build time and included in the APK you build:
 | Kotlin standard library, AndroidX annotations | | Apache-2.0 | |
 | Gradle wrapper | | Apache-2.0 | Build |
 
-The iOS app uses only Apple's frameworks.
+The iPhone app uses Apple's frameworks and one vendored C library:
+
+| Library | Version | Licence | Used for |
+| --- | --- | --- | --- |
+| libopus (`ios/TetherCore/Sources/COpus`, unmodified sources, floating point, no assembly; licence in `COPYING` there) | 1.5.2 | BSD 3-Clause | Opus decoding with packet-loss concealment and encoding on the iPhone |
 
 LGPL note: spake2-android is used as an unmodified library. If you distribute an APK built from this project, the
 LGPL-3.0 applies to that component: provide its source (https://github.com/MuntashirAkon/spake2-java) and allow it

@@ -37,6 +37,13 @@
 - **Ownership**: the Android phone is the source of truth for texts, contacts, calls, read state, blocks and
   favourites. The iPhone keeps a snapshot for instant start and offline viewing.
 
+## libopus on the iPhone
+
+`ios/TetherCore/Sources/COpus` vendors libopus 1.5.2 (floating point, no assembly or intrinsics; `config/config.h` is
+ours, `include/copus_shim.h` wraps the variadic `opus_*_ctl` calls for Swift). `LibOpusDecoder` / `LibOpusEncoder`
+(`TetherCore/LibOpus.swift`) expose mono 16-bit decode with packet-loss concealment (`opus_decode` without data) and
+VOIP encode. The tests round-trip a tone and decode both ways against AudioToolbox's `kAudioFormatOpus`.
+
 ## Transports
 
 The primary transport is one L2CAP channel (LE credit-based). If it cannot be opened (for example when iOS reaches
