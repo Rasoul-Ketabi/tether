@@ -288,4 +288,3 @@ public final class PlayoutBuffer: @unchecked Sendable {
 
     public func reset() { ring.clear(); os_unfair_lock_lock(&lock); primed = false; concealRun = 0; os_unfair_lock_unlock(&lock); firstArrival = 0 }
 }
-

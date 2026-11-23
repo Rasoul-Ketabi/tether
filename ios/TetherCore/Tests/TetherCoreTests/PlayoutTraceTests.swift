@@ -38,9 +38,21 @@ final class PlayoutTraceTests: XCTestCase {
 
     static let frames = 3000   // 60 s
 
-    static func steady() -> [Double] { (0..<frames).map { Double($0) * 20 + Double(($0 * 7) % 3) * 0.3 } }
+    static func steady() -> [Double] {
+        // Split up: older compilers (CI) cannot type-check the one-line form in time.
+        (0..<frames).map { (i: Int) -> Double in
+            let base: Double = Double(i) * 20
+            let wobble: Double = Double((i * 7) % 3) * 0.3
+            return base + wobble
+        }
+    }
     /// Frames produced every 20 ms, delivered at the next 15 ms connection event.
-    static func ble15() -> [Double] { (0..<frames).map { (ceil((Double($0) * 20 + 0.5) / 15) * 15) } }
+    static func ble15() -> [Double] {
+        (0..<frames).map { (i: Int) -> Double in
+            let produced: Double = Double(i) * 20 + 0.5
+            return ceil(produced / 15) * 15
+        }
+    }
     /// 15 ms events, and every 2 s a 70 ms hold-up (the frames in it come together at its end).
     static func ble15Holdups() -> [Double] {
         ble15().enumerated().map { k, a in
@@ -58,7 +70,12 @@ final class PlayoutTraceTests: XCTestCase {
         }
     }
     /// The phone's clock 0.1 % fast against ours, 15 ms events.
-    static func drift() -> [Double] { (0..<frames).map { ceil((Double($0) * 19.98 + 0.5) / 15) * 15 } }
+    static func drift() -> [Double] {
+        (0..<frames).map { (i: Int) -> Double in
+            let produced: Double = Double(i) * 19.98 + 0.5
+            return ceil(produced / 15) * 15
+        }
+    }
 
     /// 15 ms events with one 300 ms hold-up half-way (a freak spike).
     static func spike() -> [Double] { ble15().map { a in a >= 30_000 && a < 30_300 ? 30_300 : a } }
