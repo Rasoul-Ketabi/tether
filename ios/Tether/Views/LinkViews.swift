@@ -252,9 +252,6 @@ struct LinkView: View {
     }
 }
 
-/// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
-#if DEBUG
-/// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
 /// First run (not paired): what to install on the Android phone, how to show and scan the code, and which
 /// permissions the iPhone will ask for and why.
 struct SetupGuideSection: View {
@@ -283,6 +280,8 @@ struct SetupGuideSection: View {
     }
 }
 
+#if DEBUG
+/// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
 struct DeveloperSection: View {
     @Environment(\.appModel) private var model
     var body: some View { WithPerceptionTracking { bodyContent } }
@@ -302,6 +301,7 @@ struct DeveloperSection: View {
 }
 #endif
 
+/// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
 struct VPNSection: View {
     @Environment(\.appModel) private var model
 

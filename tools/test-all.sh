@@ -53,8 +53,9 @@ fi
 if (( ios )) && [[ $(uname) == Darwin ]] && command -v xcodebuild >/dev/null; then
   if command -v xcodegen >/dev/null; then
     step "iOS project (xcodegen)" sh -c 'cd ios && xcodegen generate --quiet'
-    step "iOS app build (device, unsigned)" sh -c "cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
-      -destination 'generic/platform=iOS' -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet"
+    # Release, as the published IPA is built (the unit tests build Debug): code behind #if DEBUG cannot hide a break.
+    step "iOS app build (Release, device, unsigned)" sh -c "cd ios && xcodebuild -project Tether.xcodeproj -scheme Tether \
+      -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet"
     if grep -q 'TetherTests' ios/project.yml; then
       # A throw-away simulator, so the tests never touch a simulator you use.
       sim_type=$(xcrun simctl list devicetypes | grep -m1 -oE 'iPhone [0-9]+ \(' | sed 's/ ($//')
