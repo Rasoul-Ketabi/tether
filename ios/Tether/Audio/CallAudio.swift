@@ -496,8 +496,9 @@ final class CallAudio: @unchecked Sendable {
         let spreadMs = Double(playout.jitterFloor) / playRate * 1000
         if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
         if !micHeard, Double(micSamples) >= 2 * (captureMono?.sampleRate ?? 48000) { LinkJournal.shared.add("call audio: the microphone captured only silence in this call") }
-        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
-                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.addedMs, snapshot.lost,
+        LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms (speech %.0f ms), added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
+                                      rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs,
+                                      Double(playout.speechTrimmed) / playRate * 1000, snapshot.addedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, playout.driftPpm, snapshot.ioBufferMs, snapshot.outputLatencyMs))
         DispatchQueue.main.async { MainActor.assumeIsolatedCompat { AppModel.shared.lastAudioStats = snapshot } }
     }
