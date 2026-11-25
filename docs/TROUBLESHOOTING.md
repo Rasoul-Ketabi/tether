@@ -85,7 +85,10 @@ iPhone. The iPhone's voice is injected into the call's uplink by the Android pho
   audio systems, possibly Samsung's own key) muting the phone's microphone also mutes the injected voice. Tether
   checks during each call, turns the mute off when your voice does not get through and remembers it.
 - **The iPhone sends silence**: Tether may not use the iPhone's microphone (Settings › Privacy & Security ›
-  Microphone; the Link tab warns in red), or the call is muted on the iPhone.
+  Microphone), or the call is muted on the iPhone. Tether asks for the microphone once it is paired; if that was
+  refused, the call screen says so in yellow, the Link tab in red (**Your voice in the call** then reads "Does not
+  reach"), and a call answered from the lock screen brings a notification. A microphone that delivers only silence
+  for several seconds of a connected call is reported the same way, and the Link log has a `microphone:` line.
 
 With **On** the Android phone's own microphone stays in the call: the other side may hear your voice twice (the
 phone in the room hears you too), the bag's noise, and their own voice from the iPhone's speaker. **Off during

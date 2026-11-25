@@ -263,3 +263,12 @@
 "Calls, texts, contacts and call history of that phone will come to this iPhone over Bluetooth." = "تماس‌ها، پیامک‌ها، مخاطبین و سابقهٔ تماس آن گوشی از راه بلوتوث به این آیفون می‌آید.";
 "That pairing code is incomplete. Show a new code on the Android phone and scan it again." = "این کد جفت‌سازی ناقص است. روی گوشی اندروید کد تازه‌ای نشان دهید و دوباره اسکن کنید.";
 "Paste or type a pairing code you have as text (tether1:… or tether://pair?…). The Android phone shows it as a QR code: scanning is quicker." = "کد جفت‌سازی را که به صورت متن دارید بچسبانید یا تایپ کنید (tether1:… یا tether://pair?…). گوشی اندروید آن را به صورت کد QR نشان می‌دهد: اسکن سریع‌تر است.";
+
+/* This iPhone's microphone (issue #14) */
+"Microphone off for Tether" = "میکروفون برای Tether خاموش است";
+"The other side cannot hear you. Allow the microphone in Settings › Privacy & Security › Microphone." = "طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
+"Microphone off for Tether: the other side cannot hear you. Allow it in Settings › Privacy & Security › Microphone." = "میکروفون برای Tether خاموش است: طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › حریم خصوصی و امنیت › میکروفون اجازه دهید.";
+"This iPhone's microphone gives no sound: the other side may not hear you." = "میکروفون این آیفون صدایی نمی‌دهد: ممکن است طرف مقابل صدای شما را نشنود.";
+"Does not reach: microphone off on this iPhone" = "نمی‌رسد: میکروفون این آیفون خاموش است";
+"Does not reach: no sound from this iPhone's microphone" = "نمی‌رسد: از میکروفون این آیفون صدایی نمی‌آید";
+"Open Settings" = "باز کردن تنظیمات";

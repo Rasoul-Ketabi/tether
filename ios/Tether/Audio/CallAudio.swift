@@ -185,6 +185,11 @@ final class CallAudio: @unchecked Sendable {
     private var uplinkOpen = false
     /// Frames not sent while the call was not connected yet (for the Link log).
     private var heldBack = 0
+    /// Microphone check while connected (#14): samples captured, whether any was not digital silence, and whether the
+    /// silence was reported. A refused microphone captures exact zeros without any error.
+    private var micSamples = 0
+    private var micHeard = false
+    private var micSilentReported = false
 
     /// From the call controller after every call update.
     func setUplink(open: Bool) {
@@ -261,6 +266,7 @@ final class CallAudio: @unchecked Sendable {
         q.async {
             self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0
             self.uplinkOpen = false; self.heldBack = 0
+            self.micSamples = 0; self.micHeard = false; self.micSilentReported = false
         }
     }
 
@@ -489,6 +495,7 @@ final class CallAudio: @unchecked Sendable {
         // Call statistics in the Link log: what a real call measured on this iPhone.
         let spreadMs = Double(playout.jitterFloor) / playRate * 1000
         if playout.concealedFrames > 0 { NSLog("[audio] %d lost frames filled by Opus concealment", playout.concealedFrames) }
+        if !micHeard, Double(micSamples) >= 2 * (captureMono?.sampleRate ?? 48000) { LinkJournal.shared.add("call audio: the microphone captured only silence in this call") }
         LinkJournal.shared.add(String(format: "call audio: link round trip %@, playout delay %.0f ms (target %.0f, arrival spread asks %.0f), concealed %.0f ms, underruns %d, drained %.0f ms, added %.0f ms, lost %d of %d frames, arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm, io %.1f ms, out latency %.1f ms",
                                       rtt, snapshot.delayMs, snapshot.playoutMs, spreadMs, concealedMs, snapshot.underruns, snapshot.trimmedMs, snapshot.addedMs, snapshot.lost,
                                       snapshot.frames, snapshot.jitterMs, snapshot.worstGapMs, playout.driftPpm, snapshot.ioBufferMs, snapshot.outputLatencyMs))
@@ -540,6 +547,7 @@ final class CallAudio: @unchecked Sendable {
         let n = captureRing.available
         guard n > 0, let buf = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(n)) else { return }
         buf.frameLength = AVAudioFrameCount(captureRing.read(into: buf.floatChannelData![0], n))
+        if uplinkOpen && !micHeard { checkMicrophone(buf.floatChannelData![0], Int(buf.frameLength), rate: mono.sampleRate) }
         let ratio = format.sampleRate / mono.sampleRate
         guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(Double(buf.frameLength) * ratio) + 16) else { return }
         var fed = false
@@ -563,6 +571,29 @@ final class CallAudio: @unchecked Sendable {
             if let payload = coder.encode(chunk) {
                 link.sendAudio(AudioFrame(codec: coder.id, seq: seq, payload: payload))
                 seq &+= 1
+            }
+        }
+    }
+
+    /// Notes whether the microphone delivers anything but digital silence while the call is connected; after
+    /// MicPolicy.silentAfterSeconds of nothing it says so (Link log, call screen), and takes it back when sound comes.
+    private func checkMicrophone(_ p: UnsafePointer<Float>, _ n: Int, rate: Double) {
+        for i in 0..<n where p[i] != 0 { micHeard = true; break }
+        micSamples += n
+        if micHeard {
+            if micSilentReported {
+                LinkJournal.shared.add("microphone: sound again")
+                DispatchQueue.main.async { MainActor.assumeIsolatedCompat { if AppModel.shared.micWarning == .silent { AppModel.shared.micWarning = nil } } }
+            }
+            return
+        }
+        guard !micSilentReported, MicPolicy.captureSilent(samples: micSamples, rate: rate, anySound: false) else { return }
+        micSilentReported = true
+        DispatchQueue.main.async {
+            MainActor.assumeIsolatedCompat {
+                let access = Microphone.access
+                LinkJournal.shared.add("microphone: only silence for \(Int(MicPolicy.silentAfterSeconds)) s of the connected call (permission \(access.rawValue)): the other side hears nothing")
+                AppModel.shared.micWarning = MicPolicy.warning(access: access, captureSilent: true)
             }
         }
     }

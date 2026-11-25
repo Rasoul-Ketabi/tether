@@ -607,6 +607,7 @@ extension CallController {
 
     func performStart(_ uuid: UUID, number: String) {
         CallAudio.configureSession()
+        Microphone.checkForCall(mirrored.contains(uuid) ? "call shown here" : "outgoing call")
         if mirrored.remove(uuid) == nil {
             pendingOutgoing = uuid
             pendingNumber = number
@@ -619,6 +620,7 @@ extension CallController {
     func performAnswer(_ uuid: UUID) {
         answeredHere.insert(uuid)
         CallAudio.configureSession()
+        Microphone.checkForCall("answer")
         if mirrored.remove(uuid) == nil, let cid = cids[uuid] {
             model.link.send(MsgType.callAnswer, CallRef(cid: cid))
         }

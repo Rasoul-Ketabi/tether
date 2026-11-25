@@ -134,12 +134,15 @@ struct LinkView: View {
                             Toggle("Mute the Android phone's microphone", isOn: Binding(get: { on }, set: { model.setPhoneMicMute($0) }))
                                 .tint(.green).disabled(!model.linkState.isConnected)
                         }
+                        let micWarning = CallAudioRows.micWarning(denied: CallAudioRows.microphoneDenied(), last: model.micWarning)
                         if let u = s.helper.uplink {
-                            LabeledContent("Your voice in the call", value: CallAudioRows.uplinkText(u))
+                            LabeledContent("Your voice in the call", value: CallAudioRows.voiceText(u, mic: micWarning))
                         }
-                        if CallAudioRows.microphoneDenied() {
-                            Text("Tether may not use this iPhone's microphone, so the other side hears nothing. Allow it in Settings › Privacy & Security › Microphone.")
-                                .font(.footnote).foregroundStyle(.red)
+                        if let w = micWarning {
+                            Text(Microphone.text(w)).font(.footnote).foregroundStyle(.red)
+                            if w == .denied, let url = URL(string: UIApplication.openSettingsURLString) {
+                                Link("Open Settings", destination: url).font(.footnote)
+                            }
                         }
                         if let a = model.lastAudioStats {
                             LabeledContent("Last call") {
@@ -511,6 +514,21 @@ enum CallAudioRows {
         case "off": return String(localized: "Not muted by the phone")
         default: return String(localized: "Not checked")
         }
+    }
+
+    /// The Android phone's uplink check sees only that audio reaches the network; it cannot hear that what this iPhone
+    /// sends is silence. With the microphone refused or silent the row never says the voice gets through (#14).
+    static func voiceText(_ u: String, mic: MicWarning?) -> String {
+        switch mic {
+        case .denied: return String(localized: "Does not reach: microphone off on this iPhone")
+        case .silent: return String(localized: "Does not reach: no sound from this iPhone's microphone")
+        case nil: return uplinkText(u)
+        }
+    }
+
+    /// The warning to show: the permission as it is now, else what the last call found.
+    static func micWarning(denied: Bool, last: MicWarning?) -> MicWarning? {
+        denied ? .denied : last == .silent ? .silent : nil
     }
 
     /// This iPhone refused Tether the microphone: every call's uplink is silent.
