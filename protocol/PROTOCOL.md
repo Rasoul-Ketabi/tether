@@ -50,7 +50,12 @@ The central keeps a pending `connect` to the bonded peripheral at all times
 Neither side drops an idle session: a suspended iPhone may be silent for a long
 time. Liveness comes from the BLE supervision timeout and L2CAP EOF; the
 peripheral pings once a minute; after 15 minutes of silence it wakes the central (wake characteristic) and gives up
-only if nothing arrives within 45 s more (a suspended iPhone answers once woken). The iPhone pings every 25 s
+only if nothing arrives within 45 s more. A central that gets a wake notification **answers at once** (a ping is
+enough) and, if it has no session or the session does not answer within a few seconds, sets a new one up on the open
+connection; it does the same when the peripheral's Tether service changes (Service Changed: Tether restarted there).
+While a paired central has no session, the peripheral sends a wake notification every 3 minutes to whatever is
+connected to its GATT server: a suspended iOS app is not told that an L2CAP channel closed, and with Bluetooth
+tethering its connection stays up over classic, so only a notification reaches it. The iPhone pings every 25 s
 while it runs (the round trip is shown in its call statistics); while it is suspended its timers do not run.
 During calls the peripheral asks for high connection priority and the 2M PHY (the state hook shows the PHY and the
 connection parameters each link really got).
