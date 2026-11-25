@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Android phone: real calls and texts always reach the iPhone and other clients, even while a debug test filter is on,
+  and that filter switches itself off after 30 minutes (a forgotten one let a call dialed from the iPhone run silent).
 - Android phone: **Help › Send a problem report** shares one `.txt` file (or copies it) with what is needed to find
   any problem: device and Android / One UI version, setup steps, link, Bluetooth and tethering state, the SIMs' network
   and signal, call-audio settings and self-test, the link log and the app's log. Phone numbers, names, message text,
