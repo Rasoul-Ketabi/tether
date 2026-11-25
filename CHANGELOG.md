@@ -8,6 +8,11 @@
 - Pairing QR code is now a `tether://pair?c=…` link: the iPhone's Camera app offers to open it in Cellular, which asks before pairing. Old `tether1:` codes still work everywhere; the Android app can show the old code for 1.1 iPhone apps.
 - First-run guides: numbered Setup steps with plain instructions on the Android phone (incl. the one-time wireless-debugging pairing), a Set up section on the iPhone's Link tab, and pairing steps in the Android client (English and Persian).
 - Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
+- The phone app installs on Android 8.0 and 9 (was 10): the link runs over GATT there (no L2CAP channels; the phone
+  answers the PSM read empty, so the iPhone and the Android client go straight to GATT), texts, contacts, call log and
+  call control work, the default phone app is requested through Telecom, a call's direction comes from its first
+  state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
+  iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
 
 ## 1.1.0 — 2026-11-23
 

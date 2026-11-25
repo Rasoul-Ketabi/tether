@@ -110,6 +110,10 @@ struct LinkView: View {
                     }
                     Section {
                         LabeledContent("Audio helper", value: s.helper.state == "running" ? String(localized: "Running") : String(localized: "Stopped"))
+                        if s.helper.audioUnavailable {
+                            Text("Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone.")
+                                .font(.footnote).foregroundStyle(.orange)
+                        }
                         if let m = s.helper.method { LabeledContent("Inject method", value: m) }
                         if let m = s.helper.capture { LabeledContent("Capture method", value: m) }
                         if let q = s.helper.silent {
