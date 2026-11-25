@@ -96,7 +96,8 @@
     <string name="mic_choice_auto">Off during calls (recommended)</string>
     <string name="mic_choice_mute">Muted</string>
     <string name="mic_choice_open">On</string>
-    <string name="mic_auto_note">Tether puts the call in Android\'s redirect audio mode: this phone\'s own microphone and earpiece leave the call, and the other side hears only your iPhone. Tether checks that both directions still work and remembers what this phone allows.</string>
+    <string name="mic_auto_note">Tether takes this phone\'s own microphone and earpiece out of the call: with Android\'s redirect audio mode where this phone handles it, else with the phone maker\'s own microphone switch. It checks that both directions still work and remembers what this phone allows.</string>
+    <string name="mic_auto_vendor">Android\'s redirect mode does not work on this phone: Tether mutes this phone\'s microphone with the maker\'s own switch instead, which keeps your voice in the call.</string>
     <string name="mic_auto_unavailable">This phone does not allow it (or needs Android 13): its microphone stays on during calls, so keep it in a bag or pocket. Choose this again to try anew.</string>
     <string name="mic_open_note">This phone\'s microphone stays in the call: the other side may hear your voice twice, and the room around this phone.</string>
     <string name="mic_now_off">Now: out of the call (%1$s)</string>

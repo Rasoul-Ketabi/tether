@@ -31,6 +31,7 @@ import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
 import app.tether.core.PairingCode
+import app.tether.helper.CallAudio
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
 import app.tether.link.LinkService
@@ -216,13 +217,16 @@ class MainActivity : Activity() {
                 app.hub.audio.redirectMemory().let { m -> m[MicPath.Redirect.CALL_REDIRECT]?.usable == false &&
                     (m[MicPath.Redirect.CALL_SCREENING]?.usable ?: false) == false })
             val blocked = mic == MicPath.Setting.MUTE && app.hub.audio.memory() == LocalMutes.Memory.BREAKS_UPLINK
+            // Without a redirect mode the default setting's next step: the maker's own mic switch, where this phone has one that holds.
+            val vendor = autoFailed && LocalMutes.autoPlan(CallAudio.silence, app.hub.audio.memory()).vendorMic
             audio.addView(label(getString(when {
+                vendor -> R.string.mic_auto_vendor
                 autoFailed -> R.string.mic_auto_unavailable
                 mic == MicPath.Setting.AUTO -> R.string.mic_auto_note
                 blocked -> R.string.mic_mute_blocked
                 mic == MicPath.Setting.MUTE -> R.string.mic_mute_on
                 else -> R.string.mic_open_note
-            }), if (blocked || autoFailed) R.color.warn else R.color.muted, 13f))
+            }), if (blocked || (autoFailed && !vendor)) R.color.warn else R.color.muted, 13f))
             h.optString("micPath").takeIf { it.isNotEmpty() }?.let { p ->
                 audio.addView(label(when (p) {
                     "off" -> getString(R.string.mic_now_off, app.hub.helper.lastMic?.optString("mode") ?: "")
