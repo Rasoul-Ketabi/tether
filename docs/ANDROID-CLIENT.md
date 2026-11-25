@@ -14,7 +14,7 @@ and call history. The SIM phone stays in a bag; you use the other phone.
 ## What it does
 
 - **Pairing**: scans the QR code the SIM phone shows (Tether › Pair) with the camera (ZXing), or takes the code
-  pasted by hand (`tether1:…`). Same handshake, keys and token as the iPhone (protocol §3).
+  pasted by hand (`tether1:…`; the QR code holds `tether://pair?c=…` since 1.2, both are read). Same handshake, keys and token as the iPhone (protocol §3).
 - **Link**: scans for the service UUID and also tries the address it last reached the phone at, connects, reads the
   PSM, opens an L2CAP channel (6 s, then the GATT pipe), runs the session, and reconnects for ever with the iPhone's
   rules: at once after a failure, a session restarted on a Bluetooth connection that is still up (twice in a row at

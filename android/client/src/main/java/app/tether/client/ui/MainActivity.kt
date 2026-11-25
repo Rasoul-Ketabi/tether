@@ -73,6 +73,7 @@ class MainActivity : Activity() {
         }
         root.addView(bar)
         setContentView(root)
+        fitSystemBars(root)
         handleIntent(intent)
         askPermissions()
     }
@@ -413,6 +414,8 @@ class MainActivity : Activity() {
             val names = (0 until a.length()).map { a.getJSONObject(it) }.map { (if (it.optBoolean("self")) "● " else "○ ") + it.optString("name") + if (it.optBoolean("audio")) " ♪" else "" }
             if (names.size > 1) phone.addView(label(getString(R.string.clients, names.joinToString("  ")), R.color.muted, 13f))
         }
+        // Not paired yet: how to start, in plain words.
+        if (!app.identity.isPaired) phone.addView(label(getString(R.string.pair_guide), R.color.muted, 13f))
         phone.addView(row(
             pill(getString(if (app.identity.isPaired) R.string.pair_again else R.string.pair)) { startActivity(Intent(this, PairActivity::class.java)) },
             *(if (app.identity.isPaired) arrayOf(pill(getString(R.string.unpair), secondary = true, colorId = R.color.bad) {

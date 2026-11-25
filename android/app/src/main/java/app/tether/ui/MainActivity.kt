@@ -30,6 +30,7 @@ import app.tether.R
 import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.adb.ConnectOrder
+import app.tether.core.PairingCode
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
 import app.tether.link.LinkService
@@ -43,6 +44,7 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var qrUntil = 0L
     private var qrBitmap: Bitmap? = null
+    private var qrLegacy = false
     private val listener: () -> Unit = { main.post { render() } }
 
     /** Runtime permissions this Android version knows: Bluetooth ones from 12, notifications from 13. */
@@ -125,15 +127,20 @@ class MainActivity : Activity() {
         }
         val remaining = (qrUntil - System.currentTimeMillis()) / 1000
         if (qrUntil > 0 && remaining > 0 && app.keys.currentToken() != null) {
-            link.addView(label(getString(R.string.pair_hint), R.color.text))
+            link.addView(label(getString(if (qrLegacy) R.string.pair_hint_old else R.string.pair_hint), R.color.text))
             link.addView(ImageView(this).apply {
                 setImageBitmap(qrBitmap); adjustViewBounds = true
                 layoutParams = LinearLayout.LayoutParams(dp(260), dp(260)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
             })
             link.addView(label(getString(R.string.pair_expires, remaining), R.color.muted).apply { gravity = Gravity.CENTER })
+            // Cellular 1.1 scans only the tether1: form; the same code (same token) in that form.
+            link.addView(button(getString(if (qrLegacy) R.string.pair_new_code else R.string.pair_old_app), secondary = true) {
+                qrLegacy = !qrLegacy; drawQr(app.keys.openPairingCurrent() ?: return@button); render()
+            })
         } else if (qrUntil > 0) {
             qrUntil = 0
             qrBitmap = null
+            qrLegacy = false
         }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(button(getString(R.string.pair_iphone)) { showQr() })
@@ -141,17 +148,23 @@ class MainActivity : Activity() {
 
         // Setup
         val setup = card(getString(R.string.section_setup))
-        setup.addView(step(getString(R.string.step_permissions), missingPerms().isEmpty(), getString(R.string.action_grant)) {
+        setup.addView(label(getString(R.string.setup_intro), R.color.muted, 13f))
+        setup.addView(step(getString(R.string.step_n, 1, getString(R.string.step_permissions)), missingPerms().isEmpty(), getString(R.string.action_grant),
+            help = getString(R.string.help_permissions)) {
             requestPermissions(missingPerms(), 1)
         })
-        setup.addView(step(getString(R.string.step_dialer), app.sims.isDialer(), getString(R.string.action_set)) {
+        setup.addView(step(getString(R.string.step_n, 2, getString(R.string.step_dialer)), app.sims.isDialer(), getString(R.string.action_set),
+            help = getString(R.string.help_dialer)) {
             startActivityForResult(getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER), 2)
         })
         val pm = getSystemService(PowerManager::class.java)
-        setup.addView(step(getString(R.string.step_battery), pm.isIgnoringBatteryOptimizations(packageName), getString(R.string.action_set)) {
+        setup.addView(step(getString(R.string.step_n, 3, getString(R.string.step_battery)), pm.isIgnoringBatteryOptimizations(packageName), getString(R.string.action_set),
+            help = getString(R.string.help_battery)) {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         })
-        setup.addView(step(getString(R.string.step_adb), Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false), getString(R.string.action_pair)) {
+        val adbDone = Adb.hasSecureSettings(this) && app.prefs.getBoolean("adb_paired", false)
+        setup.addView(step(getString(R.string.step_n, 4, getString(R.string.step_adb)), adbDone, getString(R.string.action_pair),
+            help = getString(R.string.help_adb)) {
             Adb.showPairingNotification(this)
             runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
         })
@@ -164,6 +177,7 @@ class MainActivity : Activity() {
         if (tcpOn) setup.addView(button(getString(R.string.action_turn_off), secondary = true) {
             app.prefs.edit().putBoolean(Adb.PREF_LEGACY, false).apply(); Adb.reset(); render()
         })
+        if (!app.keys.isPaired && qrUntil == 0L) setup.addView(label(getString(R.string.help_pair_next), R.color.accent, 14f))
 
         // Audio
         val audio = card(getString(R.string.section_audio))
@@ -259,13 +273,20 @@ class MainActivity : Activity() {
     }
 
     private fun showQr() {
-        val code = app.keys.openPairing()
-        val size = 720
-        val m = QRCodeWriter().encode(code.encode(), BarcodeFormat.QR_CODE, size, size, mapOf(EncodeHintType.MARGIN to 1))
-        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }
-        qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
+        qrLegacy = false
+        drawQr(app.keys.openPairing())
         qrUntil = app.keys.pairingExpiry
         render()
+    }
+
+    /** The QR code holds the `tether://pair?c=…` link (the iPhone's Camera opens it in Cellular), or for Cellular 1.1
+     *  the `tether1:` form of the same code. */
+    private fun drawQr(code: PairingCode) {
+        val size = 720
+        val m = QRCodeWriter().encode(if (qrLegacy) code.encode() else code.link(), BarcodeFormat.QR_CODE, size, size,
+            mapOf(EncodeHintType.MARGIN to 1))
+        val px = IntArray(size * size) { if (m[it % size, it / size]) Color.BLACK else Color.WHITE }
+        qrBitmap = Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
     }
 
     // ------------------------------------------------------------------ tiny view helpers
@@ -302,11 +323,14 @@ class MainActivity : Activity() {
         setOnClickListener { onClick() }
     }
 
-    private fun step(title: String, done: Boolean, action: String, detail: String? = null, onClick: () -> Unit): View {
+    private fun step(title: String, done: Boolean, action: String, detail: String? = null, help: String? = null,
+                     onClick: () -> Unit): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
         texts.addView(label(title, R.color.text, 16f))
         texts.addView(label(detail ?: getString(if (done) R.string.done else R.string.missing), if (done) R.color.ok else R.color.warn, 13f))
+        // What to do, in plain words, until the step is done.
+        if (!done && help != null) texts.addView(label(help, R.color.muted, 13f))
         row.addView(texts)
         if (!done) row.addView(button(action) { onClick() })
         return row

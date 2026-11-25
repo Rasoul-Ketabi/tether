@@ -87,7 +87,7 @@ In Xcode: Product › Build Documentation. The wire format itself is specified i
 
 | Area | Types |
 | --- | --- |
-| Pairing | `PairingCode` (`tether1:` QR payload), `TetherPrivateKey`, `randomBytes(_:)` |
+| Pairing | `PairingCode` (`tether1:` code, `tether://pair?c=` QR link; `parse` reads both), `TetherPrivateKey`, `randomBytes(_:)` |
 | Handshake (protocol §3) | `CentralHandshake` (client), `PeripheralHandshake` (phone), `KeySchedule`, `SessionKeys`, `HelloMessage`, `HelloAckMessage`, `HandshakeMode`, `HandshakeError` |
 | Records (§2, §4) | `Record`, `RecordKind`, `RecordReader` (reassembles a byte stream), `SecureSession` (AES-256-GCM, strict counters), `SessionError`, `FramingError`, `Proto` (channels, lengths) |
 | Control messages (§5) | `Control` (encode / decode the `{t, id, re, b}` envelope), `MessageHeader`, `MsgType` (every type name), one `Codable` struct per body: `StatusBody`, `SyncBody`, `Sms`, `SmsNew`, `SmsBatch`, `SmsSend`, `Contact`, `ContactsBatch`, `CallInfo`, `CallEntry`, `CallsBatch`, `NetState`, `BlockLists`, `SyncIds`, … |

@@ -22,10 +22,20 @@
     <string name="state_unpaired">Not paired</string>
     <string name="state_bt_off">Bluetooth off</string>
     <string name="pair_iphone">Pair iPhone</string>
-    <string name="pair_hint">In Cellular on the iPhone, choose Pair and scan this code. It works once and expires in 5 minutes.</string>
+    <string name="pair_hint">On the iPhone, open the Camera, point it at this code and tap Open in Cellular (or in Cellular: Link › Pair with Android phone). Allow Bluetooth when the iPhone asks. The code works once and expires in 5 minutes.</string>
     <string name="pair_expires">Expires in %1$d s</string>
     <string name="unpair">Unpair</string>
 
+    <string name="setup_intro">Do these steps once, top to bottom. Each one says what to do; a step is done when it turns green.</string>
+    <string name="step_n">%1$d. %2$s</string>
+    <string name="help_permissions">Tap Grant and allow everything Tether asks for: phone, SMS, contacts, call log, nearby devices (Bluetooth) and notifications. Tether passes them on to your iPhone; nothing leaves your devices.</string>
+    <string name="help_dialer">Tap Set and choose Tether as the default phone app, so calls can be answered and made from the iPhone.</string>
+    <string name="help_battery">Tap Set and allow unrestricted battery use, so Android does not stop Tether while the phone sits in a bag.</string>
+    <string name="help_adb">One time only, needs Wi-Fi. Turn on Developer options (Settings › About phone › Software information: tap Build number 7 times). Tap Pair: Tether opens Developer options and posts a notification. Turn on Wireless debugging, tap Pair device with pairing code, then type the 6-digit code into Tether\'s notification. This lets Tether carry call audio.</string>
+    <string name="help_pair_next">Next: tap Pair iPhone below and scan the code with the iPhone.</string>
+    <string name="pair_old_app">iPhone app 1.1 or older? Show the old code</string>
+    <string name="pair_new_code">Show the new code</string>
+    <string name="pair_hint_old">Code for Cellular 1.1: in Cellular open Link › Pair with Android phone and scan it there (the Camera app cannot open this one).</string>
     <string name="step_permissions">Permissions</string>
     <string name="step_dialer">Default phone app</string>
     <string name="step_battery">Unrestricted battery use</string>

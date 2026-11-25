@@ -51,7 +51,7 @@ Package `app.tether.core`:
 | Type | What it is |
 | --- | --- |
 | `Record`, `RecordReader`, `Kind`, `Reject`, `FramingException` | Framing (§2): `len ‖ kind ‖ body`; the reader turns a byte stream into records |
-| `PairingCode` | The QR payload `tether1:<key>.<token>.<name>`: `parse`, `encode` |
+| `PairingCode` | The pairing code `tether1:<key>.<token>.<name>` and its QR link form `tether://pair?c=…`: `parse` (both), `encode`, `link` |
 | `P256` | Key generation, X9.63 encoding, ECDH, SHA-256, HKDF |
 | `CentralHandshake` | The client's side: `hello()`, `receive(ack)` → session + FIN, `verifyFinish` |
 | `PeripheralHandshake` | The phone's side: `receiveHello(record, isKnown, token)`, `receiveFinish` |

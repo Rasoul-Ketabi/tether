@@ -28,6 +28,8 @@ struct LinkView: View {
                     .padding(.vertical, 6)
                 }
 
+                if !model.isPaired { SetupGuideSection { scanning = true } }
+
                 Section {
                     Label {
                         Text("Tether keeps the link in the background and when the screen is locked. Swiping Tether away in the app switcher stops it until you open it again: iOS does not relaunch a force-quit app for Bluetooth.")
@@ -192,7 +194,7 @@ struct LinkView: View {
                         Button("Unpair", role: .destructive) { confirmUnpair = true }
                     }
                 } footer: {
-                    Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
+                    Text("On the Android phone, open Tether and tap Pair iPhone, then scan the code with the Camera or here (or paste it). Calls, messages, contacts and call history stay between your devices; there is no server.")
                 }
                 #if DEBUG
                 DeveloperSection()
@@ -246,6 +248,34 @@ struct LinkView: View {
 /// The Android phone's VPN (any VPN app) and "Share VPN": its proxy lets this device use that VPN.
 #if DEBUG
 /// Debug builds only: try the extensions (protocol §7) against the linked Android phone. Not translated on purpose.
+/// First run (not paired): what to install on the Android phone, how to show and scan the code, and which
+/// permissions the iPhone will ask for and why.
+struct SetupGuideSection: View {
+    let scan: () -> Void
+
+    var body: some View {
+        Section {
+            step(1, "Install Tether on the Android phone that holds your SIMs and do its Setup steps (permissions, default phone app, battery, wireless debugging).")
+            step(2, "On the Android phone, open Tether and tap Pair iPhone. A QR code appears for 5 minutes.")
+            step(3, "Point this iPhone's Camera at the code and tap Open in Cellular, or tap the button below and scan it here.")
+            step(4, "Allow what the iPhone asks: Bluetooth (the link to the phone), Microphone (your voice in calls) and Notifications (calls and new texts).")
+            Button { scan() } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
+        } header: {
+            Text("Set up")
+        } footer: {
+            Text("Keep both phones close while pairing. Nothing goes through a server.")
+        }
+    }
+
+    private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(n.formatted()).font(.subheadline.weight(.bold)).foregroundStyle(.teal).frame(minWidth: 18)
+            Text(text).font(.subheadline)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 struct DeveloperSection: View {
     @Environment(\.appModel) private var model
     var body: some View { WithPerceptionTracking { bodyContent } }
@@ -571,7 +601,7 @@ struct NetToggle: View {
     }
 }
 
-/// Full-screen QR scanner for the `tether1:` pairing code: the camera fills the screen with only Cancel, a short
+/// Full-screen QR scanner for the pairing code (`tether://pair?c=…` since 1.2, `tether1:…` from 1.1 phones): the camera fills the screen with only Cancel, a short
 /// instruction and "Enter Code Manually" over it (no text field or other content behind the camera); typing the
 /// code is its own screen, so the keyboard never comes up behind the scanner.
 struct PairingView: View {

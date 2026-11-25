@@ -95,6 +95,17 @@ tether1:<base64url(S_P)>.<base64url(token)>.<base64url(utf8 device name)>
 
 `token` is 16 random bytes. Base64url is without padding.
 
+Since 1.2 the QR code holds the same three fields as a link, so the iPhone's Camera app offers to open it in the app:
+
+```
+tether://pair?c=<base64url(S_P)>.<base64url(token)>.<base64url(utf8 device name)>
+```
+
+Readers accept both forms (`tether1:` is what 1.1 phones show and what is typed or pasted), ignore other query items,
+and match `tether://pair` and `tether:pair` without regard to case. The Android app can still show the `tether1:`
+form of the same code for 1.1 iPhone apps, whose scanner reads only that. A link opened from outside the app never
+pairs by itself: the app asks first. The link holds the token: never log it. `vectors.json` › `pairing_code` has both.
+
 **HELLO** body (C → P), 148 bytes:
 
 ```

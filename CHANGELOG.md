@@ -5,6 +5,9 @@
 - Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
   a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
   complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
+- Pairing QR code is now a `tether://pair?c=…` link: the iPhone's Camera app offers to open it in Cellular, which asks before pairing. Old `tether1:` codes still work everywhere; the Android app can show the old code for 1.1 iPhone apps.
+- First-run guides: numbered Setup steps with plain instructions on the Android phone (incl. the one-time wireless-debugging pairing), a Set up section on the iPhone's Link tab, and pairing steps in the Android client (English and Persian).
+- Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
 
 ## 1.1.0 — 2026-11-23
 

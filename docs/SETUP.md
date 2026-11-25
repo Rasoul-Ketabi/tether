@@ -54,7 +54,7 @@ Use **Run call-audio self-test** during a call to see which audio paths work on 
 1. Open the app (named "Cellular" unless you changed it). Allow Bluetooth and notifications.
 2. Go to the **Link** tab and tap **Pair with Android phone**.
 3. On the Android phone, tap **Pair iPhone**: a QR code appears for 5 minutes.
-4. Scan it. (No camera? Tap **Enter Code Manually** and paste the `tether1:` code if you have it as text.)
+4. Scan it: with the iPhone's Camera app (tap **Open in Cellular**), or in the app with **Link › Pair with Android phone**. (No camera? Tap **Enter Code Manually** and paste the code if you have it as text.) An iPhone app older than 1.2 reads only the old code: on the Android phone tap **Show the old code** and scan it in the app.
 5. The Link tab shows the phone's name, battery and SIMs; the first sync of messages, contacts and calls follows.
 
 The pairing is kept until you remove it on either side (Link › Unpair on the iPhone, or Unpair on the Android

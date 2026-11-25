@@ -86,7 +86,11 @@
     <string name="pair_bad_code">That is not a Tether pairing code.</string>
     <string name="pair_manual_hint">Or paste the code: tether1:…</string>
     <string name="pair_no_camera">No camera: paste the code below.</string>
-    <string name="pair_scan_hint">On the Android phone open Tether and tap Pair, then point the camera at the code.</string>
+    <string name="pair_scan_hint">On the Android phone that holds the SIMs, open Tether and tap Pair iPhone, then point this camera at the code.</string>
+    <string name="pair_guide">1. Install Tether on the Android phone with the SIMs and finish its Setup steps.
+2. There, tap Pair iPhone: a QR code appears for 5 minutes.
+3. Allow the camera here and point it at the code (or paste the code below).
+4. Allow nearby devices (Bluetooth), phone, microphone and notifications when asked: they carry the link, calls, call audio and new texts.</string>
     <string name="pair_title">Pair with the Android phone</string>
     <string name="phone">Phone number</string>
     <string name="reply">Reply</string>
