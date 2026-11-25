@@ -277,9 +277,14 @@ public final class PlayoutBuffer: @unchecked Sendable {
 
     private func remember(_ out: UnsafeMutablePointer<Float>, _ count: Int) {
         let k = min(count, lastLen)
-        // Keep the newest 10 ms, in order, so concealment continues the waveform.
+        // Keep the newest 10 ms, in order, so concealment continues the waveform. A pull shorter than 10 ms shifts the
+        // kept samples down first: source and destination overlap there, so it is a memmove (an explicit one: the
+        // copy direction matters and must not depend on how a pointer helper is implemented).
         if k == lastLen { last.update(from: out + (count - k), count: k) }
-        else { last.update(from: last + k, count: lastLen - k); (last + (lastLen - k)).update(from: out + (count - k), count: k) }
+        else {
+            memmove(last, last + k, (lastLen - k) * MemoryLayout<Float>.stride)
+            (last + (lastLen - k)).update(from: out + (count - k), count: k)
+        }
     }
 
     /** Samples queued right now (the playout delay beyond the output's own). */
