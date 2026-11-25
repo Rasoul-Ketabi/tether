@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again.
 - Link: an iPhone app suspended in the background now finds its way back when the Android phone closed the session or
   Tether restarted there (an update): it answers every wake at once and sets a new session up when the phone's
   service changed or a wake finds none, and the Android phone wakes a paired iPhone every 3 minutes while there is
