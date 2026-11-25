@@ -134,7 +134,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         if (app.prefs.getBoolean("airplane_by_tether", false)) bg { airplaneFailSafe(true) }
         // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
         CallRegistry.addListener { info -> onCall(info) }
-        app.sms.observe { s -> if (forwardable(s)) targets().forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) } }
+        app.sms.observe { s -> if (forwardable(s)) targets(real = !TestGuards.isTestNumber(s.addr)).forEach { it.send(Message(T.SMS_NEW, JSONObject().put("item", s.json()))); if (!app.lists.isMuted(s.thread)) wake(it) } }
         // Start from the newest row now, so the first call logged after a restart is pushed live too.
         bg { if (lastCallId < 0) lastCallId = app.callLog.since(0, 1).lastOrNull()?.id ?: 0 }
         app.callLog.observe { bg { pushRecentCalls() } }
@@ -176,11 +176,26 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         exclusiveSet.let { it == null || c.transport in it }
 
     /** Clients that get broadcasts; a test holding the link exclusively gets them alone (the iPhone never rings). */
-    fun targets(): List<Connection> = conns.filter { TestGuards.receivesBroadcasts(it.isUp, admits(it), onlyKind, it.kind, it.transport.dry) }
+    fun targets(real: Boolean = false): List<Connection> =
+        conns.filter { TestGuards.receivesBroadcasts(it.isUp, admits(it), onlyKind, it.kind, it.transport.dry, real) }
 
-    /** Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see calls and messages, so test calls never
-     *  ring the iPhone. On-device test clients (dry transports) are never filtered: `only none` must not silence them. */
-    @Volatile var onlyKind: String? = null
+    /** Clients for this call's events: a real call (not on the test line) reaches every client whatever `only` says. */
+    private fun callTargets(cid: String) = targets(real = !CallRegistry.isTestCall(app, cid))
+
+    /**
+     * Debug (adb): only clients of this kind (e.g. "none" for on-device tests) see test calls and test texts, so tests
+     * never ring the iPhone. On-device test clients (dry transports) are never filtered; real calls and texts always go
+     * to every client; it switches itself off after [TestGuards.ONLY_MS]. Setting and clearing it is in the link log.
+     */
+    var onlyKind: String?
+        get() = onlyValue?.takeIf { TestGuards.onlyActive(onlySetAt, SystemClock.elapsedRealtime()) }
+        set(v) {
+            onlyValue = v; onlySetAt = SystemClock.elapsedRealtime()
+            LinkLog.add(if (v == null) "test filter off: every client gets every call and text" else
+                "test filter on (only $v): test calls and test texts go to $v clients only; real calls and texts reach every client; off by itself in ${TestGuards.ONLY_MS / 60_000} min")
+        }
+    @Volatile private var onlyValue: String? = null
+    @Volatile private var onlySetAt = 0L
 
     fun broadcast(m: Message) = targets().forEach { it.send(m) }
 
@@ -726,8 +741,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         // Telecom reports the end several times (disconnecting, disconnected, removed): send it once.
         if (info.state == "ended") { if (endedSent.put(info.cid, SystemClock.elapsedRealtime()) != null) return }
         endedSent.entries.removeIf { SystemClock.elapsedRealtime() - it.value > 60_000 }
-        Log.i(TAG, "call ${info.cid} ${info.state} → ${targets().size} client(s)")
-        for (c in targets()) {
+        val to = callTargets(info.cid)
+        Log.i(TAG, "call ${info.cid} ${info.state} → ${to.size} client(s)")
+        for (c in to) {
             c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
             // Every call change wakes a suspended iPhone app (answered on the Android phone or elsewhere: stop ringing now).
             wake(c)
@@ -737,14 +753,14 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         // concealed on the iPhone, measured 2026-11-22). A call that ends without audio goes back to balanced here.
         val anyCall = CallRegistry.active().isNotEmpty()
         if (info.state in setOf("ringing", "connecting", "dialing") || (info.state == "ended" && !anyCall && audio.target == null))
-            for (c in targets()) if (c.transport.label != "memory") LinkService.running?.peripheral?.tune(c.transport.address, high = info.state != "ended")
+            for (c in to) if (c.transport.label != "memory") LinkService.running?.peripheral?.tune(c.transport.address, high = info.state != "ended")
         audioCtl.execute { audio.reconcile() }
         refresh()
     }
 
     /** Re-sends every call's state (after call audio moved between clients). */
     private fun broadcastCalls() {
-        for (info in CallRegistry.list()) for (c in targets()) c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
+        for (info in CallRegistry.list()) for (c in callTargets(info.cid)) c.sendUrgent(Message(T.CALL_STATE, callJson(info, c)))
     }
 
     fun selftest(): JSONObject {
@@ -1093,7 +1109,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
 
         private fun updateOwnerLocked(): Boolean {
             val before = owner
-            val live = targets()
+            val live = targets(real = CallRegistry.list().any { it.state != "ended" && !CallRegistry.isTestCall(app, it.cid) })
             if (owner?.let { it !in live } == true) owner = null
             val calls = CallRegistry.list()
             val now = SystemClock.elapsedRealtime()
