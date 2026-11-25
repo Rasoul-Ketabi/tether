@@ -706,11 +706,29 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             if (c.wokeAt in 1 until c.lastRx) { LinkLog.add("${c.name} answered the wake in %.1f s".format((c.lastRx - c.wokeAt) / 1000.0)); c.wokeAt = 0 }
             when (LinkPolicy.idle(now - c.lastRx, c.wokeAt.takeIf { it > c.lastRx }?.let { now - it })) {
                 LinkPolicy.Idle.CLOSE -> { c.close("no answer to a wake after 15 min of silence"); continue }
-                LinkPolicy.Idle.WAKE -> { c.wokeAt = now; LinkLog.add("${c.name} silent for 15 min: woken"); if (c.transport.label != "memory") wake(c) }
+                LinkPolicy.Idle.WAKE -> { c.wokeAt = now; LinkLog.add("${c.name} silent for 15 min: wake ${if (c.transport.label != "memory") wake(c) else "skipped (test link)"}") }
                 LinkPolicy.Idle.KEEP -> Unit
             }
             c.send(Message(T.PING, JSONObject().put("ts", System.currentTimeMillis())))
         }
+        wakeWithoutSession()
+    }
+
+    /**
+     * No session with a paired client: wake whatever is connected to our GATT server every [LinkPolicy.WAKE_UNLINKED_MS]
+     * (BlePeripheral.wakeUnlinked), so a suspended iPhone app finds out and sets a session up again. Logged when the
+     * outcome changes.
+     */
+    @Volatile private var lastUnlinkedWake = 0L
+    @Volatile private var lastUnlinkedWakeNote = ""
+    private fun wakeWithoutSession() {
+        val now = SystemClock.elapsedRealtime()
+        if (!app.keys.isPaired || conns.any { it.isUp && !it.transport.dry }) { lastUnlinkedWakeNote = ""; return }
+        if (!LinkPolicy.wakeUnlinked(now - lastUnlinkedWake)) return
+        lastUnlinkedWake = now
+        val note = LinkService.running?.peripheral?.wakeUnlinked() ?: return
+        val shape = note.replace(Regex("…[0-9A-F:]+"), "…")
+        if (shape != lastUnlinkedWakeNote) { lastUnlinkedWakeNote = shape; LinkLog.add("no session: $note") }
     }
 
     /** The helper is started ahead of time so answering a call never waits for an ADB launch. */
@@ -720,7 +738,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     }
 
     /** GATT notification on the wake characteristic: reliably wakes a suspended iPhone app. */
-    fun wake(c: Connection) = LinkService.running?.peripheral?.wake(c.transport.address)
+    fun wake(c: Connection): String = LinkService.running?.peripheral?.wake(c.transport.address) ?: "no peripheral"
 
     /**
      * Call info as one client sees it. `elsewhere` = the call's audio is on another client (it was answered

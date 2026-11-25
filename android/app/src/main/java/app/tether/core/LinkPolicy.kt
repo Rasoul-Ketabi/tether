@@ -49,6 +49,10 @@ object LinkPolicy {
     }
     const val IDLE_WAKE_MS = 15 * 60_000L
     const val WAKE_ANSWER_MS = 45_000L
+
+    /** With no session, a paired iPhone is woken this often (see Hub.wakeWithoutSession). */
+    fun wakeUnlinked(sinceLastMs: Long) = sinceLastMs >= WAKE_UNLINKED_MS
+    const val WAKE_UNLINKED_MS = 3 * 60_000L
 }
 
 /**

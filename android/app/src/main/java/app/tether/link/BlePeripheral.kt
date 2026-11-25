@@ -246,12 +246,30 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     }
 
     /** Sends a 1-byte notification on the wake characteristic (wakes the iPhone app from suspension). */
-    fun wake(address: String) {
-        val s = server ?: return
-        val c = wakeChar ?: return
-        if (address !in wakeSubscribers) return
-        val d = devices[address] ?: return
-        runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)) }
+    fun wake(address: String): String {
+        val s = server ?: return "no GATT server"
+        val c = wakeChar ?: return "no wake characteristic"
+        if (address !in wakeSubscribers) return "not subscribed in this run"
+        val d = devices[address] ?: return "no GATT connection"
+        return runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)); "sent" }.getOrElse { "failed: ${it.javaClass.simpleName}" }
+    }
+
+    /**
+     * Wakes every device connected to our GATT server while no session is up (the paired iPhone, in practice). A
+     * suspended iOS app is not told when the L2CAP channel closes, and with Bluetooth tethering its connection to this
+     * phone stays up over classic, so no disconnect or new connect wakes it either: only a notification does (seen
+     * 2026-11-25: 21 minutes without a session until the app was opened). Sent also to a device that did not subscribe
+     * in this run of the app (after an update or restart the subscriptions are forgotten here, iOS still has them).
+     * Returns what was done, for the link log.
+     */
+    fun wakeUnlinked(): String {
+        val s = server ?: return "no GATT server"
+        val c = wakeChar ?: return "no wake characteristic"
+        if (devices.isEmpty()) return "no GATT connection to wake"
+        return devices.values.joinToString(", ") { d ->
+            val sub = if (d.address in wakeSubscribers) "subscribed" else "not subscribed in this run"
+            "${LinkLog.short(d.address)} " + runCatching { GattCompat.notify(s, d, c, byteArrayOf(1)); "woken ($sub)" }.getOrElse { "failed (${it.javaClass.simpleName})" }
+        }
     }
 
     /**

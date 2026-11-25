@@ -55,6 +55,8 @@ public final class TetherLink: NSObject {
     private var outBuffer = Data()
     private var handshake: CentralHandshake?
     private var session: SecureSession?
+    /// When bytes last arrived from the Android phone (a wake checks that the session still answers).
+    private var lastReceivedAt = Date.distantPast
     private var keys: SessionKeys?
     /// Request ids, taken from any thread without waiting for the link queue (`send` is called from the main thread,
     /// and a `queue.sync` there waited behind whatever the link queue was doing, e.g. a big sync page).
@@ -389,6 +391,7 @@ public final class TetherLink: NSObject {
     }
 
     private func received(_ data: Data) {
+        lastReceivedAt = Date()
         reader.append(data)
         do {
             while let r = try reader.next() { try handle(r) }
@@ -479,6 +482,32 @@ public final class TetherLink: NSObject {
         case Proto.channelAudio:
             if let f = AudioFrame.parse(payload) { delegate?.link(self, didReceiveAudio: f) }
         default:
+            break
+        }
+    }
+
+    /**
+     * The Android phone woke this app (a call, a text, 15 min of silence, or it has no session with us). Answer at
+     * once: the phone closes a session that stays silent after a wake. With no session, or a session that does not
+     * answer within [WakeCheck.answerSeconds], start a new one on the open connection: a suspended app is not told
+     * that the channel closed (2026-11-25: 21 minutes without a session until the app was opened).
+     */
+    private func wokenByPhone() {
+        let now = Date()
+        switch WakeCheck.onWake(hasSession: session != nil, settingUp: settingUp) {
+        case .answer:
+            sendNow(MsgType.ping, PingBody(ts: Int64(now.timeIntervalSince1970 * 1000)))
+            queue.asyncAfter(deadline: .now() + WakeCheck.answerSeconds) { [weak self] in
+                guard let self, self.session != nil else { return }
+                if WakeCheck.stale(lastReceived: self.lastReceivedAt, wokenAt: now) {
+                    self.log("woken by the Android phone, but the session does not answer: starting a new one")
+                    self.failAndRetry("no answer after a wake")
+                }
+            }
+        case .newSession:
+            log("woken by the Android phone without a session: setting one up")
+            if let p = peripheral, p.state == .connected { failAndRetry("woken without a session") } else { reconnectSoon() }
+        case .ignore:
             break
         }
     }
@@ -575,7 +604,11 @@ extension TetherLink: CBPeripheralDelegate {
     public func peripheral(_ p: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
         guard invalidatedServices.contains(where: { $0.uuid == TetherUUID.service }) else { return }
         log("Android phone services changed")
-        if settingUp && channel == nil && transport == "none" { p.discoverServices([TetherUUID.service]) }
+        if settingUp && channel == nil && transport == "none" { p.discoverServices([TetherUUID.service]); return }
+        // Tether restarted on the Android phone (an update, a restart): the session this app holds is gone, and while
+        // suspended it is not told that the channel closed. Start a new one on this connection (2026-11-25: 21 minutes
+        // without a session until the app was opened).
+        if session != nil || channel != nil || transport != "none" { failAndRetry("Android phone services changed") }
     }
 
     public func peripheral(_ p: CBPeripheral, didDiscoverServices error: Error?) {
@@ -619,7 +652,7 @@ extension TetherLink: CBPeripheralDelegate {
         } else if c.uuid == TetherUUID.tx, let v = c.value {
             received(v)
         } else if c.uuid == TetherUUID.wake {
-            // Nothing to do: being woken up is the point. Pending L2CAP bytes are delivered next.
+            wokenByPhone()
         }
     }
 

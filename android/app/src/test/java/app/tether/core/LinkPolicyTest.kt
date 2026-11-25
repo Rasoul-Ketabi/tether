@@ -137,4 +137,12 @@ class LinkPolicyTest {
         assertEquals(LinkPolicy.Idle.CLOSE, LinkPolicy.idle(16 * m, 60_000))         // woken a minute ago, still silent
         assertEquals(LinkPolicy.Idle.KEEP, LinkPolicy.idle(5_000, null))             // it answered: silence counts afresh
     }
+
+    @Test fun withoutASessionThePairedIphoneIsWokenEveryThreeMinutes() {
+        // 2026-11-25: a suspended iPhone app was not told the session closed (tethering keeps its Bluetooth connection
+        // up over classic) and stayed without one for 21 minutes; one wake every 3 minutes lets it set one up again.
+        assertTrue(LinkPolicy.wakeUnlinked(Long.MAX_VALUE / 2))
+        assertTrue(LinkPolicy.wakeUnlinked(3 * 60_000L))
+        assertFalse(LinkPolicy.wakeUnlinked(3 * 60_000L - 1))
+    }
 }

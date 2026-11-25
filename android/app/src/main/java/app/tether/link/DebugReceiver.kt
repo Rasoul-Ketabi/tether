@@ -268,6 +268,11 @@ class DebugReceiver : BroadcastReceiver() {
         // loopback_call [--es mode answer|decline|remote|outgoing|selftest]: answer = ring, answer, audio, keypad, end here;
         // decline = reject while ringing; remote = the far side hangs up; outgoing = a call placed on the test line.
         // drop: close every live session from this side (as a lost link would), to test the iPhone's reconnect.
+        // wake: the wake notification now, to the live sessions and to anything else connected to our GATT server.
+        "wake" -> {
+            val live = app.hub.conns.filter { it.isUp && it.transport.label != "memory" }.map { "${it.name}: ${app.hub.wake(it)}" }
+            (live + ("unlinked: " + (LinkService.running?.peripheral?.wakeUnlinked() ?: "no peripheral"))).joinToString("; ")
+        }
         "drop" -> app.hub.conns.filter { it.isUp }.let { l -> l.forEach { it.close("dropped by test") }; "dropped ${l.size}" }
         "loopback_call" -> loopbackCall(app, intent.getStringExtra("sync") == "full", intent.getStringExtra("mode") ?: "answer")
         "loopback_handover" -> loopbackHandover(app)

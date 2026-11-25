@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Link: an iPhone app suspended in the background now finds its way back when the Android phone closed the session or
+  Tether restarted there (an update): it answers every wake at once and sets a new session up when the phone's
+  service changed or a wake finds none, and the Android phone wakes a paired iPhone every 3 minutes while there is
+  no session. Before, with Bluetooth tethering on, the app could stay unlinked until it was opened (21 minutes seen).
+  Every wake is now in the link log, with why one could not be sent.
 - Android phone, Samsung with a Qualcomm chip (Galaxy A73 and others): Tether no longer writes Samsung's call keys or
   switches calls into a redirect mode there. On a Galaxy A73 (Android 16) they left the phone's voice channel busy,
   so call audio and even calls on the phone itself stayed silent until a reboot (#13). Redirect modes are no longer
