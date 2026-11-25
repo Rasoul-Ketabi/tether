@@ -75,6 +75,18 @@ final class AudioRouteTests: XCTestCase {
         XCTAssertFalse(AudioRoutes.speakerWanted(previous: true, sessionActive: true, outputs: ["BluetoothHFP"]))
     }
 
+    /// The uplink waits for a connected call: nothing while dialing, ringing or on hold only.
+    func testUplinkOnlyWhileACallIsConnected() {
+        XCTAssertFalse(CallUplink.open(callStates: []))
+        XCTAssertFalse(CallUplink.open(callStates: ["dialing"]))
+        XCTAssertFalse(CallUplink.open(callStates: ["connecting"]))
+        XCTAssertFalse(CallUplink.open(callStates: ["ringing"]))
+        XCTAssertFalse(CallUplink.open(callStates: ["holding"]))
+        XCTAssertTrue(CallUplink.open(callStates: ["active"]))
+        XCTAssertTrue(CallUplink.open(callStates: ["holding", "active"]), "call waiting: the active one talks")
+        XCTAssertTrue(CallUplink.open(callStates: ["active", "ringing"]))
+    }
+
     func testEngineDecisions() {
         let builtIn = EngineFormat(inputRate: 48000, inputChannels: 1, outputRate: 48000, outputChannels: 1)
         let hfp16 = EngineFormat(inputRate: 16000, inputChannels: 1, outputRate: 16000, outputChannels: 1)

@@ -333,6 +333,12 @@ final class CallController: NSObject {
             break
         }
         updateScreen(uuid)
+        updateUplink()
+    }
+
+    /// The microphone goes out only while a call here is connected (CallUplink).
+    private func updateUplink() {
+        model.audio.setUplink(open: CallUplink.open(callStates: info.values.map(\.state)))
     }
 
     /// Reports outgoing progress to CallKit once per stage, and only after CallKit performed the start action.
@@ -365,6 +371,7 @@ final class CallController: NSObject {
     }
 
     private func cleanup(_ uuid: UUID, flash: Bool = true) {
+        defer { updateUplink() }
         answeredHere.remove(uuid); reportedConnecting.remove(uuid); reportedConnected.remove(uuid); mirrored.remove(uuid)
         startPerformed.remove(uuid)
         // Close the call screen at once (another call takes it over if there is one).

@@ -180,6 +180,23 @@ final class CallAudio: @unchecked Sendable {
         get { flags { _ringback } }
         set { flags { _ringback = newValue; if newValue { heardRemote = false } } }
     }
+    /// The microphone goes to the Android phone only while a call is connected (CallUplink; audio queue). Before, the
+    /// captured audio is dropped: dialing for 30 s used to send 1500 frames nobody heard.
+    private var uplinkOpen = false
+    /// Frames not sent while the call was not connected yet (for the Link log).
+    private var heldBack = 0
+
+    /// From the call controller after every call update.
+    func setUplink(open: Bool) {
+        q.async {
+            guard open != self.uplinkOpen else { return }
+            self.uplinkOpen = open
+            // Only what is captured from now on is sent: no stale audio from while it was closed.
+            self.captureAcc.removeAll()
+            if open { LinkJournal.shared.add("call audio: uplink open (\(self.heldBack) frames held back before the call connected)") }
+        }
+    }
+
     /// Our ringback should sound now (dialing, and nothing audible from the far end yet).
     var ringbackAudible: Bool { flags { _ringback && !heardRemote } }
 
@@ -241,7 +258,10 @@ final class CallAudio: @unchecked Sendable {
     }
 
     @MainActor func stop() {
-        q.async { self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0 }
+        q.async {
+            self.unobserveSessionRoute(); self.stopLocked(); self.coder = nil; self.remote = nil; self.ringback = false; self.muted = false; self.seq = 0
+            self.uplinkOpen = false; self.heldBack = 0
+        }
     }
 
     /// Voice processing (echo cancellation) could not start with the current devices: run without it.
@@ -531,6 +551,11 @@ final class CallAudio: @unchecked Sendable {
         captureAcc.append(contentsOf: UnsafeBufferPointer(start: out.int16ChannelData![0], count: Int(out.frameLength)))
         let frame = Int(coder.rate / 50)
         if Self.echoTest { captureAcc.removeAll(); return }
+        if !uplinkOpen {
+            heldBack += captureAcc.count / frame
+            captureAcc.removeAll()
+            return
+        }
         let silent = muted
         while captureAcc.count >= frame {
             let chunk = silent ? [Int16](repeating: 0, count: frame) : Array(captureAcc.prefix(frame))

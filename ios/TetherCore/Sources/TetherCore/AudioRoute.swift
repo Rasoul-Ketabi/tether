@@ -198,3 +198,13 @@ import Foundation
         sessionActive ? .rebuild : .keep
     }
 }
+
+/// When the iPhone sends its microphone to the Android phone.
+@_spi(TetherApp) public enum CallUplink {
+    /// Only while a call here is connected ("active"). While an outgoing call is still dialing (30 s and more) nobody
+    /// hears the uplink, and sending it anyway used airtime the downlink needed and built up a backlog on the Android
+    /// phone that arrived late once the call connected (the owner's calls, 2026-11-24). Nothing is sent instead: the
+    /// Android phone needs no uplink before the call is active (it starts its path then and takes the first frame as
+    /// the start of the sequence).
+    public static func open(callStates: [String]) -> Bool { callStates.contains("active") }
+}
