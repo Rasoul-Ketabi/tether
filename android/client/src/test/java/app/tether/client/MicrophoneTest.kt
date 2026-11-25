@@ -75,13 +75,13 @@ class MicrophoneTest {
 
     // ------------------------------------------------------------------ silent or refused microphone
 
-    @Test fun silenceIsReportedOnceAfterTwoSecondsAndTakenBackWhenSoundComes() {
+    @Test fun silenceIsReportedOnceAfterSixSecondsAndTakenBackWhenSoundComes() {
         val d = SilenceDetector(16000)
         val zeros = ShortArray(320)
         var events = ArrayList<SilenceDetector.Event>()
-        repeat(99) { d.feed(zeros, 320)?.let { e -> events += e } }   // 1.98 s
+        repeat(299) { d.feed(zeros, 320)?.let { e -> events += e } }  // 5.98 s
         assertTrue(events.isEmpty())
-        d.feed(zeros, 320)?.let { events += it }                      // 2.0 s
+        d.feed(zeros, 320)?.let { events += it }                      // 6.0 s
         repeat(50) { d.feed(zeros, 320)?.let { e -> events += e } }
         assertEquals(listOf(SilenceDetector.Event.SILENT), events)
         val noise = ShortArray(320).also { it[7] = 1 }
@@ -89,13 +89,13 @@ class MicrophoneTest {
         assertNull(d.feed(zeros, 320))
     }
 
-    @Test fun anySoundBeforeTwoSecondsMeansNoSilence() {
+    @Test fun anySoundBeforeSixSecondsMeansNoSilence() {
         val d = SilenceDetector(16000)
         repeat(50) { assertNull(d.feed(ShortArray(320), 320)) }
         assertNull(d.feed(ShortArray(320).also { it[0] = -1 }, 320))
         repeat(500) { assertNull(d.feed(ShortArray(320), 320)) }
         d.reset()
-        repeat(99) { assertNull(d.feed(ShortArray(320), 320)) }
+        repeat(299) { assertNull(d.feed(ShortArray(320), 320)) }
         assertEquals(SilenceDetector.Event.SILENT, d.feed(ShortArray(320), 320))
     }
 

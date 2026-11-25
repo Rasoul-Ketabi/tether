@@ -52,7 +52,7 @@ enum class MicWarning {
 /** The microphone rules (iPhone: MicPolicy, #14), without Android classes so they are tested on the JVM. */
 object MicPolicy {
     /** Seconds of a connected call with only exact zeros from the recorder before it counts as silent. */
-    const val SILENT_AFTER_SECONDS = 2.0
+    const val SILENT_AFTER_SECONDS = 6.0   // same as the iPhone (MicPolicy.silentAfterSeconds)
 
     enum class CallCheck { FINE, ASK }
 
