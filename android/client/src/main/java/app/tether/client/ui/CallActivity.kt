@@ -35,6 +35,7 @@ class CallActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(48), dp(24), dp(32)); setBackgroundColor(col(R.color.background)) }
         setContentView(root)
+        fitSystemBars(root)
         handle(intent)
     }
 
@@ -85,9 +86,8 @@ class CallActivity : Activity() {
         val conn = app.telecom.connection(c.local)
         if (c.state == "ringing" && c.incoming) {
             root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
-            root.addView(row(
+            root.addView(evenRow(
                 pill(getString(R.string.decline), colorId = R.color.bad) { conn?.onReject() ?: app.calls.performEnd(c.local) },
-                View(this).weight(),
                 pill(getString(R.string.answer), colorId = R.color.ok) { conn?.onAnswer() },
             ))
             updateProximity(null)
@@ -109,12 +109,12 @@ class CallActivity : Activity() {
             CallAudioState.ROUTE_WIRED_HEADSET -> R.string.route_wired; else -> R.string.route_earpiece
         })
         val muted = app.audio.muted
-        root.addView(row(
+        root.addView(evenRow(
             pill(getString(if (muted) R.string.unmute_mic else R.string.mute_mic), secondary = !muted) { app.telecom.setMuted(!muted) },
             pill(routeName, secondary = route == CallAudioState.ROUTE_EARPIECE) { nextRoute(audio) },
             pill(getString(R.string.keypad), secondary = !showKeys) { showKeys = !showKeys; render() },
         ))
-        if (app.calls.cidOf(c.local) != null) root.addView(row(
+        if (app.calls.cidOf(c.local) != null) root.addView(evenRow(
             pill(getString(if (c.held) R.string.resume else R.string.hold), secondary = !c.held) { if (c.held) conn?.onUnhold() else conn?.onHold() },
         ))
         root.addView(pill(getString(R.string.end_call), colorId = R.color.bad) { conn?.onDisconnect() ?: app.calls.performEnd(c.local) }.apply {
