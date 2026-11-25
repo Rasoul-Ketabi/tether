@@ -157,6 +157,17 @@ final class CallAudio: @unchecked Sendable {
         self.model = model
         self.link = link
         CallAudio.current = self
+        // For the app's lifetime (both can come at any point of a call).
+        let s = AVAudioSession.sharedInstance()
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: s, queue: nil) { [weak self] n in
+            let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            guard let self, let type else { return }
+            self.q.async { self.interrupted(began: type == .began) }
+        }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: s, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.q.async { self.mediaServicesReset() }
+        }
     }
 
     var muted: Bool {
@@ -308,9 +319,9 @@ final class CallAudio: @unchecked Sendable {
         captureAcc.removeAll()
         // `seq` keeps counting across engine restarts (route changes): the Android phone drops frames whose number goes back.
         if !rebuild { lastArrival = 0; jitterSum = 0; stats = Stats() }
-        // Read the same way as in routeEvent (the session's values): the engine nodes report other channel counts with
-        // voice processing, and the mismatch made every route event look like a format change.
-        builtFormat = Self.sessionFormat()
+        // Read the same way as in routeEvent (from the engine itself, #15): mixing the engine's and the session's
+        // values made every route event look like a format change (other channel counts with voice processing).
+        builtFormat = engineFormat()
         rebuildRetries = 0
         running = true
         let p = DispatchSource.makeTimerSource(queue: q)
@@ -335,22 +346,27 @@ final class CallAudio: @unchecked Sendable {
     /// Route change or engine configuration change while a call's session is active (TetherCore decides).
     private func routeEvent(configurationChanged: Bool) {
         guard sessionRouteObserver != nil || configurationChanged else { return }   // not after stop()
-        let now = Self.sessionFormat()
+        let now = engineFormat()
         let t = DispatchTime.now().uptimeNanoseconds
         rebuildTimes.removeAll { t - $0 > 3_000_000_000 }
-        switch EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
-                                           built: builtFormat, now: now, engineRunning: running && engine.isRunning,
-                                           recentRebuilds: rebuildTimes.count) {
+        apply(EngineDecision.onRouteEvent(sessionActive: sessionActive, running: running, configurationChanged: configurationChanged,
+                                          built: builtFormat, now: now, engineRunning: running && engine.isRunning,
+                                          recentRebuilds: rebuildTimes.count),
+              why: String(format: "%@ changed (%.0f Hz in)", configurationChanged ? "configuration" : "route", now.inputRate), at: t)
+    }
+
+    private func apply(_ decision: EngineRebuild, why: String, at t: UInt64) {
+        switch decision {
         case .keep: return
         case .rebuild:
             rebuildTimes.append(t)
-            NSLog("[audio] %@ changed: rebuilding the engine (%.0f Hz in)", configurationChanged ? "configuration" : "route", now.inputRate)
+            NSLog("[audio] %@: rebuilding the engine", why)
             stopLocked(rebuild: true)
             engine = AVAudioEngine()   // a fresh graph: the old one keeps stale I/O formats after a hands-free switch
             startLocked(rebuild: true)
             if !running { retryLater() }
         case .restart:
-            do { try engine.start(); NSLog("[audio] configuration changed, same formats: engine started again") }
+            do { try engine.start(); NSLog("[audio] %@, same formats: engine started again", why) }
             catch {
                 NSLog("[audio] engine restart failed (%@): rebuilding", "\(error)")
                 rebuildTimes.append(t)
@@ -363,14 +379,41 @@ final class CallAudio: @unchecked Sendable {
         }
     }
 
+    /// Siri, an alarm or another app's audio interrupted the session: iOS stopped the engine; at the end it runs again
+    /// (the same engine, or a fresh one if it is gone). The call and its playout carry on.
+    private func interrupted(began: Bool) {
+        guard sessionActive else { return }
+        LinkJournal.shared.add("call audio: interruption \(began ? "began" : "ended")")
+        apply(EngineDecision.onInterruption(began: began, sessionActive: sessionActive, running: running, engineRunning: running && engine.isRunning),
+              why: "interruption ended", at: DispatchTime.now().uptimeNanoseconds)
+    }
+
+    /// mediaserverd restarted: every audio object is invalid. The session's category is set again and the engine built
+    /// afresh; the call itself stays up.
+    private func mediaServicesReset() {
+        LinkJournal.shared.add("call audio: media services were reset\(sessionActive ? ", rebuilding" : "")")
+        CallAudio.configureSession()
+        guard EngineDecision.onMediaServicesReset(sessionActive: sessionActive) == .rebuild else { engine = AVAudioEngine(); return }
+        try? AVAudioSession.sharedInstance().setActive(true)   // the reset deactivated it; the call is still CallKit's
+        rebuildRetries = 0
+        stopLocked(rebuild: true)
+        engine = AVAudioEngine()
+        startLocked(rebuild: true)
+        if !running { retryLater() }
+    }
+
     /// When the engine was rebuilt for a route event in the last 3 s (a loop guard, see EngineDecision).
     private var rebuildTimes: [UInt64] = []
 
-    /// The audio session's current formats, as the engine decisions compare them.
-    private static func sessionFormat() -> EngineFormat {
-        let s = AVAudioSession.sharedInstance()
-        return EngineFormat(inputRate: s.isInputAvailable ? s.sampleRate : 0, inputChannels: s.isInputAvailable ? max(1, s.inputNumberOfChannels) : 0,
-                            outputRate: s.sampleRate, outputChannels: s.outputNumberOfChannels)
+    /// The formats the engine itself uses (its input node's output, its output node's hardware side), as the engine
+    /// decisions compare them. No input on the route (a hands-free device still connecting): input 0, retried shortly.
+    private func engineFormat() -> EngineFormat {
+        let o = engine.outputNode.outputFormat(forBus: 0)
+        guard AVAudioSession.sharedInstance().isInputAvailable else {
+            return EngineFormat(inputRate: 0, inputChannels: 0, outputRate: o.sampleRate, outputChannels: Int(o.channelCount))
+        }
+        let i = engine.inputNode.outputFormat(forBus: 0)
+        return EngineFormat(inputRate: i.sampleRate, inputChannels: Int(i.channelCount), outputRate: o.sampleRate, outputChannels: Int(o.channelCount))
     }
 
     /// The new route has no input yet (Bluetooth hands-free takes a moment): try again shortly, ~2 s at most.
