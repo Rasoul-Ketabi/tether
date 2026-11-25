@@ -11,9 +11,10 @@
   and later calls are not bridged on that firmware. The iPhone, the Android client and the phone app say so
   (`helper.audio` "blocked"); a system update or a self-test that hears the call turns call audio back on.
 - iPhone: the renewal note says to refresh the app in SideStore, AltStore or Sideloadly (it named a developer script).
-
 - Android phone: Call audio › **Link log** shows the link log with Share and Copy (headed by the app version, phone
   model and Android version), so a bug report no longer needs a computer and adb.
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again.
 
 ## 1.2.1 — 2026-11-25
 
