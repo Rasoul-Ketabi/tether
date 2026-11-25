@@ -7,6 +7,7 @@ import app.tether.TetherApp
 import app.tether.adb.Adb
 import app.tether.audio.AudioRestart
 import app.tether.audio.CallAudioReport
+import app.tether.audio.DiagStore
 import app.tether.audio.HelperBridge
 import app.tether.audio.OpusCodec
 import app.tether.audio.Spacing
@@ -128,6 +129,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         helper.onUplink = { audio.onHelperUplink(it) }
         helper.onMic = { audio.onHelperMic(it) }
         helper.onPath = { audio.onHelperPath(it) }
+        helper.onDiag = { audio.onHelperDiag(it) }
         // Airplane mode switched on from a client before a restart: keep the fail-safe running.
         if (app.prefs.getBoolean("airplane_by_tether", false)) bg { airplaneFailSafe(true) }
         // Call events go out from the Telecom callback itself, ahead of anything queued (ring latency).
@@ -997,6 +999,19 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     "or a self-test during a call hears call audio")
                 audioCtl.execute { reconcile(); broadcastCalls(); pushStatus() }
             }
+        }
+
+        /** Call-audio diagnostics the helper took by itself: the last few are kept for a problem report (DiagStore). */
+        val diag = DiagStore(java.io.File(app.filesDir, "call-audio-diag.json"))
+
+        fun onHelperDiag(o: JSONObject) {
+            val info = helper.lastInfo
+            val context = JSONObject().put("bridged", running).put("calls", CallRegistry.active().size)
+                .put("capture", info?.optString("capture") ?: "–").put("inject", info?.optString("inject") ?: "–")
+                .put("mic", mic.wire).put("audio", helper.audioLevel())
+            diag.add(o, context)
+            LinkLog.add("call audio: diagnostics kept for a problem report (${DiagStore.triggerText(o.optString("trigger"))}" +
+                (if (o.optBoolean("testLine")) ", test line" else "") + ")")
         }
 
         /** The helper's mic report: log what changed, remember what the redirect guard found for this phone model. */

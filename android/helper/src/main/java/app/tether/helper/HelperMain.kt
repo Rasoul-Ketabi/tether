@@ -28,6 +28,8 @@ object HelperMain {
         const val NET = 11; const val LOCAL = 15
         /** App → helper `{"active": bool}`: the bridged call is (no longer) active; the uplink flows only while it is. */
         const val CALL = 16
+        /** App → helper `{logcat?}`: call-audio diagnostics for a problem report (answers INFO `{diag: …}`, see Diag). */
+        const val DIAG = 17
     }
 
     @JvmStatic
@@ -36,6 +38,7 @@ object HelperMain {
             ShellEnv.init()
             when (args.firstOrNull() ?: "serve") {
                 "probe" -> println(CallAudio.probe().toString(2))
+                "diag" -> println(Diag.full(null).toString(2))
                 "selftest" -> println(CallAudio.selfTest().toString(2))
                 "record" -> record(args[1], args[2].toInt(), args[3])
                 "tone" -> tone(args[1], args[2].toInt())
@@ -272,6 +275,11 @@ object HelperMain {
                     }
                     F.CALL -> setActive(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject()).optBoolean("active", true))
                     F.PROBE -> { withAudio { stop() }; info(JSONObject().put("probe", CallAudio.probe())) }
+                    // Never stops a call's audio: it only looks (dumpsys takes a second or two, so on its own thread).
+                    F.DIAG -> {
+                        val req = runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())
+                        Thread({ info(JSONObject().put("diag", Diag.full(ownState(), logcat = req.optBoolean("logcat")))) }, "diag").start()
+                    }
                     F.SELFTEST -> { withAudio { stop() }; info(JSONObject().put("selftest", selfTest(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject())))) }
                     F.LOCAL -> setMicMute(runCatching { JSONObject(String(payload)) }.getOrDefault(JSONObject()))
                     F.NET -> {   // {"what": "data"|"hotspot"|"bt", "on": bool} or {} to just read the state
@@ -347,6 +355,7 @@ object HelperMain {
             localNote = local.note; localOk = local.ok
             stats.reset()
             meter.take()
+            downReads = 0; downSamples = 0; downNonZero = 0; downLiveReads = 0; callStartedAt = System.currentTimeMillis()
             // The paths open on their own thread: the session keeps reading (a STOP is never stuck behind a wait for
             // the call's audio mode, issue #15), and a START never queues up behind another.
             threads.add(Thread({
@@ -399,6 +408,37 @@ object HelperMain {
         }
 
         @Volatile private var farEnd = false
+        /** This call's downlink reads: how many, their samples, the non-zero ones (Diag: "reads only zeros" or not). */
+        @Volatile private var downReads = 0L
+        @Volatile private var downSamples = 0L
+        @Volatile private var downNonZero = 0L
+        @Volatile private var downLiveReads = 0L
+        @Volatile private var callStartedAt = 0L
+
+        /** The helper's own view of this call's audio for Diag: methods, routing, what the downlink and uplink did. */
+        private fun ownState(): JSONObject {
+            val cap = capture; val inj = inject
+            return JSONObject().put("running", running).put("pathsOpen", pathsOpen).put("testLine", testLine).put("active", callActive)
+                .put("callSeconds", if (running && callStartedAt > 0) (System.currentTimeMillis() - callStartedAt) / 1000 else JSONObject.NULL)
+                .put("capture", cap?.name ?: JSONObject.NULL).put("inject", inj?.name ?: JSONObject.NULL)
+                .put("routed", inj?.routedType()?.takeIf { it >= 0 }?.let { DiagFilter.deviceName(it) } ?: JSONObject.NULL)
+                .put("routedToCall", inj?.let { CallAudio.routedToCall(it.routedType(), testLine) } ?: JSONObject.NULL)
+                .put("downReads", downReads).put("downSamples", downSamples).put("downNonZeroSamples", downNonZero).put("downReadsWithSound", downLiveReads)
+                .put("captureFrames", cap?.capturedFrames() ?: -1)
+                .put("upWrites", stats.upWrites).put("upPlayedFrames", inj?.playedFrames() ?: -1).put("upSpeechFrames", stats.speechFrames)
+                .put("injectUnderruns", inj?.underruns() ?: -1).put("openWaitMs", stats.openWaitMs)
+                .put("mic", runCatching { micJson() }.getOrDefault(JSONObject())).put("uplink", runCatching { uplinkJson() }.getOrDefault(JSONObject()))
+        }
+
+        /** An automatic snapshot (a dead path, a call's end): the fast part now, the rest on its own thread. */
+        private fun autoDiag(trigger: String) {
+            val own = ownState()
+            val quick = runCatching { Diag.quick(own) }.getOrNull() ?: return
+            Thread({
+                val full = runCatching { Diag.full(own, quick) }.getOrDefault(quick)
+                info(JSONObject().put("autodiag", full).put("trigger", trigger).put("testLine", own.optBoolean("testLine")))
+            }, "autodiag").apply { isDaemon = true; start() }
+        }
 
         /** The audio threads of call [gen], once its paths are open (holding the audio lock). */
         private fun startStreams(rate: Int, gen: Int) {
@@ -420,6 +460,7 @@ object HelperMain {
                         if (n <= 0) { if (n < 0) break; Thread.sleep(2); continue }   // a stuck record: no busy spin
                         val nz = CallAudio.nonZero(buf, n)
                         downMeter.add(n, nz); watchMeter.add(n, nz)
+                        downReads++; downSamples += n; downNonZero += nz; if (nz > 0) downLiveReads++
                         stats.captureClock.mark(System.nanoTime(), c.capturedFrames())
                         val b = c.backlogFrames()
                         if (b >= 0) {
@@ -496,6 +537,8 @@ object HelperMain {
                     val e = w.second(PathWatch.Second(callActive, df, dnz, waiting, delta)) ?: continue
                     val text = PathWatch.text(e, capture?.name, inj?.name, inj?.routedTo())
                     ShellEnv.log("path: $text")
+                    // While the record and track are still open: is Android silencing them, or does the phone deliver nothing?
+                    autoDiag(e.wire)
                     info(JSONObject().put("path", JSONObject().put("event", e.wire).put("note", text)))
                 }
             }, "watch").apply { start() })
@@ -835,6 +878,7 @@ object HelperMain {
 
         /** Holding the audio lock. The audio threads are woken first (their blocking reads and writes return), then joined. */
         private fun stop() {
+            if (running && pathsOpen) autoDiag("call-end")
             if (running) info(JSONObject().put("stats", stats.json(rate, up).put("injectUnderruns", inject?.underruns() ?: -1)
                 .put("injectBufferFrames", inject?.bufferFrames() ?: -1).put("uplink", uplinkJson()).put("mic", micJson())))
             running = false

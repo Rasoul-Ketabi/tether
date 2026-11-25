@@ -23,7 +23,7 @@ class HelperBridge(private val ctx: Context) {
         const val TAG = "Tether"
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10
-        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16
+        const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16; const val DIAG = 17
         private const val PREF_BLOCKED = "audio_blocked_fingerprint"
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
@@ -65,6 +65,8 @@ class HelperBridge(private val ctx: Context) {
     @Volatile var onInfo: ((JSONObject) -> Unit)? = null
     /** A path-watch finding during a call (INFO `path`: `event`, `note`). */
     @Volatile var onPath: ((JSONObject) -> Unit)? = null
+    /** A diagnostics snapshot the helper took by itself (INFO `{autodiag, trigger, testLine}`: a dead path, a call's end). */
+    @Volatile var onDiag: ((JSONObject) -> Unit)? = null
     /**
      * Id of the last START sent; its start INFO echoes it. [lastInfo] is cleared with every START, so until this call's
      * paths are open (the helper waits for the call's audio mode) nothing of the previous call is taken for this one's.
@@ -126,7 +128,10 @@ class HelperBridge(private val ctx: Context) {
                     INFO -> {
                         val o = JSONObject(String(p))
                         val pend = pending
-                        if (pend != null && o.has(pend.first)) {
+                        if (o.has("autodiag")) {
+                            Log.i(TAG, "helper diagnostics snapshot: ${o.optString("trigger")}")
+                            onDiag?.invoke(o)
+                        } else if (pend != null && o.has(pend.first)) {
                             pending = null
                             pend.second.complete(o.getJSONObject(pend.first))
                         } else if (o.has("stats")) {
@@ -230,12 +235,13 @@ class HelperBridge(private val ctx: Context) {
         }
     }
 
-    /** Sends PROBE / SELFTEST (with [body], e.g. `{methods, micMute}`) and waits for the matching INFO. */
+    /** Sends PROBE / SELFTEST / DIAG (with [body], e.g. `{methods, micMute}`) and waits for the matching INFO. */
     fun request(kind: String, timeoutSec: Long = 20, body: JSONObject? = null): JSONObject? {
         synchronized(requestLock) {
             val f = CompletableFuture<JSONObject>()
             pending = kind to f
-            if (!send(if (kind == "probe") PROBE else SELFTEST, body?.toString()?.toByteArray() ?: ByteArray(0))) { pending = null; return null }
+            val type = when (kind) { "probe" -> PROBE; "diag" -> DIAG; else -> SELFTEST }
+            if (!send(type, body?.toString()?.toByteArray() ?: ByteArray(0))) { pending = null; return null }
             return try { f.get(timeoutSec, TimeUnit.SECONDS) } catch (e: Exception) { pending = null; null }
         }
     }
