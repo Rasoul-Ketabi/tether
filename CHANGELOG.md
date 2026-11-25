@@ -26,6 +26,27 @@
   and media-services resets bring the audio back; CallKit callbacks run in order; a speaker choice made while
   connecting is kept; the render-thread flags use a heap-allocated lock (#15).
 - iPhone link: renewing a pending connect no longer leaves the link waiting on the cancelled one (#15).
+### Call audio on the Android phone
+
+- The phone's own microphone is kept out of bridged calls fully automatically: the default setting tries a redirect
+  audio mode, then the phone maker's own microphone switch (Samsung's tx key, MediaTek's UL mute; never Android's
+  general mic mute), then leaves the microphone on, each step checked during the call and remembered per phone model.
+  A redirect mode whose effect on the uplink could not be seen is no longer used on later calls (#15); where the
+  uplink cannot be checked at all, only Samsung's key (verified on real calls) stays on.
+- The call's audio paths open only once the phone is in a call's audio mode (on outgoing calls that can take seconds of
+  dialing): no fall-back to older methods for that, and no restart loop (at most one restart, never over the
+  self-test's choice) (#15).
+- The iPhone's voice goes into the call only once it is connected: nothing piles up while dialing.
+- With Bluetooth tethering on: frequent hold-ups get a larger uplink cushion (60 ms instead of 45), and what a long
+  stall delivers late is dropped at once instead of delaying the call for a minute.
+- Samsung phones with a Qualcomm chip (Galaxy A71, A73, Fold) also mute the voice-call stream, so the earpiece is silent
+  even where Samsung's keys do nothing (#15). The `telephony_tx` path is checked to be routed to the call, and built
+  without a low-latency track some Qualcomm phones refuse (#15).
+- Hang-up no longer waits for blocked audio reads; start, stop, the mic setting and a new helper session take one lock
+  (#15).
+- Diagnostics for "no audio" reports (#13, #14): the Link log says when the downlink capture delivers nothing or only
+  zeros, when the phone takes nothing from the uplink injection, when the injection is not routed to the call, and how
+  long the paths waited; the self-test's rows say the same.
 
 ## 1.1.0 — 2026-11-23
 
