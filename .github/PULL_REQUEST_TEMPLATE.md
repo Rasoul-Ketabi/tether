@@ -8,6 +8,12 @@
 
 ## Checklist
 
+See [CONTRIBUTING.md › Pull requests: what gets merged](https://github.com/amirwmr/tether/blob/main/CONTRIBUTING.md#pull-requests-what-gets-merged): CI must pass and a maintainer must approve before merging.
+
+- [ ] One topic; no renaming of the project or apps, no ids or branding changed
+- [ ] Installed apps keep working: no wire break, pairing and saved data survive the update
+- [ ] No CI or workflow change (or this pull request is only that, with the reason)
+
 - [ ] `tools/test-all.sh` passes (or `--quick` / `--no-ios`, saying which)
 - [ ] Wire change: `protocol/PROTOCOL.md`, both implementations, `protocol/fixtures/` (and vectors for crypto or framing) updated — or no wire change
 - [ ] User-facing text in English **and** Persian

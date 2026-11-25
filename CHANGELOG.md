@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Contributing: pull request rules (one topic, keep the project's name and ids, never break installed apps, CI changes
+  on their own); `main` now requires all CI jobs to pass and a maintainer's approval before a pull request is merged.
+
 ## 1.2.2 — 2026-11-25
 
 - Android phone: a call answered or dialed on the Android phone itself (its screen, a headset or a car connected to it)

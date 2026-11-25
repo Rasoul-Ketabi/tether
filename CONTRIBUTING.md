@@ -74,6 +74,32 @@ signing certificate, keystore, password or token. Local values go in the git-ign
 published iPhone app is unsigned on purpose: everyone signs it with their own Apple ID, so nothing may need a
 particular (or a paid) developer account. Release keys live only in the repository's secrets.
 
+## Pull requests: what gets merged
+
+Everyone is welcome to contribute; a pull request is merged only when it keeps every installed app working. The
+`main` branch enforces this: all five CI jobs must pass on the pull request (Android, Kotlin library, Swift on Linux,
+Apple, hygiene), the branch must be up to date with `main`, and a maintainer must approve the latest push. For
+contributors from outside, CI starts once a maintainer has looked at the change.
+
+1. **One topic per pull request.** A fix, a feature or a translation, with the docs and tests it needs. Unrelated
+   changes (formatting, renames, CI tweaks) go in their own pull request. Open an issue or a feature request first
+   for anything big.
+2. **Keep the project's identity.** Do not rename the apps or the project, or change the application id
+   (`app.tether.android`), bundle ids, display names, logos or the README's purpose. A fork may brand itself as it
+   likes (MIT: keep the licence and NOTICE); such changes stay in the fork.
+3. **Never break installed apps.** The wire format only gains optional fields and new message types (protocol §5);
+   pairing, saved data and settings keep working across the update; minimum Android / iOS versions only go down.
+   A breaking change needs an issue and a maintainer's yes first.
+4. **CI and release workflows** change only in a pull request of their own that says why. A workflow must never run
+   code from a pull request with secrets (`pull_request`, never `pull_request_target`), and must not move off the
+   runners the release builds on without a reason.
+5. **Test it.** `tools/test-all.sh` passes; a bug fix comes with a test that fails without it; UI changes show
+   screenshots in English and Persian; say on which devices or simulators you tried it.
+6. **No personal data or accounts** in the change: phone numbers, logs from real phones, Apple IDs, team ids,
+   profiles, keystores, passwords or tokens (`tools/check-private.sh`).
+7. **Fill in the template.** A pull request with an empty description, failing CI, or a change of the project's name
+   is closed with a note on what to do instead.
+
 ## Testing on devices without real calls
 
 `tools/dbg.sh loopback_call` runs complete calls on the Android app's self-managed test line with an in-process
