@@ -265,8 +265,8 @@ private struct SetupGuideSection: View {
     let linkState: TetherLink.State
     let scan: () -> Void
 
-    private let accent = Color(red: 0.55, green: 0.78, blue: 1)
-    private let navy = Color(red: 0.06, green: 0.12, blue: 0.23)
+    /// The app's own teal (Assets › AccentColor), as on every other screen.
+    private let accent = Color("AccentColor")
 
     private var bluetoothUnavailable: Bool { linkState == .poweredOff || linkState == .unauthorized }
 
@@ -287,7 +287,7 @@ private struct SetupGuideSection: View {
 
                 Text("Use your Android SIM for calls and texts on this device.")
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.84))
+                    .foregroundStyle(.secondary)
 
                 Label(status, systemImage: bluetoothUnavailable ? "exclamationmark.circle.fill" : "link")
                     .font(.footnote.weight(.semibold))
@@ -296,13 +296,13 @@ private struct SetupGuideSection: View {
                 if linkState == .poweredOff {
                     Text("Turn on Bluetooth in Settings on this device before pairing.")
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(.secondary)
                 }
 
                 Button(action: scan) {
                     Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(navy)
+                        .foregroundStyle(.black)
                         .multilineTextAlignment(.center)
                         .padding(.vertical, 6)
                         .frame(maxWidth: .infinity)
@@ -316,14 +316,9 @@ private struct SetupGuideSection: View {
                         .foregroundStyle(accent)
                 }
             }
-            .foregroundStyle(.white)
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(colors: [navy, Color(red: 0.10, green: 0.24, blue: 0.41)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 22)
-            )
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
         }
@@ -714,8 +709,8 @@ struct PairingView: View {
     @State private var cameraState: QRScanner.State = .starting
     @State private var completed = false
 
-    private let accent = Color(red: 0.55, green: 0.78, blue: 1)
-    private let navy = Color(red: 0.06, green: 0.12, blue: 0.23)
+    /// The app's own teal (Assets › AccentColor), as on every other screen.
+    private let accent = Color("AccentColor")
 
     var body: some View {
         NavigationStack {
@@ -740,7 +735,7 @@ struct PairingView: View {
                     Button { openManualEntry() } label: {
                         Label("Enter Code Manually", systemImage: "keyboard")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(navy)
+                            .foregroundStyle(.black)
                             .multilineTextAlignment(.center)
                             .padding(.vertical, 6)
                             .frame(maxWidth: .infinity)
@@ -751,7 +746,7 @@ struct PairingView: View {
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
-            .background(navy.ignoresSafeArea())
+            .background(Color.black.ignoresSafeArea())
             .navigationTitle("Scan Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -821,7 +816,7 @@ struct PairingView: View {
         .multilineTextAlignment(.center)
         .padding(24)
         .frame(maxWidth: .infinity, minHeight: 200)
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 24))
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
     }
 
     private func openManualEntry() {
