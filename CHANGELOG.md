@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0 — 2026-11-25
+
 ### Call audio on the Android phone
 
 - The phone's own microphone is kept out of bridged calls fully automatically: the default setting tries a redirect
