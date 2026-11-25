@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.2 — 2026-11-25
+
 - Android phone: a call answered or dialed on the Android phone itself (its screen, a headset or a car connected to it)
   stays on that phone. Before, with the iPhone linked, its audio went to the iPhone and the phone's own earpiece and
   microphone were muted, so the call had no audio where it was taken (#13). The iPhone shows such a call as on the
