@@ -88,7 +88,8 @@ iPhone. The iPhone's voice is injected into the call's uplink by the Android pho
   (Samsung, MediaTek), and otherwise leaves the microphone on. It never uses Android's general microphone mute on its
   own: on several phones that also mutes your voice. Each step is checked during the call: when the downlink goes
   silent, or your speech stops reaching the uplink, Tether undoes it and remembers that for the phone model. Some
-  phones cannot show their uplink to this check: a redirect mode is then not used again, and the maker's switch is
+  phones cannot show their uplink to this check: a redirect mode is then not used at all (not even for the rest of that
+  call, and no other untested mode is tried after it), and the maker's switch is
   kept only where it is known to keep your voice (Samsung's, verified on real calls); otherwise the microphone stays
   on rather than risk a silent call.
 - **The Android phone's microphone mute** (only with **Muted**). On several phones (MediaTek for certain, Qualcomm

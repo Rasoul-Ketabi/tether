@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android phone: a redirect audio mode whose effect on the uplink cannot be checked (the phone gives no uplink capture,
+  common on custom ROMs) is no longer kept for the call, and no other untested mode is tried on later calls. Before, the
+  first one or two calls on such a phone could leave the other side hearing nothing of the iPhone (Poco F3 and
+  Poco X3 Pro reports, #14).
+
 ## 1.2.0 — 2026-11-25
 
 ### Call audio on the Android phone

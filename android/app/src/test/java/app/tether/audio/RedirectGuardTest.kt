@@ -156,11 +156,37 @@ class RedirectGuardTest {
         assertTrue(g.settled)
     }
 
-    @Test fun noUplinkCaptureMeansUnverified() {
+    @Test fun noUplinkCaptureMeansTheUntestedModeIsNotUsed() {
+        // Poco F3 / X3 Pro (custom ROMs, Android 16, 2026-11-25): the far end heard nothing of the iPhone. With no
+        // VOICE_UPLINK capture nothing can tell whether the mode silences the uplink, so it is not set at all.
         val g = RedirectGuard(r, waitDownlink = true, speechCheck = true)
         g.uplinkUnavailable("voice_uplink capture: refused")
         assertEquals(Verdict.UNVERIFIED, g.verdict)
-        g.second(s(inCall))
+        assertEquals(Action.NONE, g.second(s(inCall)))
+        assertEquals(State.REVERTED, g.state)
+        assertTrue("the next layer takes the mic in this call", g.settled)
+        assertTrue("treated like a blind uplink by the next layer", g.blindUplink)
+        assertTrue(g.note, g.note.contains("not used"))
+        assertEquals("stays off for the rest of the call", listOf(Action.NONE, Action.NONE), run(g, listOf(s(inCall), s(inCall))))
+    }
+
+    @Test fun theUplinkCaptureStoppingUndoesAModeAlreadySet() {
+        val g = RedirectGuard(r, waitDownlink = true, speechCheck = true)
+        assertEquals(Action.APPLY, g.second(s(inCall)))
+        g.second(s(uplink = talkHeard.copy(speechFrames = 0)))
+        g.uplinkUnavailable("voice_uplink capture stopped (-6)")
+        assertEquals(Action.REVERT, g.second(s()))
+        assertEquals(State.REVERTED, g.state)
+        assertEquals(Verdict.UNVERIFIED, g.verdict)
+        assertTrue(g.settled)
+    }
+
+    @Test fun aModeWithoutSpeechCheckIsNotAffected() {
+        // A mode that passed a check before (speechCheck off) keeps working: there is nothing to capture for it.
+        val g = RedirectGuard(r, waitDownlink = true, speechCheck = false)
+        g.uplinkUnavailable("voice_uplink capture: refused")
+        assertNull(g.verdict)
+        assertEquals(Action.APPLY, g.second(s(inCall)))
         assertEquals(State.ON, g.state)
     }
 }

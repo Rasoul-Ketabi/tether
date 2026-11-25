@@ -65,7 +65,15 @@ class MicPathTest {
         // later call without any check; had the mode silenced the uplink, nobody would have heard the iPhone.
         assertFalse(Verdict.UNVERIFIED.usable)
         assertNull(choose(memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
-        assertEquals(Redirect.CALL_SCREENING, choose(screening = true, memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
+        // The phone's uplink cannot be seen: the next untested mode could not be checked either (Poco F3 / X3 Pro).
+        assertNull(choose(screening = true, memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED)))
+        assertNull(choose(screening = true, memory = mapOf(Redirect.CALL_SCREENING to Verdict.UNVERIFIED)))
+        assertEquals("a mode that passed a check stays usable", Redirect.CALL_SCREENING,
+            choose(screening = true, memory = mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED, Redirect.CALL_SCREENING to Verdict.OK)))
+        assertEquals("a blind uplink on the VoIP test line says nothing about real calls", Redirect.CALL_REDIRECT,
+            choose(memory = mapOf(Redirect.COMMUNICATION_REDIRECT to Verdict.UNVERIFIED)))
+        assertTrue(MicPath.noRedirectWhy(34, "intercept", Mode.IN_CALL, mapOf(Redirect.CALL_REDIRECT to Verdict.UNVERIFIED))
+            .contains("call_screening not tried (the uplink cannot be checked)"))
     }
 
     @Test fun whyNoRedirectModeIsSaid() {
