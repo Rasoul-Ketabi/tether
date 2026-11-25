@@ -41,7 +41,7 @@ or read and send its texts. The phone in your hand can be an iPhone, an iPad or 
 
 | Android | Texts, contacts, call history | Answer / place / end calls from the iPhone | Call audio on the iPhone |
 | --- | --- | --- | --- |
-| 8 and 9 | coming in 1.2.0 | coming in 1.2.0 | no (talk on the Android phone) |
+| 8 and 9 | yes | yes | no (talk on the Android phone) |
 | 10 | yes | yes | no (talk on the Android phone) |
 | 11 and 12 | yes | yes | best effort, depends on the phone |
 | 13 and later | yes | yes | yes, best support |

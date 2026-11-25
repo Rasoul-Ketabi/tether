@@ -18,7 +18,7 @@ end to end encrypted.
 
 | | |
 | --- | --- |
-| The phone with the SIMs | Any Android phone with Android 10 or later and Bluetooth LE. **Call audio** (hearing and talking on the iPhone) needs Android 11 or later and works best on Android 13+; on Android 10 you control calls from the iPhone but talk on the Android phone. Android 8 and 9 are coming in 1.2.0 for texts, contacts and call control (no call audio). Details: [features by Android version](devices/android-versions.md) |
+| The phone with the SIMs | Any Android phone with Android 8.0 or later and Bluetooth LE. **Call audio** (hearing and talking on the iPhone) needs Android 11 or later and works best on Android 13+; on Android 10 you control calls from the iPhone but talk on the Android phone. Android 8 and 9 are coming in 1.2.0 for texts, contacts and call control (no call audio). Details: [features by Android version](devices/android-versions.md) |
 | The phone in your hand | An iPhone or iPad with iOS 16 or later, **or** a second Android phone (Android 10+) with the Tether Client app |
 | A Wi-Fi network | Once, for the Android phone's Wireless debugging pairing (needed for call audio and the network switches) |
 | A computer | **Not needed for Android.** For the iPhone: once, a Mac **or** a Windows PC to set up the sideloading tool (see section 4). No Mac is required |
@@ -59,7 +59,7 @@ you to uninstall first (your pairing is then made again).
      4. Turn **Wireless debugging** on, tap **Pair device with pairing code**, and type the six-digit code into the
         Tether notification's reply field.
      5. The **Audio helper** line turns to "Running". Wi-Fi is needed only when the helper starts (after a restart).
-   - Android 10 has no Wireless debugging: use the TCP mode described in [SETUP.md](SETUP.md#tcp-debugging-android-10-or-no-wi-fi)
+   - Android 8, 9 and 10 have no Wireless debugging: use the TCP mode described in [SETUP.md](SETUP.md#tcp-debugging-android-8-to-10-or-no-wi-fi)
      (one `adb tcpip 5555` from a computer after every restart).
 
 ## 4. Install the iPhone app

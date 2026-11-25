@@ -11,7 +11,7 @@ Android phone, over an end-to-end encrypted Bluetooth link. No server, no accoun
   <a href="https://github.com/amirwmr/tether/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amirwmr/tether/ci.yml?branch=main&label=CI"></a>
   <a href="https://github.com/amirwmr/tether/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amirwmr/tether?include_prereleases&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-3DDC84?logo=android&logoColor=white">
   <img alt="iOS 16+" src="https://img.shields.io/badge/iOS-16%2B-000000?logo=apple&logoColor=white">
   <img alt="SDKs: macOS and Linux" src="https://img.shields.io/badge/SDKs-macOS%20%7C%20Linux-555555">
   <br>
@@ -122,7 +122,7 @@ Get the files from the [latest release](https://github.com/amirwmr/tether/releas
 
 | File | Install it on |
 | --- | --- |
-| `Tether-A54-<version>.apk` | **The Android phone with the SIM cards** (any Android 10+ phone; it becomes the default phone app). Everyone needs this one |
+| `Tether-A54-<version>.apk` | **The Android phone with the SIM cards** (any Android 8+ phone; it becomes the default phone app). Everyone needs this one |
 | `Tether-<version>-unsigned.ipa` | **Your iPhone or iPad** (iOS 16+), sideloaded with your own Apple ID: [SideStore, AltStore, Sideloadly or TrollStore](docs/INSTALL.md#4-install-the-iphone-app). No Mac needed |
 | `Tether-Client-<version>.apk` | **A second Android phone** in your hand instead of an iPhone |
 
@@ -136,7 +136,7 @@ yourself? See [Quick start](#quick-start) and [docs/BUILD.md](docs/BUILD.md).
 
 | | |
 | --- | --- |
-| Android phone | Android 10 or later with Bluetooth LE advertising. Call audio needs Android 11 or later (full support on 13+) and a build that lets the shell user capture call audio; see [features by Android version](docs/devices/android-versions.md). Tether becomes its default phone app. |
+| Android phone | Android 8.0 or later with Bluetooth LE advertising (Android 8–9 link over GATT only). Call audio needs Android 11 or later (full support on 13+) and a build that lets the shell user capture call audio; see [features by Android version](docs/devices/android-versions.md). Tether becomes its default phone app. |
 | iPhone or iPad | iOS 16 or later. |
 | Or a second Android phone | Android 10 or later with Bluetooth LE, for the Android client. |
 | A computer | Only for the iPhone, once: a Mac or a Windows PC to set up the sideloading tool. To build the apps yourself: a Mac with Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), JDK 17 and the Android SDK. |
@@ -204,7 +204,7 @@ what you see (open an issue with your phone model, Android version and the Link 
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece is muted during a bridged call (voice-call stream, or each vendor's own audio controls; from their sources, untested on devices; the Link tab shows "Android phone silent"); its microphone is taken out of the call with Android's redirect audio mode where the phone allows it (checked during each call and by the self-test), else it stays on |
 | Android 11-12 | Everything, with call audio on a best-effort path (voice-call capture); untested |
 | Android 10 | Everything except call audio; the helper needs the TCP adb path; untested |
-| Android 8-9 | Coming in 1.2.0: texts, contacts and call control, no call audio |
+| Android 8-9 | Everything except call audio; link over GATT only; the helper only via TCP adb; tested in the emulator, untested on devices |
 | Single-SIM phones | Expected to work; SIM choices are hidden |
 | Phones without Wi-Fi hotspot or Bluetooth tethering | Those switches are hidden |
 | Bluetooth tethering between the same two phones | Works; the link then runs over its GATT transport (see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)) |
