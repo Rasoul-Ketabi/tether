@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import app.tether.client.R
 import app.tether.client.calls.LocalCall
+import app.tether.client.calls.MicPolicy
 
 /**
  * The call screen (self-managed calls show the app's own): who, SIM, state and time; answer / decline while ringing;
@@ -37,6 +38,18 @@ class CallActivity : Activity() {
         setContentView(root)
         fitSystemBars(root)
         handle(intent)
+        // A call is starting: ask for the microphone again if it is still refused (Android stops showing the question
+        // after two refusals; the warning below then says where to allow it).
+        if (MicPolicy.atCall(app.hasMicPermission()) == MicPolicy.CallCheck.ASK) {
+            app.journal.add("microphone: permission missing at call start: asking")
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        app.journal.add("microphone: " + if (app.hasMicPermission()) "allowed" else "refused")
+        app.audio.micPermissionChanged()
+        render()
     }
 
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); handle(intent) }
@@ -79,6 +92,7 @@ class CallActivity : Activity() {
             else -> c.connectedAt?.let { val s = ((System.currentTimeMillis() - it) / 1000).coerceAtLeast(0); "%d:%02d".format(s / 60, s % 60) } ?: getString(R.string.call_active)
         }
         root.addView(label(listOfNotNull(stateText, sim).joinToString(" · "), R.color.muted, 16f).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(32)) })
+        app.micWarning?.let { root.addView(label(getString(micText(it)), R.color.warn, 14f).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(16)) }) }
         val others = app.calls.calls.filter { it.local != c.local }
         for (o in others) root.addView(label("${o.name ?: app.format(o.number)} · ${getString(if (o.state == "holding") R.string.call_on_hold else R.string.call_waiting)}", R.color.warn, 14f).apply {
             gravity = Gravity.CENTER; setOnClickListener { local = o.local; render() }

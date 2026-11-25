@@ -131,4 +131,7 @@
     <string name="vpn_up">یک VPN روی گوشی اندروید فعال است</string>
     <string name="waiting_for_phone">در انتظار گوشی اندروید…</string>
     <string name="you">شما</string>
+    <string name="mic_denied">اجازهٔ میکروفون خاموش است: طرف مقابل صدای شما را نمی‌شنود. در تنظیمات › برنامه‌ها › مجوزها › میکروفون اجازه دهید.</string>
+    <string name="mic_unavailable">میکروفون این گوشی باز نشد: طرف مقابل صدای شما را نمی‌شنود.</string>
+    <string name="mic_silent">میکروفون این گوشی صدایی نمی‌دهد: ممکن است طرف مقابل صدای شما را نشنود.</string>
 </resources>

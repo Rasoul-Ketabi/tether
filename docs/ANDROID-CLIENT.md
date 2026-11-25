@@ -32,7 +32,10 @@ and call history. The SIM phone stays in a bag; you use the other phone.
 - **Call audio** both ways: `AudioRecord` (VOICE_COMMUNICATION, with the platform's echo canceller, noise suppressor
   and gain control) → Opus (Concentus, the codec code shared with the SIM phone) → link; link → Opus → the playout
   buffer ported from TetherCore (same numbers, same tests) → `AudioTrack` (voice communication). A local ringback
-  plays while dialing until the far end is audible. Call statistics go to the Link log at the end of each call.
+  plays while dialing until the far end is audible. The microphone is read but not sent until a call is connected (the iPhone's
+  rule); a refused microphone permission, a recorder that does not open, or 2 s of exact silence in a connected call show a warning on the
+  call screen and the main screen, with a `microphone:` line in the Link log, and the permission is asked for again when
+  a call starts. Call statistics go to the Link log at the end of each call.
   The playout matches the iPhone's tuning of 2026-11-23: arrivals stamped off the link, depth from the arrival
   spread around the far clock's drift (first 2 s left out), frames dropped for lateness filled by Opus concealment.
 - **Keypad** with DTMF during calls; **Recents** (search, delete, clear, missed-call badge); **Contacts** with

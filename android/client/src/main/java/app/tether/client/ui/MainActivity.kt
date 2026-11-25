@@ -159,6 +159,12 @@ class MainActivity : Activity() {
                 setOnClickListener { app.state.problem = null; render() }
             })
         }
+        app.micWarning?.takeIf { app.identity.isPaired }?.let { w ->
+            banner.addView(label(getString(micText(w)), R.color.warn, 14f).apply {
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = GradientDrawable().apply { setColor(col(R.color.surface)); cornerRadius = dp(10).toFloat() }
+            })
+        }
         app.calls.calls.firstOrNull()?.let { c ->
             banner.addView(label("☎ " + (c.name ?: app.format(c.number)) + " · " + stateWord(c.state), R.color.background, 14f).apply {
                 setPadding(dp(12), dp(10), dp(12), dp(10))

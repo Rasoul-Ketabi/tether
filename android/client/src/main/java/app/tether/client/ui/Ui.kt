@@ -137,6 +137,13 @@ fun Context.describe(p: Problem): String {
     return if (p.detail != null && p.kind != Problem.OTHER) "$base: ${p.detail}" else base
 }
 
+/** The line for a microphone warning (call screen and main screen). */
+fun micText(w: app.tether.client.calls.MicWarning): Int = when (w) {
+    app.tether.client.calls.MicWarning.DENIED -> R.string.mic_denied
+    app.tether.client.calls.MicWarning.UNAVAILABLE -> R.string.mic_unavailable
+    app.tether.client.calls.MicWarning.SILENT -> R.string.mic_silent
+}
+
 /** A list adapter from a list and a row builder. */
 class Rows<T>(private val items: List<T>, private val build: (T) -> View) : BaseAdapter() {
     override fun getCount() = items.size

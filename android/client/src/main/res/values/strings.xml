@@ -132,4 +132,7 @@
     <string name="vpn_up">A VPN is up on the Android phone</string>
     <string name="waiting_for_phone">Waiting for the Android phone…</string>
     <string name="you">You</string>
+    <string name="mic_denied">Microphone permission is off: the other side cannot hear you. Allow it in Settings › Apps › Permissions › Microphone.</string>
+    <string name="mic_unavailable">This phone\'s microphone could not be opened: the other side cannot hear you.</string>
+    <string name="mic_silent">This phone\'s microphone gives no sound: the other side may not hear you.</string>
 </resources>

@@ -40,6 +40,7 @@
 - Android client: a malformed `sync.ids` page no longer deletes local rows (#11, thanks @Shabdin-A).
 - Android client: the same playout stall handling as the iPhone (a stall's backlog plays late and drains in the
   pauses, cut only beyond 0.8 s; a stall's burst no longer holds the buffer deep).
+- Android client: the microphone is sent only once a call is connected (not while dialing), and a refused permission, a recorder that does not open or one that delivers only silence for 2 s is shown on the call screen and the main screen and in the Link log; the permission is asked for again when a call starts (#14).
 - Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
 
 ### Platforms
