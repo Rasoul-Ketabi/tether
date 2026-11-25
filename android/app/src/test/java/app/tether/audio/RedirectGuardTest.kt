@@ -122,6 +122,40 @@ class RedirectGuardTest {
         assertEquals(Verdict.UNVERIFIED, g.verdict)
     }
 
+    @Test fun theNextLayerWaitsUntilTheModeIsSettled() {
+        // The mute must not come on while the uplink after-check compares "with the mode" against "without it".
+        val up = RedirectGuard(r, waitDownlink = true, speechCheck = true)
+        up.second(s(inCall))
+        assertTrue("waiting / on: not settled", !up.settled)
+        run(up, List(5) { s(uplink = talkQuiet) })
+        assertEquals(State.REVERTED, up.state)
+        assertTrue("reverted for the uplink, its after-check still running", !up.settled)
+        run(up, List(5) { s(inCall, uplink = talkQuiet) })
+        assertTrue(up.settled)
+        assertTrue("the capture showed the iPhone neither way: blind", up.blindUplink)
+        // A downlink revert: the mute does not affect what its after-check looks at.
+        val down = RedirectGuard(r, waitDownlink = true, speechCheck = false)
+        down.second(s(inCall))
+        run(down, listOf(s(), silentDown, silentDown, silentDown))
+        assertEquals(State.REVERTED, down.state)
+        assertTrue(down.settled)
+        assertTrue(!down.blindUplink)
+        // The call ended (another mode): settled, nothing to take over.
+        val ended = RedirectGuard(r, waitDownlink = true, speechCheck = false)
+        ended.second(s(inCall)); ended.second(s(Mode.NORMAL))
+        assertTrue(ended.settled)
+    }
+
+    @Test fun theOwnersCallsOf2026_11_23() {
+        // A54, real calls, default setting: call_redirect reverted for a silent VOICE_UPLINK, then "unverified" (no
+        // longer used: MicPath test), next call call_redirect killed the downlink → breaks-downlink. Both settle, so
+        // the vendor key takes the mic in the same call instead of leaving it open.
+        val g = RedirectGuard(r, waitDownlink = true, speechCheck = false)
+        run(g, listOf(s(inCall, down = false), s(inCall), s(), silentDown, silentDown, silentDown, s(inCall)))
+        assertEquals(Verdict.BREAKS_DOWNLINK, g.verdict)
+        assertTrue(g.settled)
+    }
+
     @Test fun noUplinkCaptureMeansUnverified() {
         val g = RedirectGuard(r, waitDownlink = true, speechCheck = true)
         g.uplinkUnavailable("voice_uplink capture: refused")
