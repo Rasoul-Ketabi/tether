@@ -34,6 +34,7 @@ import app.tether.core.PairingCode
 import app.tether.helper.CallAudio
 import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
+import app.tether.link.LinkLog
 import app.tether.link.LinkService
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -254,6 +255,38 @@ class MainActivity : Activity() {
         audio.addView(button(getString(R.string.action_selftest), secondary = true) {
             Thread { app.hub.selftest() }.start()
         })
+        audio.addView(button(getString(R.string.link_log), secondary = true) { showLinkLog() })
+    }
+
+    /**
+     * The link log (the same lines as `tools/dbg.sh linklog`: link, call-audio and mic events, no message text, no
+     * numbers), with Share and Copy, so a bug report needs no computer. A header says which app, phone and Android.
+     */
+    private fun showLinkLog() {
+        LinkLog.init(this)
+        val body = LinkLog.tail(600)
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        val header = "Tether $version · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · " +
+            "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
+        val text = header + "\n\n" + body.ifEmpty { getString(R.string.link_log_empty) }
+        val view = TextView(this).apply {
+            this.text = text; textSize = 11f; typeface = Typeface.MONOSPACE; setTextIsSelectable(true)
+            textDirection = View.TEXT_DIRECTION_LTR; textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        AlertDialog.Builder(this).setTitle(R.string.link_log).setView(ScrollView(this).apply { addView(view) })
+            .setPositiveButton(R.string.action_share) { _, _ ->
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Tether link log").putExtra(Intent.EXTRA_TEXT, text)
+                runCatching { startActivity(Intent.createChooser(send, getString(R.string.link_log))) }
+            }
+            .setNeutralButton(R.string.action_copy) { _, _ ->
+                getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Tether link log", text))
+                Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** Explains the steps, then (on Enable) connects to adbd's TCP mode, grants what the app needs and starts the helper. */

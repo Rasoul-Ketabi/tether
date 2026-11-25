@@ -85,3 +85,11 @@ Call audio › "This phone's microphone during bridged calls" › **On**, and ru
 ### How far apart can the phones be?
 
 Bluetooth range: a few metres, through a bag or a pocket. In the next room it may drop.
+
+### How do I send logs with a bug report?
+
+Right after a test call: on the Android phone, Tether › Call audio › **Link log** › **Share** (and, during a call,
+**Run call-audio self-test**, then a screenshot of its result); on the iPhone, Link › **Link log** › the share button
+(Tether Client: Link › Link log › Copy). Attach them to an issue at
+[github.com/amirwmr/tether/issues](https://github.com/amirwmr/tether/issues/new/choose). The logs hold no message text
+or phone numbers; check them before posting.

@@ -51,6 +51,11 @@
     <string name="adb_tcp_off">خاموش</string>
     <string name="action_enable">فعال‌سازی</string>
     <string name="action_turn_off">خاموش کردن</string>
+    <string name="link_log">گزارش اتصال</string>
+    <string name="link_log_empty">هنوز رویدادی نیست.</string>
+    <string name="action_share">اشتراک‌گذاری</string>
+    <string name="action_copy">کپی</string>
+    <string name="copied">کپی شد</string>
     <string name="adb_tcp_howto">یک بار گوشی را با USB به رایانه وصل کنید، دستور adb tcpip 5555 را اجرا کنید و پیام کلید را در گوشی بپذیرید (همیشه مجاز). سپس Tether خودش به 127.0.0.1:5555 وصل می‌شود. پس از هر راه‌اندازی مجدد گوشی دستور adb tcpip را دوباره اجرا کنید. برای خاموش کردن: adb usb. تا وقتی روشن است، گوشی در هر شبکه‌ای که هست اتصال adb می‌پذیرد و فقط تأیید کلید از آن محافظت می‌کند.</string>
     <string name="adb_tcp_connecting">در حال اتصال به adb روی 127.0.0.1…</string>
     <string name="adb_tcp_connected">وصل شد. دستیار صدا در حال شروع است…</string>

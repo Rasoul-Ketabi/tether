@@ -1,7 +1,7 @@
 # Troubleshooting
 
-Start with the logs: on the iPhone, **Link › Link log**; on the Android phone, with USB debugging,
-`tools/dbg.sh linklog`. They show every connect, drop (with Bluetooth's reason code) and setup step.
+Start with the logs: on the iPhone, **Link › Link log** (share button at the top); on the Android phone, **Call audio ›
+Link log** (Share or Copy; in 1.2.1 and older only `tools/dbg.sh linklog` with USB debugging). They show every connect, drop (with Bluetooth's reason code) and setup step.
 
 ## The iPhone does not link
 
@@ -119,7 +119,7 @@ What to do:
      still gets through), `no-effect` (the microphone stays in the call), `breaks-uplink` / `breaks-downlink` (a
      direction went silent), `refused`, `unverified` (this phone shows neither). Tether remembers it for the model.
    - `inject:<method>, phone mic muted`: the working method once more with the microphone muted.
-3. Open **Link › Link log** on the iPhone (or `tools/dbg.sh linklog` on the Android phone). Each call writes a line
+3. Open **Link › Link log** on the iPhone (or **Call audio › Link log** on the Android phone). Each call writes a line
    starting `call audio path:` (whether the uplink injection opened, with which method, what the microphone does),
    `call audio: call_redirect on` / `reverted` lines when the mode changed (with the reason; with the default setting
    the summary then says `then muted by the vendor key` or `then open`), `uplink check …` lines,
@@ -152,6 +152,7 @@ Android phone disappear from the iPhone at the next sync.
 ## What to include in a report
 
 - Phone models, Android and iOS versions, whether Bluetooth tethering was on.
-- The iPhone's Link log and the output of `tools/dbg.sh linklog` (they contain no message text; check them for
+- Both link logs: the iPhone's **Link › Link log** (share button) and the Android phone's **Call audio › Link log**
+  (Share; it starts with the app version, phone model and Android version). They contain no message text; check them for
   anything you do not want to share before posting).
 - For audio problems: the self-test result.

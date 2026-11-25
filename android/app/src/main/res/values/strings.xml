@@ -51,6 +51,11 @@
     <string name="adb_tcp_off">Off</string>
     <string name="action_enable">Enable</string>
     <string name="action_turn_off">Turn off</string>
+    <string name="link_log">Link log</string>
+    <string name="link_log_empty">No events yet.</string>
+    <string name="action_share">Share</string>
+    <string name="action_copy">Copy</string>
+    <string name="copied">Copied</string>
     <string name="adb_tcp_howto">Connect this phone to a computer with USB once, run: adb tcpip 5555, and accept the key prompt on the phone (Always allow). Tether then connects to 127.0.0.1:5555 itself. Repeat the adb tcpip command after every restart of the phone. Turn it off again with: adb usb. While it is on, the phone accepts adb connections on every network it is on, protected only by that key approval.</string>
     <string name="adb_tcp_connecting">Connecting to adb on 127.0.0.1…</string>
     <string name="adb_tcp_connected">Connected. Starting the audio helper…</string>

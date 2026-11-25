@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android phone: Call audio › **Link log** shows the link log with Share and Copy (headed by the app version, phone
+  model and Android version), so a bug report no longer needs a computer and adb.
+
 ## 1.2.1 — 2026-11-25
 
 - Android phone: a redirect audio mode whose effect on the uplink cannot be checked (the phone gives no uplink capture,
@@ -9,7 +12,7 @@
   first one or two calls on such a phone could leave the other side hearing nothing of the iPhone (Poco F3 and
   Poco X3 Pro reports, #14).
 - Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
-  pair again. Everything new in 1.2: see 1.2.0 below.
+  pair again. Everything new in 1.2: see 1.2.0.
 
 ## 1.2.0 — 2026-11-25
 
