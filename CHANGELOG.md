@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- iPhone: a redesigned first-run Link screen (connect card, numbered steps), a scanner that explains a missing or
+  refused camera, and a clearer manual code entry (#17, thanks @ashkan0033).
 - Contributing: pull request rules (one topic, keep the project's name and ids, never break installed apps, CI changes
   on their own); `main` now requires all CI jobs to pass and a maintainer's approval before a pull request is merged.
 
