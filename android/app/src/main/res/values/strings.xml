@@ -121,4 +121,13 @@
     <string name="adb_no_service">The pairing window was not found. Keep Pair device with pairing code open on screen (pull this notification down over it, or use split screen) and enter the code while it is shown.</string>
     <string name="adb_wrong_code">The code was wrong or has expired. Open Pair device with pairing code again and enter the new 6-digit code.</string>
     <string name="adb_paired_no_connect">Paired, but could not connect yet (%1$s). Tether tries again while Wireless debugging is on.</string>
+    <!-- Help › problem report -->
+    <string name="section_help">Help</string>
+    <string name="report_title">Send a problem report</string>
+    <string name="report_hint">One file with what is needed to find a problem with setup, pairing, the link, calls, call audio, texts, contacts or tethering. Phone numbers, names, message text, e-mail, addresses and keys are left out. Attach it to your issue on GitHub.</string>
+    <string name="report_preparing">Preparing the report… This can take up to half a minute.</string>
+    <string name="report_ready">The report is ready (%1$d KB). Phone numbers, names, message text, e-mail, addresses and keys are removed; please look through it before you post it.</string>
+    <string name="report_failed">The report could not be made: %1$s</string>
+    <string name="report_copied_short">Copied, shortened to %1$d KB for the clipboard. Share sends the whole file.</string>
+    <string name="action_close">Close</string>
 </resources>

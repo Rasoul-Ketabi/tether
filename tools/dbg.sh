@@ -15,6 +15,8 @@
 #   tools/dbg.sh block +10000000001 on|off | mute <thread> on|off | lists      (test numbers +1000000000x only)
 #   tools/dbg.sh ussd_test '*123#' (dry: validates and logs, never sends) | phone_find on|off (rings the A54!) | ringer (state only)
 #   tools/dbg.sh ext (extensions, what each client announced, counters) | ext_echo [data] (x.tether.echo round trip)
+#   tools/dbg.sh report (build the problem report of Help › Send a problem report in the app's cache: path, size, outline)
+#   tools/dbg.sh report_lines [from] [n] (print lines of the last report, " | " between lines)
 . "$(dirname -- "$0")/lib.sh"; pick_android
 cmd=${1:-state}; shift 2>/dev/null || true
 extra=""
@@ -41,6 +43,7 @@ case "$cmd" in
   mic) extra="--es on ${1:-state}${2:+ --es keep $2}";;
   forget_kind) extra="--es kind $1";;
   linklog) extra="--es n ${1:-120}";;
+  report_lines) extra="--es from ${1:-0} --es n ${2:-200}";;
   ext_echo) [ -n "$1" ] && extra="--es data '$1'";;
   airplane) extra="--es on ${1:-on}";;
   test_contact) extra="--es num $1";;

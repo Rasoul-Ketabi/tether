@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import app.tether.TetherApp
+import app.tether.report.PhoneReport
+import app.tether.report.ReportProvider
 import app.tether.helper.MicPath
 import app.tether.core.AudioFrame
 import app.tether.core.CentralHandshake
@@ -43,7 +45,8 @@ class DebugReceiver : BroadcastReceiver() {
             try {
                 val out = run(app, cmd, intent).trim().replace("\n", " | ")
                 // Never write the pairing code or the helper's token into logcat (bug reports carry it).
-                Log.i(TAG, "debug $cmd: " + if (cmd in setOf("pair_code", "helper_cmd")) "(${out.length} chars, not logged)" else out)
+                // Nor the problem report's lines (they would land in the next report's app log).
+                Log.i(TAG, "debug $cmd: " + if (cmd in setOf("pair_code", "helper_cmd", "report_lines")) "(${out.length} chars, not logged)" else out)
                 pending.resultData = out
             } catch (t: Throwable) {
                 Log.e(TAG, "debug $cmd failed", t)
@@ -52,6 +55,18 @@ class DebugReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }.start()
+    }
+
+    /** Builds the problem report as the Help button does and says where it is and what is in it (counts only). */
+    private fun report(app: TetherApp): String {
+        val t0 = System.currentTimeMillis()
+        val text = PhoneReport.build(app).build()
+        val f = ReportProvider.write(app, text)
+        val lines = text.lines()
+        val sections = lines.withIndex().filter { it.value.startsWith("## ") }
+        val outline = sections.mapIndexed { i, s -> "${s.value.removePrefix("## ")} ${(sections.getOrNull(i + 1)?.index ?: lines.size) - s.index - 1}" }
+        return "path=${f.absolutePath} bytes=${f.length()} lines=${lines.size} built in ${System.currentTimeMillis() - t0} ms; sections: " +
+            outline.joinToString(", ") + "; isClientSilenced lines=${lines.count { "isClientSilenced=" in it }}, snapshots=${lines.count { it.startsWith("-- snapshot ") }}"
     }
 
     /** x.tether.echo to every client that announced it: round trip, clock offset and transport per answer. */
@@ -203,6 +218,13 @@ class DebugReceiver : BroadcastReceiver() {
         "airplane" -> app.hub.helper.ensureRunning()?.let { "helper: $it" } ?: app.hub.setAirplane(intent.getStringExtra("on") == "on").toString()
         // linklog [n]: the persistent Bluetooth link event log
         "linklog" -> LinkLog.tail(intent.getStringExtra("n")?.toIntOrNull() ?: 120)
+        // The problem report of Help › Send a problem report, written to the app's cache (never to shared storage): its
+        // path, size and an outline; report_lines prints part of it (lines are joined with " | ").
+        "report" -> report(app)
+        "report_lines" -> ReportProvider.latest(app)?.readLines()?.let { l ->
+            val from = intent.getStringExtra("from")?.toIntOrNull() ?: 0
+            l.drop(from).take(intent.getStringExtra("n")?.toIntOrNull() ?: 200).joinToString("\n")
+        } ?: "no report yet: run report first"
         // Extensions (protocol §7): what is registered, what each client announced, counters; no message contents.
         "ext" -> app.hub.extensions.debug().toString()
         "ext_echo" -> extEcho(app, intent.getStringExtra("data"))

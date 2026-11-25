@@ -36,6 +36,8 @@ import app.tether.helper.LocalMutes
 import app.tether.helper.MicPath
 import app.tether.link.LinkLog
 import app.tether.link.LinkService
+import app.tether.report.PhoneReport
+import app.tether.report.ReportUi
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -257,6 +259,11 @@ class MainActivity : Activity() {
             Thread { app.hub.selftest() }.start()
         })
         audio.addView(button(getString(R.string.link_log), secondary = true) { showLinkLog() })
+
+        // Help: one file with what is needed to find any problem (docs/TROUBLESHOOTING.md, "What to include in a report").
+        val help = card(getString(R.string.section_help))
+        help.addView(label(getString(R.string.report_hint), R.color.muted, 13f))
+        help.addView(button(getString(R.string.report_title)) { ReportUi.send(this) { PhoneReport.build(app) } })
     }
 
     /**
