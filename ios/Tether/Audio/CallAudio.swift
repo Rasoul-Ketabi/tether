@@ -410,6 +410,8 @@ final class CallAudio: @unchecked Sendable {
     private func interrupted(began: Bool) {
         guard sessionActive else { return }
         LinkJournal.shared.add("call audio: interruption \(began ? "began" : "ended")")
+        // Nothing played meanwhile: what queued up is stale, the far end starts afresh (re-primed) when it ends.
+        if !began { playout.reset() }
         apply(EngineDecision.onInterruption(began: began, sessionActive: sessionActive, running: running, engineRunning: running && engine.isRunning),
               why: "interruption ended", at: DispatchTime.now().uptimeNanoseconds)
     }
