@@ -1,5 +1,7 @@
 package app.tether.client.ui
 
+import app.tether.client.report.ClientReport
+import app.tether.client.report.ReportUi
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
@@ -492,6 +494,10 @@ class MainActivity : Activity() {
         })
         if (!app.hasLinkPermissions()) me.addView(pill(getString(R.string.grant_permissions)) { askPermissions() })
         app.link.roundTripMs?.let { me.addView(label(getString(R.string.round_trip, it), R.color.muted, 13f)) }
+        me.addView(row(
+            pill(getString(R.string.report_title)) { ReportUi.send(this) { ClientReport.build(app) } },
+        ))
+        me.addView(label(getString(R.string.report_hint), R.color.muted, 13f))
         me.addView(row(
             pill(getString(R.string.link_log), secondary = true) { showLog() },
             *(if (connected) arrayOf(pill(getString(R.string.selftest), secondary = true) { s.runSelftest() }) else emptyArray()),

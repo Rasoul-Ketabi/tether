@@ -114,5 +114,12 @@
         </receiver>
 
         <receiver android:name=".NotificationActions" android:exported="false" />
+
+        <!-- The problem report file, readable only by the app it is shared with (Link › Send a problem report). -->
+        <provider
+            android:name=".report.ReportProvider"
+            android:authorities="${applicationId}.report"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
