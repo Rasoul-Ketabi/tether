@@ -88,4 +88,4 @@ gh attestation verify Tether-A54-1.2.0.apk --repo amirwmr/tether
 The attestation proves that the file was built by this repository's Release workflow from the tagged commit. To check
 the Android signing key of an APK: `apksigner verify --print-certs Tether-A54-1.2.0.apk`. Release APKs from 1.2.0 on
 are signed with the project's release key, certificate SHA-256
-`16:F4:56:94:7C:CC:85:88:0D:9F:E3:CD:24:77:5B:88:4D:2F:21:D0:F3:9C:4F:10:D3:B3:D6:E6:49:01:05:7F`.
+`16f456947ccc85880d9fe3cd24775b884d2f21d0f39c4f10d3b3d6e64901057f`.

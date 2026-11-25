@@ -38,7 +38,7 @@ All files are on the [latest release](https://github.com/amirwmr/tether/releases
 | `SHA256SUMS` | Checksums, if you want to verify the downloads ([RELEASING.md](RELEASING.md)) |
 
 From 1.2.0 the APKs are signed with the project's release key (certificate SHA-256
-`16:F4:56:94:7C:CC:85:88:0D:9F:E3:CD:24:77:5B:88:4D:2F:21:D0:F3:9C:4F:10:D3:B3:D6:E6:49:01:05:7F`; check with
+`16f456947ccc85880d9fe3cd24775b884d2f21d0f39c4f10d3b3d6e64901057f`; check with
 `apksigner verify --print-certs`). The 1.1.0 APKs and APKs named `…-debug-signed.apk` were signed with a temporary
 key: to move from one of those to 1.2.0, uninstall the old app first (your pairing is then made again).
 
