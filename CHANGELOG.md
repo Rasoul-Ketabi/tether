@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
+  a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
+  complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
+
 ## 1.1.0 — 2026-11-23
 
 ### New features
