@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.4 — 2026-11-25
+
 - Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
   pair again.
 - Link: an iPhone app suspended in the background now finds its way back when the Android phone closed the session or
