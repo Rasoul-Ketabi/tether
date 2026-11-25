@@ -358,6 +358,7 @@ class DebugReceiver : BroadcastReceiver() {
             var states = ArrayList<String>()
             val deadline = System.currentTimeMillis() + if (mode == "selftest") 45_000 else 25_000
             var selftestSent = false
+            var taken = false
             var selftestDone = false
             var phase = 0
             var audioSeq = 0
@@ -388,6 +389,9 @@ class DebugReceiver : BroadcastReceiver() {
                 if (phase == 0 && mode == "decline" && states.lastOrNull() == "ringing") {
                     tEnd = System.nanoTime(); send(Message(T.CALL_REJECT, JSONObject().put("cid", cid))); phase = 2
                 }
+                // The test line dials from the phone side: a call dialed on the phone stays there (AudioOwner), so the
+                // client moves it to itself as a user would with "Move here" (call.take).
+                if (phase == 0 && mode == "outgoing" && cid != null && !taken) { send(Message(T.CALL_TAKE, JSONObject().put("cid", cid))); taken = true }
                 if (phase == 0 && mode == "outgoing" && states.lastOrNull() == "active") phase = 1
                 if (phase == 0 && mode != "decline" && mode != "outgoing" && states.lastOrNull() == "ringing") { send(Message(T.CALL_ANSWER, JSONObject().put("cid", cid))); phase = 1 }
                 // selftest: the client runs the call-audio self-test in the middle of the call (as the iPhone's button does).
