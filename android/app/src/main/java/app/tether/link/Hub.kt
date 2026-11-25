@@ -712,7 +712,8 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     fun callJson(info: CallInfo, c: Connection): JSONObject {
         val o = info.json()
         val t = audio.owner
-        if (t != null && t !== c && info.state != "ringing" && info.state != "ended") o.put("elsewhere", true).put("where", t.name)
+        if (AudioOwner.elsewhere(info.state, t, c, helper.audioBlocked()))
+            o.put("elsewhere", true).put("where", AudioOwner.where(t?.takeIf { it !== c }?.name, app.keys.deviceName()))
         return o
     }
 
@@ -769,6 +770,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     // The tone reached the uplink without any local mute: does it with the phone's mic muted too?
                     if (chosen != null) muteRow(chosen, r.optBoolean("micByTelecom"))?.let { rows.put(it) }
                     r.put("methods", rows)
+                    // A capture method heard the call: this firmware gives call audio after all.
+                    val heard = (0 until rows.length()).any { i -> rows.optJSONObject(i)?.let { it.optString("name").startsWith("capture:") && it.optBoolean("ok") } == true }
+                    if (heard && helper.audioBlocked()) { helper.forgetAudioBlocked(); LinkLog.add("self-test: call audio heard: calls are bridged on this phone again") }
+                    r
                 } finally {
                     audio.resume()
                 }
@@ -942,6 +947,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
          */
         fun setMic(setting: MicPath.Setting, forget: Boolean = true) {
             app.prefs.edit().putString(PREF_MIC, setting.wire).remove(PREF_MIC_MUTE).apply { if (forget) remove(memoryKey).remove(redirectKey) }.apply()
+            if (forget) helper.forgetAudioBlocked()
             LinkLog.add("call audio: the phone's own mic during bridged calls: ${setting.wire}")
             if (running) helper.local(setting.wire, LocalMutes.wantMicMute(setting == MicPath.Setting.MUTE, memory()), LocalMutes.wantCheck(memory()),
                 redirect = if (onlyTestLine()) JSONObject() else MicPath.memoryJson(redirectMemory()), muteMemory = if (onlyTestLine()) null else memory()?.wire)
@@ -981,6 +987,16 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         /** A path-watch finding (the downlink delivering nothing, the injection not taken): straight into the link log. */
         fun onHelperPath(p: JSONObject) {
             if (running) p.optString("note").takeIf { it.isNotEmpty() }?.let { LinkLog.add("call audio: $it") }
+            // This phone gives Tether no call audio (only zeros in a real call; PathWatch never says so on the test
+            // line): give the call back to the phone (its own earpiece and microphone on again) instead of leaving
+            // both ends silent, and do not bridge this firmware's calls again (issue #13).
+            if (running && p.optString("event") == "down-zeros" && !onlyTestLine()) {
+                helper.rememberAudioBlocked()
+                LinkLog.add("call audio: this phone gives Tether no call audio: the call goes back to the Android phone " +
+                    "(its earpiece and microphone), and calls are not bridged on this phone until its software changes " +
+                    "or a self-test during a call hears call audio")
+                audioCtl.execute { reconcile(); broadcastCalls(); pushStatus() }
+            }
         }
 
         /** The helper's mic report: log what changed, remember what the redirect guard found for this phone model. */
@@ -1046,7 +1062,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         /** A client answered, dialed or asked to move the call to itself. */
         fun claim(c: Connection) {
             c.lastAction = SystemClock.elapsedRealtime()
-            lock.lock(); try { owner = c } finally { lock.unlock() }
+            lock.lock(); try { owner = c; claimedKey = keyOf(c); claimedAt = c.lastAction } finally { lock.unlock() }
             audioCtl.execute { reconcile() }
         }
 
@@ -1064,15 +1080,24 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val before = owner
             val live = targets()
             if (owner?.let { it !in live } == true) owner = null
-            if (!CallRegistry.wantsAudio() && !CallRegistry.list().any { it.state == "dialing" || it.state == "connecting" }) {
+            val calls = CallRegistry.list()
+            val now = SystemClock.elapsedRealtime()
+            if (!CallRegistry.wantsAudio() && !calls.any { it.state == "dialing" || it.state == "connecting" }) {
                 // Keep a claim made a moment ago (dial in flight, answer not yet active).
-                if (owner != null && SystemClock.elapsedRealtime() - owner!!.lastAction > 5000) owner = null
+                if (owner != null && now - owner!!.lastAction > 5000) owner = null
+                if (owner == null && !AudioOwner.keepClaim(calls.map { it.state }) && now - claimedAt > 5000) claimedKey = null
             } else if (owner == null) {
-                owner = live.maxByOrNull { it.lastAction }?.takeIf { it.lastAction > 0 }
-                    ?: live.firstOrNull { it.kind == "iphone" } ?: live.firstOrNull()
+                // Back to the client that answered, dialed or took a call during these calls (it reconnected); a call
+                // nobody claimed (answered or dialed on the Android phone itself) stays on the phone (AudioOwner).
+                owner = AudioOwner.pick(live, ::keyOf, claimedKey)
             }
             return owner !== before
         }
+
+        /** The client that answered, dialed or took a call during the current calls (its key), and when. */
+        @Volatile private var claimedKey: String? = null
+        @Volatile private var claimedAt = 0L
+        private fun keyOf(c: Connection): String = c.peerKey?.joinToString("") { "%02x".format(it) } ?: "link@${System.identityHashCode(c)}"
 
         /** Called every second and on every call/link change, on the audio-ctl thread. */
         /** Owner the clients were last told about (claim() changes [owner] directly). */
@@ -1092,7 +1117,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val o = owner
             val changed = o !== announcedOwner
             announcedOwner = o
-            val want = o != null && o.isUp && CallRegistry.wantsAudio() && !paused
+            val want = o != null && o.isUp && CallRegistry.wantsAudio() && !paused && !helper.audioBlocked()
             if (want && !running) start(o!!)
             else if (!want && running) stop()
             else if (running && o != null && target !== o) retarget(o)

@@ -113,6 +113,9 @@ struct LinkView: View {
                         if s.helper.audioUnavailable {
                             Text("Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone.")
                                 .font(.footnote).foregroundStyle(.orange)
+                        } else if s.helper.audioBlocked {
+                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on.")
+                                .font(.footnote).foregroundStyle(.orange)
                         }
                         if let m = s.helper.method { LabeledContent("Inject method", value: m) }
                         if let m = s.helper.capture { LabeledContent("Capture method", value: m) }
@@ -461,7 +464,7 @@ struct PhoneLinksSection: View {
     }
 }
 
-/// How long this build's free signature still lasts (renewed by running tools/reinstall-ios.sh on the Mac).
+/// How long this build's signature still lasts (refreshed in the sideloading tool, or tools/reinstall-ios.sh for own builds).
 struct SigningSection: View {
     var body: some View {
         if let expiry = Signing.expiry, let days = Signing.daysLeft {
@@ -476,7 +479,7 @@ struct SigningSection: View {
             } header: {
                 Text("Renewal")
             } footer: {
-                Text("A free Apple account's signature lasts 7 days. Renew it by running tools/reinstall-ios.sh on your Mac with this device unlocked and connected.")
+                Text("Refresh the app before this date in the tool you installed it with (SideStore, AltStore or Sideloadly). A free Apple account's signature lasts 7 days.")
             }
         }
     }

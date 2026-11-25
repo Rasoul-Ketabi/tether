@@ -24,6 +24,7 @@ class HelperBridge(private val ctx: Context) {
         const val HELLO = 1; const val START = 2; const val STOP = 3; const val DOWN = 4; const val UP = 5
         const val INFO = 6; const val PROBE = 7; const val QUIT = 8; const val SELFTEST = 9; const val AUTH = 10
         const val NET = 11; const val CHALLENGE = 12; const val PROOF = 14; const val LOCAL = 15; const val CALL = 16
+        private const val PREF_BLOCKED = "audio_blocked_fingerprint"
         /** Largest frame we accept from the helper (a 20 ms PCM frame is 640 bytes; JSON infos are small). */
         const val MAX_FRAME = 1 shl 20
 
@@ -359,6 +360,18 @@ class HelperBridge(private val ctx: Context) {
         else -> if (atStart == "none") "none" else "earpiece"
     }
 
-    /** "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject), "unavailable" on 10. */
-    fun audioLevel(): String = audioLevelFor(android.os.Build.VERSION.SDK_INT)
+    /**
+     * "full" on Android 13+ (interception API), "fallback" on 11-12 (voice-call capture, incall-music inject),
+     * "unavailable" on 8-10, "blocked" when this phone's software gave Tether no call audio in a real call
+     * ([audioBlocked]).
+     */
+    fun audioLevel(): String = if (audioBlocked()) "blocked" else audioLevelFor(android.os.Build.VERSION.SDK_INT)
+
+    /**
+     * This firmware gives Tether no call audio (the downlink capture read only zeros in a real call, issue #13):
+     * remembered by build fingerprint, so a system update or a self-test that hears call audio clears it.
+     */
+    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), android.os.Build.FINGERPRINT)
+    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, android.os.Build.FINGERPRINT).apply()
+    fun forgetAudioBlocked() { if (prefs.contains(PREF_BLOCKED)) prefs.edit().remove(PREF_BLOCKED).apply() }
 }

@@ -201,6 +201,8 @@ public struct HelperInfo: Codable, Equatable, Sendable {
 
     /// The Android phone cannot bridge call audio at all (Android 8 to 10).
     public var audioUnavailable: Bool { audio == "unavailable" }
+    /// The Android phone's software gave Tether no call audio in a real call (since 1.2.2): calls stay on that phone.
+    public var audioBlocked: Bool { audio == "blocked" }
 }
 
 public struct StatusBody: Codable, Equatable, Sendable {

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Android phone: a call answered or dialed on the Android phone itself (its screen, a headset or a car connected to it)
+  stays on that phone. Before, with the iPhone linked, its audio went to the iPhone and the phone's own earpiece and
+  microphone were muted, so the call had no audio where it was taken (#13). The iPhone shows such a call as on the
+  Android phone, with **Move here**.
+- Android phone: when its software gives Tether no call audio (the call's sound reads as silence, as on a Galaxy A73
+  with Android 16, #13), the call goes back to the phone itself within seconds instead of staying silent on both ends,
+  and later calls are not bridged on that firmware. The iPhone, the Android client and the phone app say so
+  (`helper.audio` "blocked"); a system update or a self-test that hears the call turns call audio back on.
+- iPhone: the renewal note says to refresh the app in SideStore, AltStore or Sideloadly (it named a developer script).
+
 - Android phone: Call audio › **Link log** shows the link log with Share and Copy (headed by the app version, phone
   model and Android version), so a bug report no longer needs a computer and adb.
 

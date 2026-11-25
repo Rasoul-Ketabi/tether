@@ -202,6 +202,7 @@ what you see (open an issue with your phone model, Android version and the Link 
 | iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including taking the phone's own microphone and earpiece out of a bridged call (redirect audio mode, checked during each call; see [Troubleshooting](docs/TROUBLESHOOTING.md#the-other-side-cannot-hear-me)) |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece is muted during a bridged call (voice-call stream, or each vendor's own audio controls; from their sources, untested on devices; the Link tab shows "Android phone silent"); its microphone is taken out of the call with Android's redirect audio mode where the phone allows it (checked during each call and by the self-test), else it stays on |
+| Samsung Galaxy A73 5G, Android 16 (user report, #13) | Calls, texts and switches work; this firmware gives Tether no call audio (the capture reads silence, the injection is not routed to the call), so calls stay on the phone (from 1.2.2 automatically) |
 | Android 11-12 | Everything, with call audio on a best-effort path (voice-call capture); untested |
 | Android 10 | Everything except call audio; the helper needs the TCP adb path; untested |
 | Android 8-9 | Everything except call audio; link over GATT only; the helper only via TCP adb; tested in the emulator, untested on devices |

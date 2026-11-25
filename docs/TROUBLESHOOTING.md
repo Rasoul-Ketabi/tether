@@ -54,7 +54,12 @@ card in the Android app says which case you are in, and so does Link › Call au
 2. During a call, tap **Run call-audio self-test**: it lists each capture and inject path and whether it works.
 3. The Android version must be 13 or later, and the build must let the shell user intercept call audio. Not every
    manufacturer allows it. If no path works, calls still work from the iPhone but their audio stays on the
-   Android phone. Please report your model and the self-test result.
+   Android phone. Please report your model and the self-test result. When the self-test shows every `capture:` row
+   with "only zeros" and the inject rows routed to the phone itself (its model name instead of the call), as on a
+   Galaxy A73 5G with Android 16, the phone's software does not give Tether the call: from 1.2.2 Tether notices this
+   in the first seconds of a call, gives the call back to the phone (earpiece and microphone on) and says
+   "blocked" in Link › Call audio, until a system update or a self-test during a call hears the call.
+   A call you answer or dial on the Android phone itself always stays on it.
 4. You hear the other side on the Android phone too: Tether silences the phone's own earpiece during a bridged call
    with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources, untested), the
    voice-call volume on other phones (on Samsung phones with a Qualcomm chip both). The phone's own microphone is

@@ -190,6 +190,7 @@ class MainActivity : Activity() {
         when (app.hub.helper.audioLevel()) {
             "unavailable" -> audio.addView(label(getString(R.string.audio_needs_android11), R.color.warn, 13f))
             "fallback" -> audio.addView(label(getString(R.string.audio_android11_12), R.color.muted, 13f))
+            "blocked" -> audio.addView(label(getString(R.string.audio_blocked), R.color.warn, 13f))
         }
         val h = app.hub.audio.helperStatus()
         val running = h.optString("state") == "running"

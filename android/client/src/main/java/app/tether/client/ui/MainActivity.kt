@@ -410,6 +410,11 @@ class MainActivity : Activity() {
             BleCentral.State.HANDSHAKING, BleCentral.State.CONNECTING -> getString(R.string.state_connecting)
         }, if (connected) R.color.ok else R.color.muted))
         if (st != null) phone.addView(label(getString(R.string.battery, st.optInt("battery"), if (st.optBoolean("charging")) " ⚡" else ""), R.color.muted, 14f))
+        // The Android phone cannot bridge call audio (Android 8-10, or its software gives none): calls stay on it.
+        when (st?.optJSONObject("helper")?.optString("audio")) {
+            "unavailable" -> phone.addView(label(getString(R.string.audio_unavailable), R.color.warn, 13f))
+            "blocked" -> phone.addView(label(getString(R.string.audio_blocked), R.color.warn, 13f))
+        }
         for (sim in s.sims) {
             val bars = "▂▄▆█".take(sim.signal.coerceIn(0, 4)).padEnd(4, '·')
             val line = listOfNotNull(sim.name.ifEmpty { getString(R.string.sim_n, sim.slot + 1) }, sim.carrier.takeIf { it.isNotEmpty() && it != sim.name },
