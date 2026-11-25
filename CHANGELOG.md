@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release APKs are signed with the project's own release key (fingerprint in docs/RELEASING.md). The 1.1.0 APKs were
+  debug-signed: uninstall the 1.1.0 app before installing 1.2.0, then pair again.
 - Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
   a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
   complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
