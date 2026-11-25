@@ -2,30 +2,6 @@
 
 ## Unreleased
 
-- Release APKs are signed with the project's own release key (fingerprint in docs/RELEASING.md). The 1.1.0 APKs were
-  debug-signed: uninstall the 1.1.0 app before installing 1.2.0, then pair again.
-- Android client: the same playout stall handling as the iPhone (a stall's backlog plays late and drains in the
-  pauses, cut only beyond 0.8 s; a stall's burst no longer holds the buffer deep).
-
-- Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
-  a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
-  complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
-- Pairing QR code is now a `tether://pair?c=…` link: the iPhone's Camera app offers to open it in Cellular, which asks before pairing. Old `tether1:` codes still work everywhere; the Android app can show the old code for 1.1 iPhone apps.
-- First-run guides: numbered Setup steps with plain instructions on the Android phone (incl. the one-time wireless-debugging pairing), a Set up section on the iPhone's Link tab, and pairing steps in the Android client (English and Persian).
-- Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
-- The phone app installs on Android 8.0 and 9 (was 10): the link runs over GATT there (no L2CAP channels; the phone
-  answers the PSM read empty, so the iPhone and the Android client go straight to GATT), texts, contacts, call log and
-  call control work, the default phone app is requested through Telecom, a call's direction comes from its first
-  state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
-  iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
-- iPhone: the microphone permission is asked for once the app is paired and again when a call starts; a refused or
-  silent microphone is shown on the call screen, in the Link tab and the Link log, and "Your voice in the call" no
-  longer says it reaches the other side then (#14).
-- iPhone call audio: the microphone is sent only once a call is connected (not while an outgoing call dials); a
-  stall's backlog (Bluetooth tethering) plays late and drains in the pauses instead of losing speech; interruptions
-  and media-services resets bring the audio back; CallKit callbacks run in order; a speaker choice made while
-  connecting is kept; the render-thread flags use a heap-allocated lock (#15).
-- iPhone link: renewing a pending connect no longer leaves the link waiting on the cancelled one (#15).
 ### Call audio on the Android phone
 
 - The phone's own microphone is kept out of bridged calls fully automatically: the default setting tries a redirect
@@ -47,6 +23,42 @@
 - Diagnostics for "no audio" reports (#13, #14): the Link log says when the downlink capture delivers nothing or only
   zeros, when the phone takes nothing from the uplink injection, when the injection is not routed to the call, and how
   long the paths waited; the self-test's rows say the same.
+
+### iPhone
+
+- iPhone: the microphone permission is asked for once the app is paired and again when a call starts; a refused or
+  silent microphone is shown on the call screen, in the Link tab and the Link log, and "Your voice in the call" no
+  longer says it reaches the other side then (#14).
+- iPhone call audio: the microphone is sent only once a call is connected (not while an outgoing call dials); a
+  stall's backlog (Bluetooth tethering) plays late and drains in the pauses instead of losing speech; interruptions
+  and media-services resets bring the audio back; CallKit callbacks run in order; a speaker choice made while
+  connecting is kept; the render-thread flags use a heap-allocated lock (#15).
+- iPhone link: renewing a pending connect no longer leaves the link waiting on the cancelled one (#15).
+
+### Android client
+
+- Android client: a malformed `sync.ids` page no longer deletes local rows (#11, thanks @Shabdin-A).
+- Android client: the same playout stall handling as the iPhone (a stall's backlog plays late and drains in the
+  pauses, cut only beyond 0.8 s; a stall's burst no longer holds the buffer deep).
+- Android client: content no longer goes behind the navigation bar, text fields stay above the keyboard, call-screen buttons share the width evenly (#12).
+
+### Platforms
+
+- The phone app installs on Android 8.0 and 9 (was 10): the link runs over GATT there (no L2CAP channels; the phone
+  answers the PSM read empty, so the iPhone and the Android client go straight to GATT), texts, contacts, call log and
+  call control work, the default phone app is requested through Telecom, a call's direction comes from its first
+  state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
+  iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
+
+### Install, pairing and first run
+
+- Release APKs are signed with the project's own release key (fingerprint in docs/RELEASING.md). The 1.1.0 APKs were
+  debug-signed: uninstall the 1.1.0 app before installing 1.2.0, then pair again.
+- Install without building: an AltStore / SideStore source for the iPhone app (`releases/latest/download/altstore.json`),
+  a step-by-step install guide (docs/INSTALL.md) with SideStore, AltStore, Sideloadly and TrollStore, an FAQ, a
+  complete Persian guide (docs/fa/), and release notes that say which download goes on which phone.
+- Pairing QR code is now a `tether://pair?c=…` link: the iPhone's Camera app offers to open it in Cellular, which asks before pairing. Old `tether1:` codes still work everywhere; the Android app can show the old code for 1.1 iPhone apps.
+- First-run guides: numbered Setup steps with plain instructions on the Android phone (incl. the one-time wireless-debugging pairing), a Set up section on the iPhone's Link tab, and pairing steps in the Android client (English and Persian).
 
 ## 1.1.0 — 2026-11-23
 
