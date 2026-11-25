@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-import os
 @_spi(TetherApp) import TetherCore
 
 /// 20 ms mono voice codec.
@@ -124,9 +123,11 @@ final class CallAudio: @unchecked Sendable {
     private var captureAcc: [Int16] = []
     private var seq: UInt16 = 0
     private var lastSeq: UInt16?
-    private var flagsUnfair = os_unfair_lock()
     /// Flags shared with the real-time render thread: an unfair lock held for a few instructions (no NSLock there).
-    private func flags<T>(_ body: () -> T) -> T { os_unfair_lock_lock(&flagsUnfair); defer { os_unfair_lock_unlock(&flagsUnfair) }; return body() }
+    /// Its lock word lives in its own allocation (TetherCore's UnfairLock): an `os_unfair_lock` stored property passed
+    /// as `&property` from several threads may be copied or moved by Swift, and then it no longer excludes anything.
+    private let flagsLock = UnfairLock()
+    private func flags<T>(_ body: () -> T) -> T { flagsLock.withLock(body) }
     private var _muted = false
     private var _ringback = false
     private var ringPhase = 0.0
