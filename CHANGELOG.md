@@ -8,6 +8,9 @@
   own teal and dark cards.
 - iPhone: a redesigned first-run Link screen (connect card, numbered steps), a scanner that explains a missing or
   refused camera, and a clearer manual code entry (#17, thanks @ashkan0033).
+- iPhone: Link › **Send a problem report** builds one text (device, setup and permissions, link, call audio, the Android
+  phone's last status, the link log, the app's events) and shares it as a .txt file or copies it. Phone numbers, e-mail,
+  names, Bluetooth and IP addresses, IDs and keys are removed before it leaves the app.
 - Contributing: pull request rules (one topic, keep the project's name and ids, never break installed apps, CI changes
   on their own); `main` now requires all CI jobs to pass and a maintainer's approval before a pull request is merged.
 

@@ -102,7 +102,7 @@ final class AppModel {
     var syncing = false
     var openThread: Int64?
     /// Scene is in the foreground (an open thread in a backgrounded app must still notify).
-    var appActive = true { didSet { if appActive && !oldValue { link.appBecameActive() } } }
+    var appActive = true { didSet { if appActive != oldValue { AppEvents.shared.add(appActive ? "app active" : "app inactive") }; if appActive && !oldValue { link.appBecameActive() } } }
     #if DEBUG
     /// Calls the -TetherAutoHangup debug option already scheduled to end.
     @PerceptionIgnored var autoHangupArmed = Set<String>()
@@ -584,6 +584,7 @@ final class AppModel {
     func linkChanged(_ s: TetherLink.State) {
         let wasConnected = linkState.isConnected
         linkState = s
+        AppEvents.shared.add("link state: \(s.reportName)")
         if case .connected(let t) = s { extensionPort.transport = t }
         if s.isConnected && !wasConnected {
             // Before the sync: it carries what the extensions speak.
@@ -612,6 +613,7 @@ final class AppModel {
     }
 
     func linkFailed(_ reason: String) {
+        AppEvents.shared.add("link failed: \(reason)")
         lastError = reason
     }
 
