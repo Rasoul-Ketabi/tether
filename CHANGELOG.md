@@ -2,10 +2,14 @@
 
 ## Unreleased
 
+## 1.2.1 — 2026-11-25
+
 - Android phone: a redirect audio mode whose effect on the uplink cannot be checked (the phone gives no uplink capture,
   common on custom ROMs) is no longer kept for the call, and no other untested mode is tried on later calls. Before, the
   first one or two calls on such a phone could leave the other side hearing nothing of the iPhone (Poco F3 and
   Poco X3 Pro reports, #14).
+- Coming from 1.1.0: uninstall the 1.1.0 Android app first (1.2 APKs are signed with the project's release key), then
+  pair again. Everything new in 1.2: see 1.2.0 below.
 
 ## 1.2.0 — 2026-11-25
 
