@@ -107,6 +107,14 @@ import Foundation
     /// The speaker button shows the real route only: on when the loudspeaker plays, whatever chose it.
     public static func speakerOn(outputs: [String]) -> Bool { current(outputs: outputs) == .speaker }
 
+    /// The speaker choice after a route notification. Before CallKit activates the call's session the route is not the
+    /// call's (it may still be another app's, or the system's default): the choice made while connecting stays until
+    /// it is applied. Once the session is active, the real route is the choice, whoever made it (CallKit's own button,
+    /// Control Center, a headset that took the call).
+    public static func speakerWanted(previous: Bool, sessionActive: Bool, outputs: [String]) -> Bool {
+        sessionActive ? speakerOn(outputs: outputs) : previous
+    }
+
     /// The speaker choice to re-apply when the session is (re)activated: only when the call is still on the
     /// built-in ports; a headset or car that took the call wins.
     public static func reapplySpeaker(wanted: Bool, outputs: [String]) -> Bool {

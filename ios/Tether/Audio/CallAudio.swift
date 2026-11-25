@@ -150,6 +150,8 @@ final class CallAudio: @unchecked Sendable {
     /// Debug (-TetherAudioTrace): every 2 s of a call, one console line with the playout's level, target and arrival spread.
     static let trace = ProcessInfo.processInfo.arguments.contains("-TetherAudioTrace")
     private var pumps = 0
+    /// The unit tests' host (the same check as AppModel.runningTests, readable off the main actor).
+    private static let underTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     init(model: AppModel, link: TetherLink) {
         self.model = model
@@ -238,6 +240,8 @@ final class CallAudio: @unchecked Sendable {
     /// far end keeps playing after the switch (only the graph, its formats and converters are new).
     private func startLocked(rebuild: Bool = false) {
         guard !running else { return }
+        // The unit tests' host has no call and must not open the microphone: everything but the engine runs.
+        if Self.underTests { return }
         let rate = coder?.rate ?? 16000
         let input = engine.inputNode
         do { try input.setVoiceProcessingEnabled(!noVoiceProcessing) } catch { NSLog("[audio] voice processing: %@", "\(error)") }

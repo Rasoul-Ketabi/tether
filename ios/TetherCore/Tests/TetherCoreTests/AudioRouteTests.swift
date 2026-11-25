@@ -56,6 +56,25 @@ final class AudioRouteTests: XCTestCase {
         XCTAssertFalse(AudioRoutes.reapplySpeaker(wanted: false, outputs: ["Receiver"]))
     }
 
+    /// Speaker pressed while the call is still connecting (before CallKit activates the session): the route
+    /// notifications of that moment show the receiver, and must not reset the choice; didActivate applies it (#15).
+    func testSpeakerChosenBeforeTheSessionIsActiveSurvives() {
+        var wanted = true   // the user pressed Speaker while dialing
+        for outs in [["Receiver"], [], ["Speaker"], ["Receiver"]] {
+            wanted = AudioRoutes.speakerWanted(previous: wanted, sessionActive: false, outputs: outs)
+        }
+        XCTAssertTrue(wanted, "kept until the session is active")
+        XCTAssertTrue(AudioRoutes.reapplySpeaker(wanted: wanted, outputs: ["Receiver"]), "and applied at activation")
+        XCTAssertFalse(AudioRoutes.speakerWanted(previous: false, sessionActive: false, outputs: ["Speaker"]), "nor turned on by another app's route")
+    }
+
+    /// Once the session is active, the real route is the choice: CallKit's own button or a headset taking the call.
+    func testSpeakerFollowsTheRealRouteOnceActive() {
+        XCTAssertTrue(AudioRoutes.speakerWanted(previous: false, sessionActive: true, outputs: ["Speaker"]))
+        XCTAssertFalse(AudioRoutes.speakerWanted(previous: true, sessionActive: true, outputs: ["Receiver"]))
+        XCTAssertFalse(AudioRoutes.speakerWanted(previous: true, sessionActive: true, outputs: ["BluetoothHFP"]))
+    }
+
     func testEngineDecisions() {
         let builtIn = EngineFormat(inputRate: 48000, inputChannels: 1, outputRate: 48000, outputChannels: 1)
         let hfp16 = EngineFormat(inputRate: 16000, inputChannels: 1, outputRate: 16000, outputChannels: 1)
