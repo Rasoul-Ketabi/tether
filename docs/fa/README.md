@@ -170,7 +170,8 @@ https://github.com/amirwmr/tether/releases/latest/download/altstore.json
 | **طرف مقابل صدای من را نمی‌شنود** | روی آیفون: Settings › Privacy & Security › Microphone › Cellular روشن باشد و تماس Mute نباشد. روی اندروید: Call audio › «This phone's microphone during bridged calls» را روی **On** امتحان کنید؛ [جزئیات](../TROUBLESHOOTING.md#the-other-side-cannot-hear-me) |
 | Audio helper بعد از ری‌استارت گوشی کار نمی‌کند | گوشی اندرویدی را یک بار به وای‌فای وصل کنید (Wireless debugging موقع شروع به آن نیاز دارد) |
 
-برای گزارش مشکل، مدل هر دو گوشی، نسخهٔ اندروید و iOS و Link log هر دو طرف را بفرستید
-([چه چیزهایی بفرستید](../TROUBLESHOOTING.md#what-to-include-in-a-report)).
+برای گزارش مشکل، از هر برنامه یک «گزارش مشکل» بفرستید: روی گوشی اندرویدی Tether › «راهنما» › «ارسال گزارش مشکل»، روی
+آیفون و در Tether Client، Link › «ارسال گزارش مشکل». شماره‌ها، نام‌ها و متن پیام‌ها در آن نیست
+([چه چیزهایی در آن است](../TROUBLESHOOTING.md#what-to-include-in-a-report)).
 
 </div>

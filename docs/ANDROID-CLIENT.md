@@ -44,7 +44,7 @@ and call history. The SIM phone stays in a bag; you use the other phone.
 - **Notifications** for texts (with reply and mark-read) and missed calls.
 - **Link screen**: the SIM phone's battery and signal per SIM, the connected devices, the switches (mobile data,
   data SIM, hotspot, Bluetooth tethering, airplane mode, network mode per SIM, Share VPN), the audio self-test, the
-  Link log, pairing and unpairing.
+  Link log, **Send a problem report** (one `.txt` file for an issue, numbers and names removed), pairing and unpairing.
 - **tel: links**: `ACTION_DIAL`, `ACTION_VIEW` and `ACTION_CALL` for `tel:` are registered, so tapping a number in
   another app offers "Call with Tether Client" (the keypad, or a call at once for `ACTION_CALL` while linked).
 - Numbers are shown with `PhoneNumberUtils.formatNumber` and this phone's country, left-to-right in Persian too.

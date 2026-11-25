@@ -4,7 +4,8 @@ Install both apps first ([BUILD.md](BUILD.md)). Keep both phones near each other
 
 ## 1. Android phone
 
-Open **Tether**. Its main screen has three cards; work through **Setup** from top to bottom.
+Open **Tether**. Its main screen has four cards (iPhone link, Setup, Call audio, Help); work through **Setup** from top
+to bottom. **Help › Send a problem report** makes the file to attach when something does not work.
 
 | Step | What it does | Why |
 | --- | --- | --- |

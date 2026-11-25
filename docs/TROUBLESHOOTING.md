@@ -1,7 +1,8 @@
 # Troubleshooting
 
 Start with the logs: on the iPhone, **Link › Link log** (share button at the top); on the Android phone, **Call audio ›
-Link log** (Share or Copy; in 1.2.1 and older only `tools/dbg.sh linklog` with USB debugging). They show every connect, drop (with Bluetooth's reason code) and setup step.
+Link log** (Share or Copy; in 1.2.1 and older only `tools/dbg.sh linklog` with USB debugging). To report a problem,
+send a [problem report](#what-to-include-in-a-report) from each app instead: it holds the logs and much more. They show every connect, drop (with Bluetooth's reason code) and setup step.
 
 ## The iPhone does not link
 
@@ -156,8 +157,27 @@ Android phone disappear from the iPhone at the next sync.
 
 ## What to include in a report
 
-- Phone models, Android and iOS versions, whether Bluetooth tethering was on.
-- Both link logs: the iPhone's **Link › Link log** (share button) and the Android phone's **Call audio › Link log**
-  (Share; it starts with the app version, phone model and Android version). They contain no message text; check them for
-  anything you do not want to share before posting).
-- For audio problems: the self-test result.
+Send a **problem report** from each app and attach the files to the issue. Make it right after the problem happened
+(for call or audio problems, right after the call):
+
+- **Android phone:** Tether › **Help** › **Send a problem report** › Share (a `.txt` file) or Copy.
+- **iPhone:** **Link › Send a problem report**.
+- **Tether Client:** **Link › Send a problem report**.
+
+One file holds what is needed to find a problem with setup, pairing, link drops, calls, call audio, texts, contacts or
+tethering: the app version, the phone and its Android version (and One UI on Samsung), each setup step, the link and
+its transport, Bluetooth and tethering state, the SIMs' network and signal, the call-audio settings, what the phone
+remembered and the last self-test, the link log and the app's log. On the Android phone it also has **call-audio
+diagnostics** from the helper: the audio mode, the interception API, every active recording with whether Android
+silences it (`isClientSilenced`), the call's audio routes and selected lines of `dumpsys audio` and
+`dumpsys media.audio_policy`. The helper takes the same snapshot by itself when a call's audio path looks dead (only
+zeros, nothing delivered, the uplink not taken) and at the end of every bridged call; the last three are in the report.
+This tells "Android silences the recording" apart from "the phone delivers no call audio at all" (#13).
+
+**Privacy.** Phone numbers, contact, SIM, carrier and device names, message text, e-mail addresses, full Bluetooth
+addresses (only the last two bytes stay), IP addresses, IMEI- and serial-like numbers and keys are removed before
+the file is written. Look through it before posting anyway.
+
+Older versions without the report: the phone models, Android and iOS versions, whether Bluetooth tethering was on,
+both link logs (the iPhone's **Link › Link log**, the Android phone's **Call audio › Link log**) and, for audio
+problems, the self-test result.

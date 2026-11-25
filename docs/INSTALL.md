@@ -162,5 +162,6 @@ slower than the hotspot. **Share VPN** lets the iPhone use the Android phone's V
 | **The other side cannot hear me** | iPhone: Settings › Privacy & Security › Microphone › Cellular on; not muted. Android app › Call audio › "This phone's microphone during bridged calls": try **On**; [details](TROUBLESHOOTING.md#the-other-side-cannot-hear-me) |
 | Audio helper stopped after a restart | Connect the Android phone to Wi-Fi once (Wireless debugging needs it at start) |
 
-When reporting a problem, include the phone models, Android and iOS versions and the Link logs of both sides
+When reporting a problem, attach a problem report from each app (Tether › Help › Send a problem report on the Android
+phone, Link › Send a problem report on the iPhone), or the phone models, Android and iOS versions and the Link logs of both sides
 ([what to include](TROUBLESHOOTING.md#what-to-include-in-a-report)).

@@ -88,8 +88,11 @@ Bluetooth range: a few metres, through a bag or a pocket. In the next room it ma
 
 ### How do I send logs with a bug report?
 
-Right after a test call: on the Android phone, Tether › Call audio › **Link log** › **Share** (and, during a call,
-**Run call-audio self-test**, then a screenshot of its result); on the iPhone, Link › **Link log** › the share button
-(Tether Client: Link › Link log › Copy). Attach them to an issue at
-[github.com/amirwmr/tether/issues](https://github.com/amirwmr/tether/issues/new/choose). The logs hold no message text
-or phone numbers; check them before posting.
+Send a problem report from each app right after the problem (for audio, right after a test call): on the Android
+phone, Tether › **Help** › **Send a problem report** › Share; on the iPhone and in Tether Client, **Link › Send a
+problem report**. Each is one `.txt` file with the logs, the setup and, on the Android phone, call-audio diagnostics.
+Attach the files to an issue at
+[github.com/amirwmr/tether/issues](https://github.com/amirwmr/tether/issues/new/choose). Phone numbers, names,
+message text, e-mail, addresses and keys are removed; check the file before posting
+([what is in it](TROUBLESHOOTING.md#what-to-include-in-a-report)). Older versions: Tether › Call audio › **Link log**
+› **Share** and, on the iPhone, Link › **Link log** › the share button.

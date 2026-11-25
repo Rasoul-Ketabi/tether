@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Android phone: **Help › Send a problem report** shares one `.txt` file (or copies it) with what is needed to find
+  any problem: device and Android / One UI version, setup steps, link, Bluetooth and tethering state, the SIMs' network
+  and signal, call-audio settings and self-test, the link log and the app's log. Phone numbers, names, message text,
+  e-mail, addresses and keys are removed. It also holds call-audio diagnostics from the helper (audio mode, the
+  interception API, each active recording with Android's `isClientSilenced`, routes, selected `dumpsys audio` /
+  `media.audio_policy` lines), taken now and automatically when a call's path looks dead and at the end of every
+  bridged call (the last three are kept), to tell a silenced recording from a phone that gives no call audio (#13).
+- Tether Client: **Link › Send a problem report** with the same format (device, setup, link, the phone's status
+  without numbers or names, playout and microphone state, link log, app log).
+- Issue forms and docs ask for the problem reports instead of pasted logs.
+
 - Design rules for both apps (dark first, the teal accent, palette colours only, English and Persian) in CONTRIBUTING.md,
   checked by `tools/check-guardrails.py` in CI: raw or off-palette colours fail the build, and a pull request may not
   change the palette, icons, app names, ids, signing, workflows or the checks. The new pairing screens use the app's
