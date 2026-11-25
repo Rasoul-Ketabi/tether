@@ -1202,7 +1202,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 val s = android.media.AudioManager.STREAM_VOICE_CALL
                 if (on) {
                     if (savedVolume < 0) savedVolume = am.getStreamVolume(s)
-                    am.setStreamVolume(s, am.getStreamMinVolume(s), 0)
+                    am.setStreamVolume(s, if (android.os.Build.VERSION.SDK_INT >= 28) am.getStreamMinVolume(s) else 0, 0)
                 } else if (savedVolume >= 0) {
                     am.setStreamVolume(s, savedVolume, 0)
                     savedVolume = -1

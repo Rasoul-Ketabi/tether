@@ -46,7 +46,7 @@
     <string name="action_pair">Pair</string>
     <string name="action_start">Start</string>
     <string name="action_selftest">Run call-audio self-test</string>
-    <string name="step_adb_tcp">TCP debugging (Android 10, or no Wi-Fi)</string>
+    <string name="step_adb_tcp">TCP debugging (Android 8 to 10, or no Wi-Fi)</string>
     <string name="adb_tcp_on">On, port %1$d</string>
     <string name="adb_tcp_off">Off</string>
     <string name="action_enable">Enable</string>

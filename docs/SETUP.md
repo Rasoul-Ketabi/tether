@@ -30,9 +30,9 @@ starts a small helper as the shell user. Nothing leaves the phone.
    six-digit code into the Tether notification.
 5. The **Audio helper** line in the Call audio card turns to "Running".
 
-### TCP debugging (Android 10, or no Wi-Fi)
+### TCP debugging (Android 8 to 10, or no Wi-Fi)
 
-Android 10 has no Wireless debugging, and Wireless debugging also needs a Wi-Fi network the phone trusts. For those
+Android 8 to 10 have no Wireless debugging, and Wireless debugging also needs a Wi-Fi network the phone trusts. For those
 cases Tether can use adb's older TCP mode on the phone itself. It is off until you enable it:
 
 1. Connect the phone to a computer with USB once (USB debugging on) and run `adb tcpip 5555`.
@@ -44,7 +44,7 @@ The TCP mode is lost when the phone restarts: run `adb tcpip 5555` again after e
 start until you do). `adb usb` switches it off; **Turn off** in Tether stops Tether using it. Read the security note
 in [SECURITY.md](../SECURITY.md) first.
 
-After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 10 the helper cannot bridge call
+After a phone restart Tether starts the helper again by itself when Wi-Fi is on. On Android 8 to 10 the helper cannot bridge call
 audio (see [features by Android version](devices/android-versions.md)); on Android 11 and 12 it uses a best-effort path. On some Android builds the shell user is not allowed to
 intercept call audio; then calls are still controlled from the iPhone and their audio stays on the Android phone.
 Use **Run call-audio self-test** during a call to see which audio paths work on your phone.

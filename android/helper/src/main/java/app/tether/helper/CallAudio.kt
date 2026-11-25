@@ -372,7 +372,7 @@ object CallAudio {
 
     private fun devices(flag: Int) = JSONArray().apply {
         for (d in am.getDevices(flag)) put(JSONObject().put("id", d.id).put("type", d.type).put("name", d.productName.toString())
-            .put("address", d.address))
+            .put("address", if (Build.VERSION.SDK_INT >= 28) d.address else ""))
     }
 
     fun describe(t: Throwable): String {

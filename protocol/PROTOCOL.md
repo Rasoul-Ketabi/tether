@@ -11,7 +11,7 @@ All integers are big-endian unless stated otherwise.
 | Item | UUID | Notes |
 |---|---|---|
 | Service | `5ABF5C3C-2BF1-4B1C-9E8E-5D153F835BD5` | Advertised (service UUID only, no name). |
-| PSM characteristic | `6C0D1EB1-67F4-4181-9752-9CC90D6EFF88` | Read. Value: L2CAP PSM as `uint16` **little-endian**. |
+| PSM characteristic | `6C0D1EB1-67F4-4181-9752-9CC90D6EFF88` | Read. Value: L2CAP PSM as `uint16` **little-endian**; empty when the phone has no L2CAP listener (Android 8 and 9), and the central then uses the GATT transport at once. |
 | RX characteristic (fallback) | `214E1CD9-F397-4A0F-BB6C-ED1D8C7A38A5` | Write-without-response, central → peripheral. |
 | TX characteristic (fallback) | `7BA52139-0888-4234-A49D-0271E0F2A647` | Notify, peripheral → central. |
 | Wake characteristic | `9A3F1C52-7E0B-4D8A-B1E6-2C5D4F7A8E31` | Notify. The central always subscribes. The peripheral sends a 1-byte notification right before urgent traffic (ringing, call end, new SMS); a GATT notification reliably wakes a suspended iOS app, which then drains the L2CAP channel. |

@@ -46,7 +46,7 @@
     <string name="action_pair">جفت کردن</string>
     <string name="action_start">شروع</string>
     <string name="action_selftest">آزمون صدای تماس</string>
-    <string name="step_adb_tcp">اشکال‌زدایی TCP (اندروید ۱۰ یا بدون Wi-Fi)</string>
+    <string name="step_adb_tcp">اشکال‌زدایی TCP (اندروید ۸ تا ۱۰ یا بدون Wi-Fi)</string>
     <string name="adb_tcp_on">روشن، درگاه %1$d</string>
     <string name="adb_tcp_off">خاموش</string>
     <string name="action_enable">فعال‌سازی</string>
