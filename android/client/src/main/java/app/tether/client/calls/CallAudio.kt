@@ -205,9 +205,9 @@ class CallAudio(private val send: (AudioFrame) -> Boolean, private val log: (Str
         val b = playout
         val ms = 1000.0 / playRate
         log(String.format(Locale.ROOT, "call audio: playout delay %.0f ms (target %.0f, arrival spread asks %.0f), underruns %d, " +
-            "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms, added %.0f ms, lost %d of %d frames, " +
+            "concealed %.0f ms (%d frames by the decoder), trimmed %.0f ms (speech %.0f ms), added %.0f ms, lost %d of %d frames, " +
             "arrival jitter %.1f ms, worst gap %.0f ms, drift %.0f ppm",
             b.meanBuffered * ms, b.target * ms, b.jitterFloor * ms, b.underruns, b.concealedSamples * ms, b.concealedFrames,
-            b.trimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
+            b.trimmed * ms, b.speechTrimmed * ms, b.inserted * ms, lost, frames, if (frames > 1) jitterSum / (frames - 1) else 0.0, worstGap, b.driftPpm))
     }
 }
