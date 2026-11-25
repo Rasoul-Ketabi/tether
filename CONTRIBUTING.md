@@ -52,6 +52,28 @@ Docs, translations (English / Persian) and device reports are as welcome as code
 6. User-facing text comes in English and Persian (`ios/Tether/Resources/*.lproj`, `android/app/src/main/res/values*`,
    `android/client/src/main/res/values*`).
 
+## Done means everything is updated
+
+A change is complete when everything that describes or mirrors it changes with it. This applies to people and to
+coding agents alike:
+
+| You changed | Also update |
+| --- | --- |
+| Anything a user sees | `CHANGELOG.md` (Unreleased), README, the guides in `docs/` and the Persian guide `docs/fa/` |
+| UI text | English and Persian strings of every app that shows it |
+| The wire format or a message | `protocol/PROTOCOL.md`, both implementations, `protocol/fixtures/`, the Android client, and [docs/SDK-swift.md › Writing a client](docs/SDK-swift.md#writing-a-client-what-the-phone-expects) if clients must behave differently |
+| Public API of TetherCore or `tether-core` | Doc comments, the DocC articles, the API tables in docs/SDK-swift.md / SDK-kotlin.md, the examples in `examples/` (run them); minor versions only add |
+| Call audio or the playout buffer | Both the iPhone (`ios/TetherCore`) and the Android client (`android/client`): they share the design and their trace tests must give the same numbers |
+| A feature or fix in one client app | The other client app too, or a CHANGELOG line saying why not |
+| Supported Android or iOS versions | The README badge and requirements, the version tables (README, docs/FAQ.md, docs/fa/faq.md, docs/devices/android-versions.md, docs/INSTALL.md) |
+| A bug | A test that fails without the fix |
+| A heading in the docs | Every link to it (`python3 tools/check-docs-links.py`) |
+
+**Accounts stay personal.** Never commit or put into a workflow your Apple ID, team id, provisioning profile,
+signing certificate, keystore, password or token. Local values go in the git-ignored files from BUILD.md. The
+published iPhone app is unsigned on purpose: everyone signs it with their own Apple ID, so nothing may need a
+particular (or a paid) developer account. Release keys live only in the repository's secrets.
+
 ## Testing on devices without real calls
 
 `tools/dbg.sh loopback_call` runs complete calls on the Android app's self-managed test line with an in-process

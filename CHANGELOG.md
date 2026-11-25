@@ -50,6 +50,14 @@
   state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
   iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
 
+### Developers
+
+- SDK guides: a "Writing a client" checklist for the 1.2 rules (two pairing-code forms, an empty PSM means GATT, the
+  microphone only once a call is active, `status.helper.audio`, audio stalls); the examples show the QR link form.
+- CONTRIBUTING.md: what "done" means (every doc, translation, SDK page, example and the other client app updated with
+  a change) and why no personal Apple or signing account may appear in the repository; the pull request checklist
+  asks for both.
+
 ### Install, pairing and first run
 
 - Release APKs are signed with the project's own release key (fingerprint in docs/RELEASING.md). The 1.1.0 APKs were
