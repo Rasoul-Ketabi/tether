@@ -139,4 +139,5 @@ jobs:
       - run: git diff --check $(git hash-object -t tree /dev/null) HEAD -- . ':!ios/TetherCore/Sources/COpus'
       - run: sh -n tools/dbg.sh && sh -n tools/lib.sh
       - run: sudo apt-get install -y zsh >/dev/null && zsh -n tools/reinstall-ios.sh && zsh -n tools/device-test.sh && zsh -n tools/test-all.sh && zsh -n tools/release.sh
+      - run: python3 tools/altstore-source.py selftest && python3 tools/check-docs-links.py
       - run: zsh tools/check-private.sh --all
