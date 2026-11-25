@@ -127,7 +127,11 @@ With a Mac and Xcode: [BUILD.md](BUILD.md). With a paid developer account the si
 1. Keep both phones close, Bluetooth on.
 2. On the iPhone open the app (named **Cellular**), allow Bluetooth, notifications, microphone and camera.
 3. Link tab › **Pair with Android phone**. On the Android phone tap **Pair iPhone**: a QR code appears for 5 minutes.
-4. Scan it. The Link tab shows the phone's name, battery and SIMs; messages, contacts and calls sync.
+4. Scan it in the app, or point the iPhone's Camera at it and tap **Open in Cellular** (the app asks before pairing).
+   An Android phone still on 1.1 shows an older code that only the app's own scanner reads. The Link tab then shows the phone's name, battery and SIMs; messages, contacts and calls sync.
+
+Microphone: allow it. If it is refused, the call screen and the Link tab say so, because the other side would hear
+nothing.
 
 On a second Android phone: open Tether Client and scan the same QR code ([ANDROID-CLIENT.md](ANDROID-CLIENT.md)).
 

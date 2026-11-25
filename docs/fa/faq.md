@@ -80,8 +80,9 @@ Apple ID رایگان برنامه را فقط برای ۷ روز امضا می�
 
 ### طرف مقابل صدای من را نمی‌شنود. چه کنم؟
 
-مجوز میکروفون برنامه را روی آیفون چک کنید (Settings › Privacy & Security › Microphone) و مطمئن شوید تماس Mute نیست؛
-بعد روی گوشی اندرویدی Call audio › «This phone's microphone during bridged calls» را روی **On** امتحان کنید و در حین
+مجوز میکروفون برنامه را روی آیفون چک کنید (Settings › Privacy & Security › Microphone؛ از نسخهٔ 1.2 صفحهٔ تماس و تب Link
+می‌گویند اگر اجازه داده نشده یا میکروفون صدایی نمی‌دهد) و مطمئن شوید تماس Mute نیست. گوشی اندرویدی میکروفون خودش را
+خودکار از تماس بیرون نگه می‌دارد و بررسی می‌کند صدای شما برسد؛ اگر نرسید، روی گوشی اندرویدی Call audio › «This phone's microphone during bridged calls» را روی **On** امتحان کنید و در حین
 تماس self-test را اجرا کنید. فهرست کامل: [TROUBLESHOOTING.md](../TROUBLESHOOTING.md#the-other-side-cannot-hear-me).
 
 ### دو گوشی چقدر می‌توانند از هم دور باشند؟

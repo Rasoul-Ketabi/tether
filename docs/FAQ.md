@@ -77,9 +77,10 @@ nothing leaves the phone. Texts, contacts and call control work without it.
 
 ### The other side cannot hear me. What do I do?
 
-Check the iPhone's microphone permission for the app (Settings › Privacy & Security › Microphone) and that the call
-is not muted; then on the Android phone try Call audio › "This phone's microphone during bridged calls" › **On**,
-and run the self-test during a call. Full list: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-other-side-cannot-hear-me).
+Check the iPhone's microphone permission for the app (Settings › Privacy & Security › Microphone; since 1.2 the call
+screen and the Link tab say when it is refused or silent) and that the call is not muted. The Android phone keeps its
+own microphone out of the call automatically and checks that your voice still gets through; if it does not, try
+Call audio › "This phone's microphone during bridged calls" › **On**, and run the self-test during a call. Full list: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-other-side-cannot-hear-me).
 
 ### How far apart can the phones be?
 
