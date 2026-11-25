@@ -13,6 +13,14 @@
   call control work, the default phone app is requested through Telecom, a call's direction comes from its first
   state. No call audio before Android 11: the status field `helper.audio` ("unavailable") is now shown on the
   iPhone in Link › Call audio. Hotspot and Bluetooth tethering switches are reported as unavailable before Android 11.
+- iPhone: the microphone permission is asked for once the app is paired and again when a call starts; a refused or
+  silent microphone is shown on the call screen, in the Link tab and the Link log, and "Your voice in the call" no
+  longer says it reaches the other side then (#14).
+- iPhone call audio: the microphone is sent only once a call is connected (not while an outgoing call dials); a
+  stall's backlog (Bluetooth tethering) plays late and drains in the pauses instead of losing speech; interruptions
+  and media-services resets bring the audio back; CallKit callbacks run in order; a speaker choice made while
+  connecting is kept; the render-thread flags use a heap-allocated lock (#15).
+- iPhone link: renewing a pending connect no longer leaves the link waiting on the cancelled one (#15).
 
 ## 1.1.0 — 2026-11-23
 
