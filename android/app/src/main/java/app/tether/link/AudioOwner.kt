@@ -10,8 +10,8 @@ package app.tether.link
  * microphone were silenced: with the iPhone linked, a call taken on the phone had no audio there (issue #13).
  *
  * A phone whose software gives Tether no call audio (the downlink capture reads only zeros in a real call) is
- * remembered by its build fingerprint: its calls are not bridged until the firmware changes or a self-test finds
- * call audio again. Clients are told `helper.audio` "blocked".
+ * remembered by its build fingerprint and Tether's version: its calls are not bridged until the firmware or Tether
+ * changes, or a self-test finds call audio again. Clients are told `helper.audio` "blocked".
  */
 object AudioOwner {
     /** The owner when nobody holds the audio now: the live client whose key claimed during the current calls. */
@@ -31,6 +31,6 @@ object AudioOwner {
     /** The name a client shows for "on …": the owning client's, else the Android phone's own. */
     fun where(ownerName: String?, phoneName: String): String = ownerName ?: phoneName
 
-    /** Whether the remembered "no call audio" still holds for this firmware ([remembered] is the fingerprint saved). */
+    /** Whether the remembered "no call audio" still holds ([remembered] and [current]: "fingerprint|versionCode"). */
     fun blocked(remembered: String?, fingerprint: String): Boolean = remembered != null && remembered == fingerprint
 }

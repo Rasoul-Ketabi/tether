@@ -1012,7 +1012,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 helper.rememberAudioBlocked()
                 LinkLog.add("call audio: this phone gives Tether no call audio: the call goes back to the Android phone " +
                     "(its earpiece and microphone), and calls are not bridged on this phone until its software changes " +
-                    "or a self-test during a call hears call audio")
+                    "or a self-test during a call hears call audio. If calls on the phone itself have no sound either, restart the phone once")
                 audioCtl.execute { reconcile(); broadcastCalls(); pushStatus() }
             }
         }

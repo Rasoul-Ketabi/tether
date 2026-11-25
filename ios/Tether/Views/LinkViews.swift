@@ -120,7 +120,7 @@ struct LinkView: View {
                             Text("Call audio is not available on this Android phone: it needs Android 11 or later. Calls are still answered, placed and ended here, but you hear and speak on the Android phone.")
                                 .font(.footnote).foregroundStyle(.orange)
                         } else if s.helper.audioBlocked {
-                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on.")
+                            Text("This Android phone's software gives Tether no call audio (the call sounds like silence to it). Calls are still answered, placed and ended here, but you hear and speak on the Android phone. A system update, or a self-test during a call that hears the call, turns call audio back on. If calls on the phone itself have no sound either, restart the phone once.")
                                 .font(.footnote).foregroundStyle(.orange)
                         }
                         if let m = s.helper.method { LabeledContent("Inject method", value: m) }

@@ -59,13 +59,13 @@ class LocalMutesTest {
 
     @Test fun theAutomaticLayerUsesOnlyTheVendorsMicSourceKey() {
         // Default setting, no redirect mode: the vendor's key, checked while untested; never Android's mic mute.
-        for (s in listOf(Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM, Silence.MEDIATEK)) {
+        for (s in listOf(Silence.SAMSUNG, Silence.MEDIATEK)) {
             val p = LocalMutes.autoPlan(s, null)
             assertTrue("$s", p.vendorMic); assertFalse("$s", p.telecomMic); assertTrue("$s: checked", p.check)
             assertFalse("$s: seen working", LocalMutes.autoPlan(s, Memory.OK).check)
             assertEquals("$s: silenced the uplink before", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, Memory.BREAKS_UPLINK))
         }
-        for (s in listOf(Silence.QUALCOMM, Silence.OTHER)) assertEquals("$s: no key of its own, open", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
+        for (s in listOf(Silence.SAMSUNG_QUALCOMM, Silence.QUALCOMM, Silence.OTHER)) assertEquals("$s: no key used, open", LocalMutes.Plan.NONE, LocalMutes.autoPlan(s, null))
     }
 
     @Test fun aBlindUplinkKeepsOnlyTheTrustedKey() {

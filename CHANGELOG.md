@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Android phone, Samsung with a Qualcomm chip (Galaxy A73 and others): Tether no longer writes Samsung's call keys or
+  switches calls into a redirect mode there. On a Galaxy A73 (Android 16) they left the phone's voice channel busy,
+  so call audio and even calls on the phone itself stayed silent until a reboot (#13). Redirect modes are no longer
+  tried automatically on any Samsung; vendor keys are written back at helper start only if Tether set them; a phone
+  remembered as giving no call audio is tried again after a Tether update; the notice says to restart the phone once
+  if its own calls have no sound.
 - Android phone: real calls and texts always reach the iPhone and other clients, even while a debug test filter is on,
   and that filter switches itself off after 30 minutes (a forgotten one let a call dialed from the iPhone run silent).
 - Android phone: **Help › Send a problem report** shares one `.txt` file (or copies it) with what is needed to find

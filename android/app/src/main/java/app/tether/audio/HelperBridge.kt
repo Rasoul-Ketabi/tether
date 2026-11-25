@@ -377,7 +377,17 @@ class HelperBridge(private val ctx: Context) {
      * This firmware gives Tether no call audio (the downlink capture read only zeros in a real call, issue #13):
      * remembered by build fingerprint, so a system update or a self-test that hears call audio clears it.
      */
-    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), android.os.Build.FINGERPRINT)
-    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, android.os.Build.FINGERPRINT).apply()
+    fun audioBlocked(): Boolean = app.tether.link.AudioOwner.blocked(prefs.getString(PREF_BLOCKED, null), blockedKey())
+    fun rememberAudioBlocked() = prefs.edit().putString(PREF_BLOCKED, blockedKey()).apply()
+
+    /** The firmware and this Tether build: a system update or a new Tether version tries call audio again (a fault
+     *  of Tether's own could look like a phone that gives none, as on the A73 before 1.2.4, issue #13). */
+    private fun blockedKey(): String {
+        val code = runCatching {
+            val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= 28) pi.longVersionCode else @Suppress("DEPRECATION") pi.versionCode.toLong()
+        }.getOrDefault(0L)
+        return "${android.os.Build.FINGERPRINT}|$code"
+    }
     fun forgetAudioBlocked() { if (prefs.contains(PREF_BLOCKED)) prefs.edit().remove(PREF_BLOCKED).apply() }
 }

@@ -447,9 +447,10 @@ object CallAudio {
      *   speech injected into the uplink), rx/tx control mode 1 = muted. Both keys verified on the reference phone
      *   (Exynos): with the tx key alone the far end heard the iPhone on real calls (2026-11-24), so where this phone's
      *   VOICE_UPLINK cannot show the injected voice the tx key is still trusted ([blindSafe]). On Samsung's Qualcomm
-     *   models (A71, A73, Fold) the keys may do nothing, so the voice-call stream is muted as well ([voiceStream]), and
-     *   the tx key is used there only where a check could see the uplink (issue #2: a Fold 6's uplink went silent with
-     *   Android's mic mute and the tx key together).
+     *   models (A71, A73, Fold) the keys are NEVER written (1.2.4): on a Galaxy A73 (Android 16, issue #13) the Text
+     *   Call keys left the voice PCM device held ("voice_start_usecase: cannot open device pcmC0D15c: Device or
+     *   resource busy" at every later call start), so calls on the phone itself had no audio until a reboot. There the
+     *   earpiece is silenced with the voice-call stream only ([voiceStream]) and the microphone stays on.
      * - Qualcomm: voice-call stream muted (HAL voice volume 0 sets the "Voice Rx Device Mute" mixer control). Its HAL
      *   has no microphone key; Android's mic mute (Telecom) mutes the whole Tx path unless the injection is the in-call
      *   music use case (hardware/qcom/audio voice.c, voice_set_mic_mute), which the interception track is not.
@@ -462,7 +463,7 @@ object CallAudio {
      * uplink cannot be checked.
      */
     enum class Silence(val vendorMicKeys: Boolean, val voiceStream: Boolean, val blindSafe: Boolean) {
-        SAMSUNG(true, false, true), SAMSUNG_QUALCOMM(true, true, false), QUALCOMM(false, true, false),
+        SAMSUNG(true, false, true), SAMSUNG_QUALCOMM(false, true, false), QUALCOMM(false, true, false),
         MEDIATEK(true, false, false), OTHER(false, true, false)
     }
 
@@ -509,18 +510,21 @@ object CallAudio {
         val mode = silence
         return try {
             when (mode) {
-                Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM -> {
+                Silence.SAMSUNG -> {
+                    VendorKeys.written(muted)
                     am.setParameters("l_voice_rx_control_mode=$v")
                     am.setParameters("l_voice_tx_control_mode=$m")
-                    if (mode.voiceStream && (muted || streamMuted || am.isStreamMute(AudioManager.STREAM_VOICE_CALL))) muteVoiceStream(muted)
-                    Local("samsung rx=$v tx=$m" + if (mode.voiceStream) ", voice stream ${if (muted) "muted" else "restored"}" else "", true)
+                    if (!muted) VendorKeys.cleared()
+                    Local("samsung rx=$v tx=$m", true)
                 }
                 Silence.MEDIATEK -> {
+                    VendorKeys.written(muted)
                     am.setParameters("Set_SpeechCall_DL_Mute=$v")
                     am.setParameters("Set_SpeechCall_UL_Mute=$m")
+                    if (!muted) VendorKeys.cleared()
                     Local("mediatek dl=$v ul=$m", true)
                 }
-                Silence.QUALCOMM, Silence.OTHER -> {
+                Silence.SAMSUNG_QUALCOMM, Silence.QUALCOMM, Silence.OTHER -> {
                     // Unmute also when another helper process muted it (a crash mid-call): nobody else mutes this stream.
                     if (muted || streamMuted || am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) muteVoiceStream(muted)
                     Local("voice stream ${if (muted) "muted" else "restored"}", true)
@@ -546,8 +550,8 @@ object CallAudio {
         val m = if (on) "1" else "0"
         return try {
             when (silence) {
-                Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM -> { am.setParameters("l_voice_tx_control_mode=$m"); "samsung tx=$m" }
-                Silence.MEDIATEK -> { am.setParameters("Set_SpeechCall_UL_Mute=$m"); "mediatek ul=$m" }
+                Silence.SAMSUNG -> { if (on) VendorKeys.written(true); am.setParameters("l_voice_tx_control_mode=$m"); "samsung tx=$m" }
+                Silence.MEDIATEK -> { if (on) VendorKeys.written(true); am.setParameters("Set_SpeechCall_UL_Mute=$m"); "mediatek ul=$m" }
                 else -> null
             }
         } catch (t: Throwable) {
@@ -590,9 +594,13 @@ object CallAudio {
         val rows = JSONArray()
         val verdicts = JSONObject()
         val callMode = audioMode()
-        val ladder = if (Build.VERSION.SDK_INT >= FULL_SDK_AUDIO) MicPath.Redirect.ladder(callMode, screeningSupported()) else emptyList()
-        if (ladder.isEmpty()) rows.put(JSONObject().put("name", "mic:redirect").put("ok", false).put("note",
-            if (Build.VERSION.SDK_INT < FULL_SDK_AUDIO) "needs Android 13" else "not in a call's audio mode (${MicPath.Mode.name(callMode)})"))
+        val samsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        val ladder = if (Build.VERSION.SDK_INT >= FULL_SDK_AUDIO && !samsung) MicPath.Redirect.ladder(callMode, screeningSupported()) else emptyList()
+        if (ladder.isEmpty()) rows.put(JSONObject().put("name", "mic:redirect").put("ok", false).put("note", when {
+            samsung -> "not tried on Samsung phones (redirect modes silenced the call's audio on the ones tested, issue #13)"
+            Build.VERSION.SDK_INT < FULL_SDK_AUDIO -> "needs Android 13"
+            else -> "not in a call's audio mode (${MicPath.Mode.name(callMode)})"
+        }))
         for (r in ladder) {
             val row = JSONObject().put("name", "mic:${r.wire}")
             var up: Capture? = null; var down: Capture? = null; var inj: Inject? = null
@@ -638,13 +646,31 @@ object CallAudio {
         return Measured(floor / 25, (hit / 15) / (base / 25 + 1e-3), nz >= RedirectGuard.ALIVE_SAMPLES * 2)
     }
 
-    /** A helper that died mid-call would leave the phone silent for its next own call: always start clean. */
+    /**
+     * A helper that died mid-call would leave the phone silent for its next own call: start clean. Vendor keys are
+     * written back only when this helper (or one before it) wrote them ([VendorKeys]): writing a vendor's call keys
+     * outside a call is not harmless on every phone (issue #13). A muted voice-call stream is always restored.
+     */
     fun restoreLocalCallAudio() {
-        when (silence) {
-            Silence.SAMSUNG, Silence.SAMSUNG_QUALCOMM, Silence.MEDIATEK -> localCallAudio(muted = false, mic = false, errors = org.json.JSONArray())
-            else -> runCatching {
-                if (am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) { streamMuted = true; muteVoiceStream(false) }
+        if (VendorKeys.pending()) {
+            val keys = when (silence) {
+                Silence.MEDIATEK -> listOf("Set_SpeechCall_DL_Mute=0", "Set_SpeechCall_UL_Mute=0")
+                else -> listOf("l_voice_rx_control_mode=0", "l_voice_tx_control_mode=0")   // Samsung, also one a 1.2.x helper set
             }
+            runCatching { keys.forEach { am.setParameters(it) } }
+            VendorKeys.cleared()
         }
+        runCatching { if (am.isStreamMute(AudioManager.STREAM_VOICE_CALL)) { streamMuted = true; muteVoiceStream(false) } }
+    }
+
+    /**
+     * Whether vendor call keys may still be set by a helper (a marker file the shell user can write): set before a key
+     * is written, removed once it is back at 0. Only then does a starting helper write the keys back.
+     */
+    object VendorKeys {
+        private val marker = java.io.File("/data/local/tmp/tether-vendor-keys")
+        fun written(muted: Boolean) { if (muted) runCatching { marker.writeText(silence.name) } }
+        fun cleared() { runCatching { marker.delete() } }
+        fun pending(): Boolean = runCatching { marker.exists() }.getOrDefault(false)
     }
 }

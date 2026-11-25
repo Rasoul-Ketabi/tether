@@ -52,5 +52,7 @@ class AudioOwnerTest {
         assertTrue(AudioOwner.blocked("samsung/a73xq/a73xq:16/X/1:user/release-keys", "samsung/a73xq/a73xq:16/X/1:user/release-keys"))
         assertFalse("a system update clears it", AudioOwner.blocked("samsung/a73xq/a73xq:16/X/1:user/release-keys", "samsung/a73xq/a73xq:16/Y/2:user/release-keys"))
         assertFalse(AudioOwner.blocked(null, "x"))
+        assertFalse("a new Tether version tries again", AudioOwner.blocked("fp|1020299", "fp|1020499"))
+        assertTrue(AudioOwner.blocked("fp|1020499", "fp|1020499"))
     }
 }

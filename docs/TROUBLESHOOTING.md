@@ -61,6 +61,10 @@ card in the Android app says which case you are in, and so does Link › Call au
    in the first seconds of a call, gives the call back to the phone (earpiece and microphone on) and says
    "blocked" in Link › Call audio, until a system update or a self-test during a call hears the call.
    A call you answer or dial on the Android phone itself always stays on it.
+   **Samsung phones with a Qualcomm chip (Galaxy A71, A73, Fold and others) on Tether 1.2.3 or older:** if calls on
+   the phone itself also lost their sound, Tether's Samsung call keys or redirect mode had left the phone's voice
+   channel stuck (`voice_start_usecase: cannot open device … Device or resource busy` in the phone's own log). Update
+   to 1.2.4, which uses neither there, and restart the phone once.
 4. You hear the other side on the Android phone too: Tether silences the phone's own earpiece during a bridged call
    with each vendor's controls: Samsung (tested), Qualcomm and MediaTek (from their audio sources, untested), the
    voice-call volume on other phones (on Samsung phones with a Qualcomm chip both). The phone's own microphone is

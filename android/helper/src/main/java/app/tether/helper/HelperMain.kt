@@ -628,11 +628,12 @@ object HelperMain {
                 MicPath.Setting.MUTE -> if (legacyNoMute) LocalMutes.Plan.NONE else LocalMutes.manualPlan(CallAudio.silence, muteMemory)
                 MicPath.Setting.AUTO -> {
                     val callMode = CallAudio.audioMode()
-                    val r = MicPath.choose(android.os.Build.VERSION.SDK_INT, mic, callMode, inject?.name, CallAudio.screeningSupported(), redirectMemory)
+                    val r = MicPath.choose(android.os.Build.VERSION.SDK_INT, mic, callMode, inject?.name, CallAudio.screeningSupported(), redirectMemory,
+                        samsung = CallAudio.hasSamsungCallMute)
                     if (r != null) { startRedirect(rate, r); fallbackPending = true; LocalMutes.Plan.NONE }
                     else {
                         val p = LocalMutes.autoPlan(CallAudio.silence, muteMemory)
-                        autoNote = MicPath.noRedirectWhy(android.os.Build.VERSION.SDK_INT, inject?.name, callMode, redirectMemory) + "; " + autoMuteNote(p)
+                        autoNote = MicPath.noRedirectWhy(android.os.Build.VERSION.SDK_INT, inject?.name, callMode, redirectMemory, CallAudio.hasSamsungCallMute) + "; " + autoMuteNote(p)
                         p
                     }
                 }
