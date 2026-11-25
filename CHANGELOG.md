@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.5 — 2026-11-25
+
 - iPhone: Tether sets its CallKit provider up again when iOS restarted its call service under the running app. Until
   now every call then failed until the app was force-quit: calls dialed on the iPhone ended at once ("unknown call
   provider") and incoming calls rang but CallKit never activated their audio (no microphone, no sound). Tether checks
