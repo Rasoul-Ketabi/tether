@@ -32,7 +32,7 @@ struct CallScreen: Equatable {
 final class CallController: NSObject {
     private unowned let model: AppModel
     /// Rebuilt when CallKit no longer knows it ([rebuildCallKit]): iOS may restart its call daemon under a running app.
-    private var provider: CXProvider
+    private(set) var provider: CXProvider
     private var controller = CXCallController()
     /// CallKit lost our provider while a call was up: set it up again once no call is left.
     private var callKitRebuildPending = false
@@ -111,7 +111,9 @@ final class CallController: NSObject {
             return
         }
         callKitRebuildPending = false
-        provider.invalidate()
+        let old = provider
+        old.setDelegate(nil, queue: nil)
+        old.invalidate()
         provider = CXProvider(configuration: Self.providerConfiguration())
         provider.setDelegate(self, queue: nil)
         controller = CXCallController()
@@ -486,6 +488,7 @@ final class CallController: NSObject {
         model.callScreen = nil
         model.showCallScreen = false
         model.audio.stop()
+        if callKitRebuildPending { rebuildCallKit("after link lost") }
     }
 
     /// The Android phone accepted the dial: if it never reports a call for it (Telecom dropped it), fail it after 30 s
@@ -567,7 +570,11 @@ final class CallController: NSObject {
             NSLog("[calls] end transaction failed: %@", "\(error)")
             Task { @MainActor in
                 self?.endedHere.remove(uuid)
-                self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
+                if Self.lostProvider(error) {
+                    self?.rebuildCallKit("CallKit no longer knew this app's provider (CXEndCallAction)")
+                } else {
+                    self?.provider.reportCall(with: uuid, endedAt: Date(), reason: .remoteEnded)
+                }
             }
         }
     }
@@ -593,6 +600,7 @@ extension CallController: CXProviderDelegate {
 
     nonisolated func providerDidReset(_ provider: CXProvider) {
         MainActor.assumeIsolatedCompat {
+            guard provider === self.provider else { return }
             self.uuids.removeAll(); self.cids.removeAll(); self.lastState.removeAll(); self.info.removeAll()
             self.pendingOutgoing = nil; self.mirrored.removeAll(); self.answeredHere.removeAll()
             self.reportedConnecting.removeAll(); self.reportedConnected.removeAll(); self.startPerformed.removeAll()
@@ -600,6 +608,7 @@ extension CallController: CXProviderDelegate {
             self.audioSessionActive = false; self.speakerWanted = false
             self.model.callScreen = nil
             self.model.audio.stop()
+            if self.callKitRebuildPending { self.rebuildCallKit("after reset") }
         }
     }
 
@@ -639,11 +648,11 @@ extension CallController: CXProviderDelegate {
     }
 
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        MainActor.assumeIsolatedCompat { self.sessionDidActivate() }
+        MainActor.assumeIsolatedCompat { guard provider === self.provider else { return }; self.sessionDidActivate() }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        MainActor.assumeIsolatedCompat { self.sessionDidDeactivate() }
+        MainActor.assumeIsolatedCompat { guard provider === self.provider else { return }; self.sessionDidDeactivate() }
     }
 }
 

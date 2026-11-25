@@ -199,6 +199,7 @@ what you see (open an issue with your phone model, Android version and the Link 
 | Device / feature | Status |
 | --- | --- |
 | Samsung Galaxy A54, Android 17 (One UI) + iPhone 17 | **Tested**: everything above, including call audio |
+| Redmi Note 8 (Qualcomm, custom Android 16) + iPhone 17 Pro (user report, #18) | Calls, texts and call audio work (uplink injected via in-call music `telephony_tx`; phone's microphone stays on) |
 | iPad (iOS 16+) | Builds and lays out in the simulator; untested on a device |
 | Other Samsung phones, Android 13+ | Expected to work like the A54, including taking the phone's own microphone and earpiece out of a bridged call (redirect audio mode, checked during each call; see [Troubleshooting](docs/TROUBLESHOOTING.md#the-other-side-cannot-hear-me)) |
 | Other Android 13+ phones | Calls, messages, contacts and switches expected to work. Call audio works only if the build lets the shell user use the call-audio interception API; the phone's own earpiece is muted during a bridged call (voice-call stream, or each vendor's own audio controls; from their sources, untested on devices; the Link tab shows "Android phone silent"); its microphone is taken out of the call with Android's redirect audio mode where the phone allows it (checked during each call and by the self-test), else it stays on |

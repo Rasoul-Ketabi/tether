@@ -12,13 +12,17 @@ package app.tether.helper
  */
 object UplinkRoutes {
     private val afeProxyPlayback = Regex("""<path\s+name\s*=\s*"afe-proxy-playback[ "]""")
+    private val incallMusicUplink = Regex("""<path\s+name\s*=\s*"incall[_-]music[_-]uplink[2 "]""")
 
     /**
-     * True only when mixer configurations were read and none of them defines an `afe-proxy-playback` path (nothing
-     * read, or any file with the path, counts as wired: the interception API is then used as before).
+     * True only when the mixer configurations define the legacy Qualcomm in-call music usecase (`incall_music_uplink`,
+     * used by `telephony_tx`) and none of them defines an `afe-proxy-playback` path. Requiring `incall_music_uplink`
+     * avoids false positives on newer Qualcomm PAL / AudioReach phones whose `mixer_paths*.xml` defines only codec
+     * device paths and no usecase paths at all (nothing read, or any file with `afe-proxy-playback`, also counts as
+     * wired: the interception API is then used as before).
      */
     fun afeProxyMissing(mixerPaths: List<String>): Boolean =
-        mixerPaths.isNotEmpty() && mixerPaths.none { afeProxyPlayback.containsMatchIn(it) }
+        mixerPaths.any { incallMusicUplink.containsMatchIn(it) } && mixerPaths.none { afeProxyPlayback.containsMatchIn(it) }
 
     /** The inject methods to try, in order: the interception API is left out where its route is not wired. */
     fun injectOrder(methods: List<String>, interceptDead: Boolean): List<String> =

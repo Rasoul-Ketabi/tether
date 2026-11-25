@@ -22,6 +22,13 @@ class UplinkRoutesTest {
           <path name="incall_music_uplink"><ctl name="Incall_Music Audio Mixer MultiMedia9" value="1" /></path>
         </mixer>
     """.trimIndent()
+    // Newer Qualcomm PAL / AudioReach phones define only codec device paths in mixer_paths*.xml (no usecase paths).
+    private val pal = """
+        <mixer>
+          <path name="speaker"><ctl name="RX_MACRO RX0 MUX" value="AIF1_PB" /></path>
+          <path name="handset"><ctl name="EAR_RDAC Switch" value="1" /></path>
+        </mixer>
+    """.trimIndent()
     private val all = listOf("intercept", "telephony_tx", "policy_mix")
 
     @Test fun aMixerWithoutTheAfeProxyPathLeavesTheInterceptionTrackUnwired() {
@@ -29,11 +36,12 @@ class UplinkRoutesTest {
         assertEquals("in-call music first", listOf("telephony_tx", "policy_mix"), UplinkRoutes.injectOrder(all, interceptDead = true))
     }
 
-    @Test fun anyFileWithThePathOrNothingReadKeepsTheInterceptionApi() {
+    @Test fun anyFileWithThePathOrWithoutLegacyUsecasesKeepsTheInterceptionApi() {
         assertFalse(UplinkRoutes.afeProxyMissing(listOf(wired)))
         assertFalse("one of several configurations has it", UplinkRoutes.afeProxyMissing(listOf(redmi, wired)))
         assertFalse("nothing readable: no change", UplinkRoutes.afeProxyMissing(emptyList()))
-        assertTrue("a lookalike name is not the path", UplinkRoutes.afeProxyMissing(listOf("""<path name="afe-proxy-playbackx">""")))
+        assertFalse("PAL mixer config has no legacy usecase paths: keep intercept", UplinkRoutes.afeProxyMissing(listOf(pal)))
+        assertTrue("a lookalike name is not the path", UplinkRoutes.afeProxyMissing(listOf("""<path name="incall_music_uplink"><path name="afe-proxy-playbackx">""")))
         assertEquals(all, UplinkRoutes.injectOrder(all, interceptDead = false))
     }
 
