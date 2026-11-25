@@ -10,8 +10,8 @@ Thanks for helping. The most useful contributions right now:
 ## Your first contribution
 
 1. Look for issues labelled [good first issue](https://github.com/amirwmr/tether/labels/good%20first%20issue) or
-   [help wanted](https://github.com/amirwmr/tether/labels/help%20wanted), or ask in
-   [Discussions](https://github.com/amirwmr/tether/discussions) before a bigger change.
+   [help wanted](https://github.com/amirwmr/tether/labels/help%20wanted), or open a
+   [feature request](https://github.com/amirwmr/tether/issues/new?template=feature_request.yml) before a bigger change.
 2. Fork, clone and build: [docs/BUILD.md](docs/BUILD.md). You do not need the phones for most changes; the automatic
    tests run against fakes and fixtures.
 3. Make the change on a branch, run the checks below, and open a pull request; the template has a short checklist.

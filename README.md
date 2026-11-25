@@ -244,7 +244,7 @@ translations are welcome too: start with [CONTRIBUTING.md](CONTRIBUTING.md) and 
 
 ## Community and support
 
-Questions and ideas go to [Discussions](https://github.com/amirwmr/tether/discussions), bugs to
+Questions go to [a question issue](https://github.com/amirwmr/tether/issues/new?template=question.yml) (after the [FAQ](docs/FAQ.md)), ideas and bugs to
 [Issues](https://github.com/amirwmr/tether/issues/new/choose); see [SUPPORT.md](SUPPORT.md) for what to include.
 Security problems: privately, as described in [SECURITY.md](SECURITY.md).
 
