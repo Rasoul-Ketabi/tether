@@ -1017,7 +1017,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val capture = info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }
             return JSONObject().put("name", "call-audio").put("ok", running && inject != null && capture != null && inject != "exynos_ap").put("note",
                 if (!running || info == null) "this call's audio was not bridged" else
-                    "inject=${inject ?: "NONE"} capture=${capture ?: "NONE"}; " + (if (inject == "exynos_ap") "experimental live PCM; verify both directions by listening; " else "") + "${CallAudioReport.micLine(helper.lastUplink, micSetting, memory(), helper.lastMic, LocalMutes.canMute(CallAudio.silence))}; " +
+                    "inject=${inject ?: "NONE"} capture=${capture ?: "NONE"}; " + (if (inject == "exynos_ap") "experimental live PCM; verify both directions by listening; " else if (useExynosAp()) "Exynos AP setup: ${info.optJSONArray("errors") ?: "no details"}; " else "") + "${CallAudioReport.micLine(helper.lastUplink, micSetting, memory(), helper.lastMic, LocalMutes.canMute(CallAudio.silence))}; " +
                         "the tests below run with the phone's mic unmuted and the call in its own mode, except the mic rows")
         }
 
