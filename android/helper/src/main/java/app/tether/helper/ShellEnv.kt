@@ -16,6 +16,7 @@ import android.os.Process
 @SuppressLint("PrivateApi", "DiscouragedPrivateApi")
 object ShellEnv {
     const val SHELL_PACKAGE = "com.android.shell"
+    private val identityPackage: String get() = if (Process.myUid() == 0) "root" else SHELL_PACKAGE
 
     @Volatile private var ctx: Context? = null
 
@@ -33,7 +34,7 @@ object ShellEnv {
         try {
             val appBindDataClass = Class.forName("android.app.ActivityThread\$AppBindData")
             val bind = appBindDataClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-            val ai = android.content.pm.ApplicationInfo().apply { packageName = SHELL_PACKAGE; uid = Process.myUid() }
+            val ai = android.content.pm.ApplicationInfo().apply { packageName = identityPackage; uid = Process.myUid() }
             appBindDataClass.getDeclaredField("appInfo").apply { isAccessible = true }.set(bind, ai)
             atClass.getDeclaredField("mBoundApplication").apply { isAccessible = true }.set(thread, bind)
         } catch (t: Throwable) {
@@ -70,11 +71,11 @@ object ShellEnv {
     }
 
     private class ShellContext(base: Context) : ContextWrapper(base) {
-        override fun getPackageName() = SHELL_PACKAGE
-        override fun getOpPackageName() = SHELL_PACKAGE
+        override fun getPackageName() = identityPackage
+        override fun getOpPackageName() = identityPackage
         @SuppressLint("NewApi") // only called by Android 12+, which has the method
         override fun getAttributionSource(): AttributionSource =
-            AttributionSource.Builder(2000).setPackageName(SHELL_PACKAGE).build()
+            AttributionSource.Builder(Process.myUid()).setPackageName(identityPackage).build()
         override fun getApplicationContext(): Context = this
         // AudioManager.getMode() reports MODE_CALL_SCREENING as MODE_IN_CALL to apps targeting Android 10 or lower, and
         // reads the target from here (the system context's says 0): the helper must see the real mode (MicPath).

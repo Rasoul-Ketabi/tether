@@ -735,7 +735,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     /** The helper is started ahead of time so answering a call never waits for an ADB launch. */
     private fun keepHelperWarm() {
         if ((helper.connected || helper.tryConnect()) && !helper.isStale) return
-        if (app.prefs.getBoolean("adb_paired", false) || CallRegistry.wantsAudio()) helper.kick()
+        if (helper.rootMode || app.prefs.getBoolean("adb_paired", false) || CallRegistry.wantsAudio()) helper.kick()
     }
 
     /** GATT notification on the wake characteristic: reliably wakes a suspended iPhone app. */
@@ -1181,7 +1181,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             if (running) updateActive()
             if (changed) broadcastCalls()
             // Keep the helper alive between calls too, so answering never waits for a launch.
-            if (!helper.connected && app.prefs.getBoolean("adb_paired", false)) helper.kick()
+            if ((!helper.connected || helper.isStale) && (helper.rootMode || app.prefs.getBoolean("adb_paired", false))) helper.kick()
         }
 
         fun pause() { paused = true; audioCtl.submit { reconcile() }.get() }

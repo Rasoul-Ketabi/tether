@@ -682,7 +682,8 @@ object CallAudio {
      * is written, removed once it is back at 0. Only then does a starting helper write the keys back.
      */
     object VendorKeys {
-        private val marker = java.io.File("/data/local/tmp/tether-vendor-keys")
+        private val marker = java.io.File(if (android.os.Process.myUid() == 0)
+            "/data/adb/tether-vendor-keys" else "/data/local/tmp/tether-vendor-keys")
         fun written(muted: Boolean) { if (muted) runCatching { marker.writeText(silence.name) } }
         fun cleared() { runCatching { marker.delete() } }
         fun pending(): Boolean = runCatching { marker.exists() }.getOrDefault(false)

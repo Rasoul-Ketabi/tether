@@ -38,6 +38,7 @@ import app.tether.link.LinkLog
 import app.tether.link.LinkService
 import app.tether.report.PhoneReport
 import app.tether.report.ReportUi
+import app.tether.telecom.CallRegistry
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -194,12 +195,31 @@ class MainActivity : Activity() {
             "fallback" -> audio.addView(label(getString(R.string.audio_android11_12), R.color.muted, 13f))
             "blocked" -> audio.addView(label(getString(R.string.audio_blocked), R.color.warn, 13f))
         }
+        val helper = app.hub.helper
+        audio.addView(label(getString(R.string.helper_backend_status,
+            if (helper.rootMode) "Root (Magisk)" else "ADB (Shell)", helper.actualUid?.toString() ?: "—"), R.color.text, 14f))
+        audio.addView(button(getString(if (helper.rootMode) R.string.helper_use_adb else R.string.helper_use_root), secondary = true) {
+            if (CallRegistry.active().isNotEmpty()) {
+                Toast.makeText(this, R.string.helper_switch_during_call, Toast.LENGTH_SHORT).show()
+            } else if (helper.rootMode) {
+                if (!helper.selectRootMode(false)) Toast.makeText(this, R.string.helper_switch_busy, Toast.LENGTH_SHORT).show()
+                render()
+            } else {
+                AlertDialog.Builder(this).setMessage(R.string.helper_root_warning)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        if (CallRegistry.active().isNotEmpty()) Toast.makeText(this, R.string.helper_switch_during_call, Toast.LENGTH_SHORT).show()
+                        else if (!helper.selectRootMode(true)) Toast.makeText(this, R.string.helper_switch_busy, Toast.LENGTH_SHORT).show()
+                        render()
+                    }.show()
+            }
+        })
         val h = app.hub.audio.helperStatus()
         val running = h.optString("state") == "running"
         audio.addView(step(getString(R.string.step_helper), running, getString(R.string.action_start),
             if (running) getString(R.string.helper_running, h.optString("method", "auto")) +
-                (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped)) {
-            Thread { app.hub.helper.ensureRunning(); app.hub.refresh() }.start()
+                (h.optString("capture").takeIf { it.isNotEmpty() }?.let { " · " + getString(R.string.helper_capture, it) } ?: "") else getString(R.string.helper_stopped) + (if (helper.rootMode) " · " + helper.launchError else "")) {
+            Thread { helper.retryFromUi(); app.hub.refresh() }.start()
         })
         // The phone's own microphone during bridged calls (issue #2): by default a redirect audio mode takes it out of the
         // call where the phone allows it (MicPath); muting it is opt-in, since on some phones that also mutes the iPhone.

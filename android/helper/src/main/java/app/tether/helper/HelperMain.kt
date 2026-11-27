@@ -62,6 +62,12 @@ object HelperMain {
                     println(Net.state())
                 }
                 "serve" -> Server(args[1].toInt(), args[2]).serveForever()
+                "serve-stdin" -> {
+                    require(android.os.Process.myUid() == 0) { "Root UID required" }
+                    val token = System.`in`.bufferedReader().readLine()
+                    require(token != null && token.matches(Regex("[0-9a-f]{32}"))) { "invalid launch token" }
+                    Server(args[1].toInt(), token).serveForever()
+                }
                 else -> { System.err.println("unknown command"); exitProcess(2) }
             }
             exitProcess(0)
@@ -189,6 +195,7 @@ object HelperMain {
         @Volatile private var startId: Any = JSONObject.NULL
 
         @Volatile private var current: Socket? = null
+        @Volatile private var lastAuthenticatedEnd = android.os.SystemClock.elapsedRealtime()
 
         fun serveForever() {
             // Reuse the address: a just-stopped helper's connections linger in TIME_WAIT on this port.
@@ -202,8 +209,14 @@ object HelperMain {
             val pending = java.util.concurrent.Semaphore(4)
             val waiting = java.util.concurrent.ConcurrentLinkedDeque<Socket>()
             val deadlines = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "auth-deadline").apply { isDaemon = true } }
+            // A privileged helper must not live indefinitely without its authenticated app.
+            if (android.os.Process.myUid() == 0) ss.soTimeout = 1000
             while (true) {
-                val s = ss.accept()
+                if (android.os.Process.myUid() == 0 && current == null &&
+                    android.os.SystemClock.elapsedRealtime() - lastAuthenticatedEnd > 45_000L) {
+                    ss.close(); return
+                }
+                val s = try { ss.accept() } catch (_: java.net.SocketTimeoutException) { continue }
                 if (!pending.tryAcquire()) {
                     waiting.pollFirst()?.let { runCatching { it.close() } }
                     if (!pending.tryAcquire(500, java.util.concurrent.TimeUnit.MILLISECONDS)) { runCatching { s.close() }; continue }
@@ -223,7 +236,7 @@ object HelperMain {
                         ShellEnv.log("session ended: $e")
                     } finally {
                         // Only the session that owns the audio may stop it (a newer one may already have started).
-                        withAudio { if (current === s) { stop(); current = null } }
+                        withAudio { if (current === s) { stop(); lastAuthenticatedEnd = android.os.SystemClock.elapsedRealtime(); current = null } }
                         runCatching { s.close() }
                         authDone()
                     }

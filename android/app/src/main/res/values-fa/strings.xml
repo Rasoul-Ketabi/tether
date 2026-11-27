@@ -131,4 +131,10 @@
     <string name="report_failed">گزارش ساخته نشد: %1$s</string>
     <string name="report_copied_short">کپی شد، برای کلیپ‌بورد به %1$d کیلوبایت کوتاه شد. «اشتراک‌گذاری» کل فایل را می‌فرستد.</string>
     <string name="action_close">بستن</string>
+    <string name="helper_backend_status">روش انتخابی: %1$s · شناسه واقعی پردازش: %2$s</string>
+    <string name="helper_use_root">استفاده از Helper آزمایشی روت Magisk</string>
+    <string name="helper_use_adb">بازگشت به Helper با ADB</string>
+    <string name="helper_root_warning">آزمایشی: تتر برای اجرای Helper محلی احراز هویت‌شده، دسترسی روت درخواست می‌کند. این روش تضمینی برای انتقال صوت تماس نیست. فقط روی گوشی آزمایشی خود فعال کنید. برای توقف استفاده از روت به ADB بازگردید.</string>
+    <string name="helper_switch_during_call">پیش از تغییر Helper، تماس را پایان دهید.</string>
+    <string name="helper_switch_busy">Helper در حال راه‌اندازی است؛ پس از پایان دوباره تلاش کنید.</string>
 </resources>

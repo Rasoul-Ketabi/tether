@@ -37,6 +37,30 @@ class HelperBridge(private val ctx: Context) {
     }
 
     private val prefs = ctx.getSharedPreferences("helper", Context.MODE_PRIVATE)
+    val rootMode: Boolean get() = prefs.getBoolean("root_helper", false)
+    val actualUid: Int? get() = hello?.optInt("uid", -1)?.takeIf { it >= 0 }
+    val launchError: String get() = lastError
+    @Volatile private var rootAttemptBlocked = false
+
+    /** Local, explicit opt-in only. A failed Root launch never falls back to Shell. */
+    fun selectRootMode(enabled: Boolean): Boolean {
+        if (!launching.compareAndSet(false, true)) return false
+        try {
+            prefs.edit().putBoolean("root_helper", enabled).apply()
+            rootAttemptBlocked = false
+            failures = 0; nextAttemptAt = 0
+            forgetAudioBlocked()
+        } finally { launching.set(false) }
+        kick()
+        onChange?.invoke()
+        return true
+    }
+
+    fun retryFromUi(): String? {
+        rootAttemptBlocked = false
+        nextAttemptAt = 0
+        return ensureRunning()
+    }
     /** The running helper's port: a new one each launch, so an app squatting on it cannot keep call audio off. */
     @Volatile var port: Int = prefs.getInt("port", 0).takeIf { it > 0 } ?: newPort()
         private set
@@ -85,7 +109,7 @@ class HelperBridge(private val ctx: Context) {
     }
 
     @Synchronized fun tryConnect(): Boolean {
-        if (sock != null) return true
+        if (sock != null) return hello != null
         return try {
             val s = Socket()
             s.connect(InetSocketAddress("127.0.0.1", port), 500)
@@ -106,7 +130,8 @@ class HelperBridge(private val ctx: Context) {
             // (at default priority a call in the background measured 6.4 ms per Opus frame instead of ~2 ms).
             Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO); readLoop(s, input) }, "helper-rx").start()
             repeat(20) { if (hello != null) return true; Thread.sleep(50) }
-            hello != null
+            if (hello == null) { runCatching { s.close() }; return false }
+            true
         } catch (e: Exception) {
             false
         }
@@ -263,7 +288,8 @@ class HelperBridge(private val ctx: Context) {
     /** A helper started from an older APK keeps running old code after an update: replace it. */
     val isStale: Boolean get() {
         val h = hello ?: return false
-        return h.optString("apk") != ctx.applicationInfo.sourceDir
+        return h.optString("apk") != ctx.applicationInfo.sourceDir ||
+            !HelperMode.matches(rootMode, h.optInt("uid", -1))
     }
 
     private val launching = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -279,15 +305,19 @@ class HelperBridge(private val ctx: Context) {
      */
     fun kick() {
         if (connected && !isStale) return
+        if (rootMode && rootAttemptBlocked) return
         if (System.currentTimeMillis() < nextAttemptAt) return
         if (!launching.compareAndSet(false, true)) return
         pool.execute {
             try {
-                val err = launch()
+                val err = try { launch() } catch (e: Exception) {
+                    if (rootMode) "Root helper could not start (${e.javaClass.simpleName})" else "helper launch failed (${e.javaClass.simpleName})"
+                }
                 if (err == null) { failures = 0; nextAttemptAt = 0 }
                 else {
                     failures++
                     lastError = err
+                    if (rootMode) rootAttemptBlocked = true
                     nextAttemptAt = System.currentTimeMillis() + minOf(30_000L, 3000L * failures)
                     Log.w(TAG, "helper launch failed ($failures): $err")
                 }
@@ -301,6 +331,7 @@ class HelperBridge(private val ctx: Context) {
     /** Waits (bounded) for a running helper; null when it is up, otherwise the reason. */
     fun ensureRunning(waitMs: Long = 25_000): String? {
         if ((connected || tryConnect()) && !isStale) return null
+        if (rootMode && rootAttemptBlocked) return lastError
         nextAttemptAt = 0
         kick()
         val end = System.currentTimeMillis() + waitMs
@@ -312,24 +343,50 @@ class HelperBridge(private val ctx: Context) {
         return if (connected && !isStale) null else if (launching.get()) "starting" else lastError
     }
 
+    /** Magisk receives a fixed command; the secret arrives on stdin, not in its command log or argv. */
+    private fun launchRoot(): String? {
+        val p = try {
+            ProcessBuilder("su", "-c", HelperMode.rootCommand(ctx.applicationInfo.sourceDir, port))
+                .redirectErrorStream(true).redirectOutput(java.io.File("/dev/null")).start()
+        } catch (e: Exception) { return "Root unavailable (${e.javaClass.simpleName})" }
+        var accepted = false
+        try {
+            p.outputStream.bufferedWriter().use { it.write(token); it.newLine(); it.flush() }
+            val deadline = android.os.SystemClock.elapsedRealtime() + 30_000L
+            while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                if (tryConnect()) {
+                    if (!isStale && actualUid == 0) { accepted = true; return null }
+                    quit(); runCatching { sock?.close() }
+                    return "Root helper did not authenticate with UID 0"
+                }
+                if (!p.isAlive) return "Root denied or helper exited; check Magisk permission"
+                Thread.sleep(200)
+            }
+            return "Root helper timed out; check Magisk permission and retry"
+        } catch (e: Exception) {
+            return "Root helper launch failed (${e.javaClass.simpleName})"
+        } finally { if (!accepted) runCatching { p.destroy() } }
+    }
+
     private fun launch(): String? {
         if ((connected || tryConnect()) && isStale) {
-            Log.i(TAG, "helper is from an older install (${hello?.optString("apk")}); restarting it")
+            Log.i(TAG, "helper APK or UID differs from selected backend; restarting it")
             quit()
-            repeat(20) { if (!connected) return@repeat; Thread.sleep(100) }
+            for (i in 1..30) { if (!connected) break; Thread.sleep(100) }
             runCatching { sock?.close() }
             sock = null; out = null; hello = null
             Thread.sleep(300)
         }
-        if (connected || tryConnect()) return null
+        if ((connected || tryConnect()) && !isStale) return null
         var last = "helper did not connect"
         token = newToken()   // a fresh token for every launch
         port = newPort()
+        if (rootMode) return launchRoot()
         for (attempt in 1..3) {
             val f = pool.submit<String> { Adb.get(ctx).shell(launchCommand()) }
             try {
                 f.get(12, TimeUnit.SECONDS)
-                repeat(25) { if (tryConnect()) return null; Thread.sleep(200) }
+                repeat(25) { if (tryConnect() && !isStale) return null; Thread.sleep(200) }
             } catch (t: Throwable) {
                 // Timeout or a dead session: throw the connection away so the next attempt starts clean.
                 f.cancel(true)
@@ -347,7 +404,9 @@ class HelperBridge(private val ctx: Context) {
         val info = lastInfo
         val u = lastUplink
         return JSONObject()
-            .put("state", if (connected) "running" else "stopped")
+            .put("state", if (connected && !isStale) "running" else "stopped")
+            .put("backend", if (rootMode) "root" else "adb")
+            .put("uid", actualUid ?: JSONObject.NULL)
             .apply { info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("method", it) } }
             .apply { info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }?.let { put("capture", it) } }
             .put("up", info?.optString("inject")?.let { it.isNotEmpty() && it != "null" } ?: false)
