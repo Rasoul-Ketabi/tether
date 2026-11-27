@@ -9,7 +9,8 @@ permissions:
   actions: read
 jobs:
   publish:
-    if: github.repository == 'Rasoul-Ketabi/tether' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && startsWith(github.event.workflow_run.head_commit.message, 'Exynos native: live release')
+    if: >-
+      github.repository == 'Rasoul-Ketabi/tether' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && startsWith(github.event.workflow_run.head_commit.message, 'Exynos native: live release')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
