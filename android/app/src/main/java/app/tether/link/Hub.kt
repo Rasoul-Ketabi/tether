@@ -1015,9 +1015,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val info = helper.lastInfo
             val inject = info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }
             val capture = info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }
-            return JSONObject().put("name", "call-audio").put("ok", running && inject != null && capture != null).put("note",
+            return JSONObject().put("name", "call-audio").put("ok", running && inject != null && capture != null && inject != "exynos_ap").put("note",
                 if (!running || info == null) "this call's audio was not bridged" else
-                    "inject=${inject ?: "NONE"} capture=${capture ?: "NONE"}; ${CallAudioReport.micLine(helper.lastUplink, micSetting, memory(), helper.lastMic, LocalMutes.canMute(CallAudio.silence))}; " +
+                    "inject=${inject ?: "NONE"} capture=${capture ?: "NONE"}; " + (if (inject == "exynos_ap") "experimental live PCM; verify both directions by listening; " else "") + "${CallAudioReport.micLine(helper.lastUplink, micSetting, memory(), helper.lastMic, LocalMutes.canMute(CallAudio.silence))}; " +
                         "the tests below run with the phone's mic unmuted and the call in its own mode, except the mic rows")
         }
 
@@ -1089,6 +1089,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             audioCtl.execute { reconcile() }
         }
 
+        private fun useExynosAp(): Boolean = helper.rootMode && helper.actualUid == 0 &&
+            android.os.Build.DEVICE.equals("j7velte", true) && android.os.Build.VERSION.SDK_INT in 30..32 &&
+            app.prefs.getBoolean("exynos_ap_bridge", false) && !onlyTestLine()
+
         private fun startHelper(rate: Int, inject: String) {
             val mem = memory()
             telecomWanted = false
@@ -1099,7 +1103,9 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             sentActive = CallRegistry.hasActiveCall()
             // The test line is VoIP with no far end: its results say nothing about real calls, so they are not remembered.
             val test = onlyTestLine()
-            helper.start(rate, "auto", inject, app.prefs.getInt("inject_ms", 40), test, mic = mic.wire,
+            val native = useExynosAp()
+            helper.start(rate, if (native) "exynos_ap" else "auto", if (native) "exynos_ap" else inject,
+                app.prefs.getInt("inject_ms", 40), test, mic = if (native) "open" else mic.wire,
                 micMute = LocalMutes.wantMicMute(micSetting, mem), micCheck = LocalMutes.wantCheck(mem),
                 redirect = if (test) JSONObject() else MicPath.memoryJson(redirectMemory()),
                 muteMemory = if (test) null else mem?.wire, active = sentActive)
@@ -1237,7 +1243,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                     }
                 }
             }
-            quietLocalEarpiece(true) // before the helper drops it to 0, so the saved level is the user's
+            if (!useExynosAp()) quietLocalEarpiece(true) // do not mute vendor audio while testing native mixer
             startHelper(k.rate, app.prefs.getString("inject", "auto") ?: "auto")
             c.sendUrgent(startMessage(k))
             muteLocalMic(true)

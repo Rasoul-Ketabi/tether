@@ -12,6 +12,8 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <poll.h>
+#include <time.h>
 #include <sound/asound.h>
 
 struct textbuf { char data[4096]; size_t len; };
@@ -140,4 +142,214 @@ JNIEXPORT jstring JNICALL Java_app_tether_helper_ExynosNative_nativeProbe(JNIEnv
     for(unsigned int i=0;i<sizeof(names)/sizeof(names[0]);i++) mixer(&b,ctl,names[i]);
     if(ctl>=0) close(ctl);
     return (*env)->NewStringUTF(env,b.data);
+}
+
+
+/* Experimental application-processor path, using the device's call-forwarding mixer
+ * profile as a hypothesis. Never open modem PCM2 or Bluetooth/AMP links. */
+#define AP_RATE 48000u
+#define AP_PERIOD 960u
+struct change { const char *name; const char *want; const char *expect; struct snd_ctl_elem_value old, target; int changed; };
+static struct change changes[] = {
+    {.name="AudioMixer CH2 Mixer En",.want="Off",.expect="On"}, /* do not feed far-end audio back into CP */
+    {.name="AudioMixer RMIX2 En",.want="Off",.expect="On"},
+    {.name="AudioMixer CH2 DOUT Select",.want="DMIX_OUT",.expect="AIF4IN"}
+};
+static int bridge_ctl=-1, bridge_in=-1, bridge_out=-1, bridge_rate=0;
+static char bridge_error[256];
+static void err(const char *where,int code) {
+    snprintf(bridge_error,sizeof(bridge_error),"%s (errno=%d)",where,code);
+}
+static int ctl_enum(int fd,const char *name,const char *want,const char *expect,
+                    struct snd_ctl_elem_value *old,struct snd_ctl_elem_value *target) {
+    struct snd_ctl_elem_info i;
+    memset(&i,0,sizeof(i)); i.id.iface=SNDRV_CTL_ELEM_IFACE_MIXER;
+    snprintf((char*)i.id.name,sizeof(i.id.name),"%s",name);
+    if(ioctl(fd,SNDRV_CTL_IOCTL_ELEM_INFO,&i)<0 || i.type!=SNDRV_CTL_ELEM_TYPE_ENUMERATED || i.count!=1) return -1;
+    memset(old,0,sizeof(*old)); old->id=i.id;
+    if(ioctl(fd,SNDRV_CTL_IOCTL_ELEM_READ,old)<0) return -1;
+    unsigned int count=i.value.enumerated.items;
+    int wanted=-1, expected=-1;
+    for(unsigned int k=0;k<count;k++) {
+        i.value.enumerated.item=k;
+        if(ioctl(fd,SNDRV_CTL_IOCTL_ELEM_INFO,&i)<0) return -1;
+        if(strcmp(i.value.enumerated.name,want)==0) wanted=(int)k;
+        if(strcmp(i.value.enumerated.name,expect)==0) expected=(int)k;
+    }
+    if(wanted<0 || expected<0 || old->value.enumerated.item[0]!=(unsigned int)expected) return -1;
+    *target=*old; target->value.enumerated.item[0]=(unsigned int)wanted;
+    return 0;
+}
+static int modem_reserved(int capture) {
+    struct snd_pcm_info i;
+    memset(&i,0,sizeof(i)); i.device=2;
+    i.stream=capture?SNDRV_PCM_STREAM_CAPTURE:SNDRV_PCM_STREAM_PLAYBACK;
+    return ioctl(bridge_ctl,SNDRV_CTL_IOCTL_PCM_INFO,&i)==0 && i.subdevices_count==1 && i.subdevices_avail==0;
+}
+static int check_enum(const char *name,const char *value) {
+    struct snd_ctl_elem_value a,b;
+    return ctl_enum(bridge_ctl,name,value,value,&a,&b);
+}
+static void restore_route(void) {
+    if(bridge_ctl<0) return;
+    for(int k=(int)(sizeof(changes)/sizeof(changes[0]))-1;k>=0;k--) {
+        struct change *c=&changes[k];
+        if(!c->changed) continue;
+        struct snd_ctl_elem_value now=c->target;
+        if(ioctl(bridge_ctl,SNDRV_CTL_IOCTL_ELEM_READ,&now)==0 &&
+           now.value.enumerated.item[0]==c->target.value.enumerated.item[0]) {
+            if(ioctl(bridge_ctl,SNDRV_CTL_IOCTL_ELEM_WRITE,&c->old)<0) err("mixer restore",errno);
+        }
+        c->changed=0;
+    }
+}
+static void bridge_close(void) {
+    restore_route();
+    if(bridge_in>=0) { ioctl(bridge_in,SNDRV_PCM_IOCTL_DROP); close(bridge_in); bridge_in=-1; }
+    if(bridge_out>=0) { ioctl(bridge_out,SNDRV_PCM_IOCTL_DROP); close(bridge_out); bridge_out=-1; }
+    if(bridge_ctl>=0) { close(bridge_ctl); bridge_ctl=-1; }
+    bridge_rate=0;
+}
+static int ap_open(int dev,int capture) {
+    if(!is_closed(dev,capture)) { err("AP PCM busy/unknown",EBUSY); return -1; }
+    char path[64];
+    snprintf(path,sizeof(path),"/dev/snd/pcmC0D%d%c",dev,capture?'c':'p');
+    int fd=open(path,O_RDWR|O_NONBLOCK|O_CLOEXEC);
+    if(fd<0) { err("AP PCM open",errno); return -1; }
+    unsigned int chosen=0, buf=0;
+    const unsigned int periods[]={960,1024,480,512,1920,256};
+    for(unsigned int k=0;k<sizeof(periods)/sizeof(periods[0]);k++) {
+        struct snd_pcm_hw_params p;
+        any_params(&p);
+        mask_only(&p.masks[SNDRV_PCM_HW_PARAM_ACCESS-SNDRV_PCM_HW_PARAM_FIRST_MASK],SNDRV_PCM_ACCESS_RW_INTERLEAVED);
+        mask_only(&p.masks[SNDRV_PCM_HW_PARAM_FORMAT-SNDRV_PCM_HW_PARAM_FIRST_MASK],SNDRV_PCM_FORMAT_S16_LE);
+        mask_only(&p.masks[SNDRV_PCM_HW_PARAM_SUBFORMAT-SNDRV_PCM_HW_PARAM_FIRST_MASK],SNDRV_PCM_SUBFORMAT_STD);
+        exact_interval(&p,SNDRV_PCM_HW_PARAM_RATE,AP_RATE);
+        exact_interval(&p,SNDRV_PCM_HW_PARAM_CHANNELS,2);
+        exact_interval(&p,SNDRV_PCM_HW_PARAM_PERIOD_SIZE,periods[k]);
+        exact_interval(&p,SNDRV_PCM_HW_PARAM_BUFFER_SIZE,periods[k]*4);
+        if(ioctl(fd,SNDRV_PCM_IOCTL_HW_REFINE,&p)==0 && ioctl(fd,SNDRV_PCM_IOCTL_HW_PARAMS,&p)==0) {
+            chosen=periods[k]; buf=chosen*4; break;
+        }
+    }
+    if(!chosen) { err("AP PCM 48k stereo HW_PARAMS",errno); close(fd); return -1; }
+    struct snd_pcm_sw_params sw;
+    memset(&sw,0,sizeof(sw));
+    sw.period_step=1; sw.avail_min=chosen;
+    sw.start_threshold=1;
+    sw.stop_threshold=buf;
+    sw.boundary=buf;
+    while(sw.boundary <= (unsigned long)0x3fffffff/2) sw.boundary*=2;
+    if(ioctl(fd,SNDRV_PCM_IOCTL_SW_PARAMS,&sw)<0 || ioctl(fd,SNDRV_PCM_IOCTL_PREPARE)<0) {
+        err("AP PCM prepare",errno); close(fd); return -1;
+    }
+    return fd;
+}
+static int64_t mono_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC,&t);
+    return (int64_t)t.tv_sec*1000+t.tv_nsec/1000000;
+}
+static int transfer(int fd,int capture,int16_t *samples,unsigned int frames) {
+    unsigned int done=0;
+    int64_t deadline=mono_ms()+150;
+    while(done<frames && mono_ms()<deadline) {
+        struct snd_xferi x;
+        memset(&x,0,sizeof(x)); x.buf=samples+done*2; x.frames=frames-done;
+        int rc=ioctl(fd,capture?SNDRV_PCM_IOCTL_READI_FRAMES:SNDRV_PCM_IOCTL_WRITEI_FRAMES,&x);
+        if(rc==0 && x.result>0 && (unsigned long)x.result<=x.frames) { done+=(unsigned int)x.result; continue; }
+        int e=rc<0?errno:(x.result<0?(int)-x.result:EAGAIN);
+        if(e==EPIPE) {
+            if(ioctl(fd,SNDRV_PCM_IOCTL_PREPARE)<0 || (capture && ioctl(fd,SNDRV_PCM_IOCTL_START)<0)) return -EPIPE;
+            if(done) return -EPIPE;
+            continue;
+        }
+        if(e!=EAGAIN && e!=EINTR) return -e;
+        struct pollfd f={.fd=fd,.events=capture?POLLIN:POLLOUT,.revents=0};
+        poll(&f,1,10);
+    }
+    return done==frames?(int)done:-ETIMEDOUT;
+}
+JNIEXPORT jstring JNICALL Java_app_tether_helper_ExynosNative_nativeStart(JNIEnv *env,jobject self,jint rate) {
+    (void)self;
+    if(getuid()!=0 || geteuid()!=0 || (rate!=8000 && rate!=16000 && rate!=48000))
+        return (*env)->NewStringUTF(env,"unsupported UID or codec rate");
+    bridge_close(); bridge_error[0]=0;
+    bridge_ctl=open("/dev/snd/controlC0",O_RDWR|O_NONBLOCK|O_CLOEXEC);
+    if(bridge_ctl<0) { err("mixer open",errno); goto fail; }
+    /* Fail closed on any mismatch with the observed j7velte call topology. */
+    if(!modem_reserved(0) || !modem_reserved(1) ||
+       check_enum("AudioMixer Mixer En","On") || check_enum("AudioMixer SRC2 En","On") ||
+       check_enum("AudioMixer SRC3 En","Off") || check_enum("AudioMixer CH1 Mixer En","On") ||
+       check_enum("AudioMixer CH3 Mixer En","Off") || check_enum("AudioMixer RMIX1 En","On") ||
+       check_enum("AudioMixer CH1 DOUT Select","RMIX_OUT")) { err("unexpected in-call mixer topology",EINVAL); goto fail; }
+    for(unsigned int k=0;k<sizeof(changes)/sizeof(changes[0]);k++) {
+        struct change *c=&changes[k];
+        if(ctl_enum(bridge_ctl,c->name,c->want,c->expect,&c->old,&c->target)<0) {
+            err("unexpected mixer baseline",EINVAL); goto fail;
+        }
+    }
+    bridge_in=ap_open(0,1); if(bridge_in<0) goto fail;
+    bridge_out=ap_open(7,0); if(bridge_out<0) bridge_out=ap_open(0,0);
+    if(bridge_out<0) goto fail;
+    /* PCM startup may alter the mixer. Check baseline again before any write. */
+    for(unsigned int k=0;k<sizeof(changes)/sizeof(changes[0]);k++) {
+        struct change *c=&changes[k];
+        if(ctl_enum(bridge_ctl,c->name,c->want,c->expect,&c->old,&c->target)<0) {
+            err("mixer changed during AP setup",EINVAL); goto fail;
+        }
+        c->changed=1;
+        if(ioctl(bridge_ctl,SNDRV_CTL_IOCTL_ELEM_WRITE,&c->target)<0 ||
+           check_enum(c->name,c->want)<0) { err("mixer route rejected",EIO); goto fail; }
+    }
+    if(ioctl(bridge_in,SNDRV_PCM_IOCTL_START)<0) { err("AP capture start",errno); goto fail; }
+    bridge_rate=rate;
+    return NULL;
+fail:
+    bridge_close();
+    return (*env)->NewStringUTF(env,bridge_error[0]?bridge_error:"native start failed");
+}
+JNIEXPORT jint JNICALL Java_app_tether_helper_ExynosNative_nativeRead(JNIEnv *env,jobject self,jshortArray out) {
+    (void)self;
+    if(bridge_in<0 || !bridge_rate) return -ENODEV;
+    int n=(*env)->GetArrayLength(env,out), factor=(int)AP_RATE/bridge_rate;
+    if(n<=0 || n*factor>(int)AP_PERIOD) return -EINVAL;
+    int16_t pcm[AP_PERIOD*2], mono[AP_PERIOD];
+    int rc=transfer(bridge_in,1,pcm,(unsigned int)(n*factor));
+    if(rc<0) return rc;
+    for(int i=0;i<n;i++) {
+        int32_t sum=0;
+        for(int j=0;j<factor;j++) {
+            int k=(i*factor+j)*2; sum+=pcm[k]+pcm[k+1];
+        }
+        mono[i]=(int16_t)(sum/(2*factor));
+    }
+    (*env)->SetShortArrayRegion(env,out,0,n,mono);
+    return n;
+}
+JNIEXPORT jint JNICALL Java_app_tether_helper_ExynosNative_nativeWrite(JNIEnv *env,jobject self,jshortArray in,jint n) {
+    (void)self;
+    if(bridge_out<0 || !bridge_rate) return -ENODEV;
+    int factor=(int)AP_RATE/bridge_rate;
+    if(n<=0 || n>(*env)->GetArrayLength(env,in) || n*factor>(int)AP_PERIOD) return -EINVAL;
+    int16_t pcm[AP_PERIOD*2], mono[AP_PERIOD];
+    (*env)->GetShortArrayRegion(env,in,0,n,mono);
+    for(int i=0;i<n;i++) for(int j=0;j<factor;j++) {
+        int next=i+1<n?mono[i+1]:mono[i];
+        /* Cap experimental injection at half-scale, no abrupt gain increase. */
+        int v=((int)mono[i]*(factor-j)+next*j)/(factor*2);
+        int k=(i*factor+j)*2; pcm[k]=pcm[k+1]=(int16_t)v;
+    }
+    int rc=transfer(bridge_out,0,pcm,(unsigned int)(n*factor));
+    return rc<0?rc:n;
+}
+JNIEXPORT jboolean JNICALL Java_app_tether_helper_ExynosNative_nativeRouteIntact(JNIEnv *env,jobject self) {
+    (void)env; (void)self;
+    if(bridge_ctl<0) return JNI_FALSE;
+    for(unsigned int k=0;k<sizeof(changes)/sizeof(changes[0]);k++)
+        if(check_enum(changes[k].name,changes[k].want)<0) return JNI_FALSE;
+    return JNI_TRUE;
+}
+JNIEXPORT void JNICALL Java_app_tether_helper_ExynosNative_nativeClose(JNIEnv *env,jobject self) {
+    (void)env; (void)self; bridge_close();
 }

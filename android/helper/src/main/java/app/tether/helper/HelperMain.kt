@@ -346,6 +346,7 @@ object HelperMain {
             if (android.os.Build.VERSION.SDK_INT < CallAudio.MIN_SDK_AUDIO) errors.put("call audio is not available: it needs Android 11 or later")
             val capOrder = cfg.optString("capture", "auto").let { if (it == "auto") CallAudio.captureMethods else listOf(it) }
             val injOrder = UplinkRoutes.fixedOrAuto(cfg.optString("inject", "auto"), CallAudio.injectMethods)
+            val nativeRequested = cfg.optString("capture") == "exynos_ap" && cfg.optString("inject") == "exynos_ap" && !cfg.optBoolean("testLine")
             val injectMs = cfg.optInt("injectMs", 40)
             startId = cfg.opt("id") ?: JSONObject.NULL
             callActive = cfg.optBoolean("active", true)
@@ -364,7 +365,8 @@ object HelperMain {
             legacyNoMute = !cfg.has("muteMemory") && !cfg.optBoolean("micMute", true)
             testLine = cfg.optBoolean("testLine")
             plan = LocalMutes.Plan.NONE; keptBlind = false
-            val local = CallAudio.localCallAudio(muted = true, mic = false, errors = errors)
+            val local = CallAudio.localCallAudio(muted = !nativeRequested, mic = false, errors = errors)
+            if (nativeRequested) { localMuted = false; mic = MicPath.Setting.OPEN }
             localNote = local.note; localOk = local.ok
             stats.reset()
             meter.take()
@@ -391,8 +393,15 @@ object HelperMain {
                     }
                     return null
                 }
-                val cap = open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
-                val inj = open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
+                val native = if (nativeRequested) {
+                    // Start only once Telecom reports an established cellular call.
+                    while (running && callGen == gen && (!callActive || CallAudio.audioMode() != android.media.AudioManager.MODE_IN_CALL)) Thread.sleep(30)
+                    if (!running || callGen != gen) return@Thread
+                    runCatching { ExynosNative.open(rate) }
+                        .onFailure { errors.put("native:exynos_ap " + CallAudio.describe(it)) }.getOrNull()
+                } else null
+                val cap = if (nativeRequested) native?.capture else open(capOrder, "capture") { CallAudio.openCapture(it, rate) }
+                val inj = if (nativeRequested) native?.inject else open(injOrder, "inject") { CallAudio.openInject(it, rate, injectMs) }
                 if (!tryLockFor(gen)) { cap?.stop(); inj?.stop(); return@Thread }
                 try {
                     capture = cap; inject = inj
@@ -545,6 +554,15 @@ object HelperMain {
                 while (running && callGen == gen) {
                     repeat(10) { if (running && callGen == gen) Thread.sleep(100) }
                     if (!running || callGen != gen) break
+                    if (capture?.name == "exynos_ap") {
+                        val failure = ExynosNative.failureOrRouteChanged()
+                        if (failure != null || CallAudio.audioMode() != android.media.AudioManager.MODE_IN_CALL || !callActive) {
+                            // Restore immediately rather than relying on a client-side timeout.
+                            capture?.stop(); inject?.stop()
+                            info(JSONObject().put("path", JSONObject().put("event", "down-zeros").put("note", failure ?: "Native route stopped: cellular call no longer active")))
+                            break
+                        }
+                    }
                     val (df, dnz) = watchMeter.take()
                     val inj = inject
                     val played = inj?.playedFrames() ?: -1
@@ -557,6 +575,7 @@ object HelperMain {
                     val text = PathWatch.text(e, capture?.name, inj?.name, inj?.routedTo())
                     ShellEnv.log("path: $text")
                     // While the record and track are still open: is Android silencing them, or does the phone deliver nothing?
+                    if (capture?.name == "exynos_ap" && e.wire == "down-zeros") { capture?.stop(); inject?.stop() }
                     autoDiag(e.wire)
                     info(JSONObject().put("path", JSONObject().put("event", e.wire).put("note", text)))
                 }
@@ -642,7 +661,10 @@ object HelperMain {
             redirectGen++; releaseMode(); guard = null
             fallbackPending = false; autoNote = null; keptBlind = false
             val errs = JSONArray()
-            val next = if (capture == null || inject == null) {
+            val next = if (capture?.name == "exynos_ap") {
+                autoNote = "experimental AP route; vendor mute disabled"
+                LocalMutes.Plan.NONE
+            } else if (capture == null || inject == null) {
                 autoNote = "call audio incomplete; handset microphone kept on"
                 LocalMutes.Plan.NONE
             } else when (mic) {

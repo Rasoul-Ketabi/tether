@@ -214,6 +214,32 @@ class MainActivity : Activity() {
                     }.show()
             }
         })
+        if (helper.rootMode && android.os.Build.DEVICE.equals("j7velte", true) && android.os.Build.VERSION.SDK_INT in 30..32) {
+            val enabled = app.prefs.getBoolean("exynos_ap_bridge", false)
+            audio.addView(label(if (enabled) "Exynos AP bridge: enabled (experimental)" else "Exynos AP bridge: disabled", R.color.text, 14f))
+            audio.addView(button(if (enabled) "Disable Exynos AP bridge" else "Enable Exynos AP bridge", secondary = true) {
+                if (CallRegistry.active().isNotEmpty()) {
+                    Toast.makeText(this, R.string.helper_switch_during_call, Toast.LENGTH_SHORT).show()
+                } else if (enabled) {
+                    app.prefs.edit().putBoolean("exynos_ap_bridge", false).apply()
+                    helper.forgetAudioBlocked()
+                    render()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Experimental call audio")
+                        .setMessage("Uses live PCM and temporary hardware mixer changes on this J7 Core. Only test on your own phone with a consenting call participant. Audio may be silent or distorted. End the call immediately if audio is abnormal; reboot if normal handset audio is not restored.")
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setPositiveButton(android.R.string.ok) { _, _ ->
+                            if (CallRegistry.active().isNotEmpty()) Toast.makeText(this, R.string.helper_switch_during_call, Toast.LENGTH_SHORT).show()
+                            else {
+                                app.prefs.edit().putBoolean("exynos_ap_bridge", true).apply()
+                                helper.forgetAudioBlocked()
+                                render()
+                            }
+                        }.show()
+                }
+            })
+        }
         val h = app.hub.audio.helperStatus()
         val running = h.optString("state") == "running"
         audio.addView(step(getString(R.string.step_helper), running, getString(R.string.action_start),
