@@ -188,9 +188,11 @@ object CallAudio {
                 .invoke(am, outFormat(rate)) as AudioTrack
             // No low-latency (fast) track here: some Qualcomm HALs refuse a fast track on Telephony Tx and the policy then
             // plays it on the phone's own speaker instead, which nothing else would notice (issue #15).
-            "telephony_tx" -> buildTrack(rate, AudioAttributes.USAGE_MEDIA, lowLatency = false).also { t ->
-                val dev = telephonyDevice(true) ?: run { t.release(); error("no telephony output device") }
-                if (!t.setPreferredDevice(dev)) { t.release(); error("setPreferredDevice refused") }
+            "telephony_tx" -> {
+                val dev = telephonyDevice(true) ?: error("no telephony output device (TELEPHONY_TX)")
+                buildTrack(rate, AudioAttributes.USAGE_MEDIA, lowLatency = false).also { t ->
+                    if (!t.setPreferredDevice(dev)) { t.release(); error("setPreferredDevice refused") }
+                }
             }
             "policy_mix" -> {
                 val dev = telephonyDevice(true) ?: error("no telephony output device")
@@ -362,12 +364,15 @@ object CallAudio {
             val r = JSONObject().put("name", "inject:$m")
             var inj: Inject? = null
             var cap: Capture? = null
+            var stage = "uplink monitor"
             try {
                 cap = openCapture("voice_uplink", rate)
                 val buf = ShortArray(frame)
                 var base = 0.0
                 repeat(10) { val n = cap.read(buf); if (n > 0) base += goertzel(buf, n, 1000.0, rate) }
+                stage = "injection open"
                 inj = openInject(m, rate)
+                stage = "tone verification"
                 val tone = tone(1000.0, rate, frame, amp = 8000.0)
                 var hit = 0.0
                 // Each frame's tone level and when it was read: the first frame with the tone clearly in it, against
@@ -382,15 +387,27 @@ object CallAudio {
                     if (it >= 25 && n > 0) hit += level[it]
                 }
                 val ratio = (hit / 15) / (base / 10 + 1e-3)
-                val ok = ratio > 20
+                val routedCall = inj.routedType() == AudioDeviceInfo.TYPE_TELEPHONY
+                val ok = ratio > 20 && routedCall
                 val delayMs = if (ok) onsetMs(level, readAt, t0, threshold = hit / 15 / 2) else null
                 if (delayMs != null) r.put("delayMs", delayMs)
-                val routedCall = inj.routedType() == AudioDeviceInfo.TYPE_TELEPHONY
                 r.put("ok", ok).put("routedToCall", routedCall).put("note", "tone/base=%.1f routed=%s%s%s".format(ratio, inj.routedTo(),
                     if (routedCall) "" else " (NOT the call's uplink: the far end cannot hear this)", delayMs?.let { " delay≈$it ms" } ?: ""))
                 if (ok && chosen == null) chosen = m
             } catch (t: Throwable) {
-                r.put("ok", false).put("note", describe(t))
+                val failure = "$stage: ${describe(t)}"
+                if (stage == "uplink monitor") {
+                    // A broken VOICE_UPLINK monitor must not mask a missing or working output route.
+                    // Do not play any tone without the monitor; opening a route alone is NOT verified audio.
+                    cap?.stop(); cap = null
+                    val route = runCatching { openInject(m, rate) }
+                    inj = route.getOrNull()
+                    val routed = inj?.routedType() == AudioDeviceInfo.TYPE_TELEPHONY
+                    r.put("ok", false).put("routeOpened", inj != null).put("routedToCall", routed)
+                        .put("note", "$failure; independent output: " +
+                            (inj?.let { "opened, routed=${it.routedTo()}; audio UNVERIFIED" }
+                                ?: "failed: ${describe(route.exceptionOrNull()!!)}"))
+                } else r.put("ok", false).put("note", failure)
             } finally {
                 inj?.stop(); cap?.stop()
             }
@@ -398,11 +415,12 @@ object CallAudio {
         }
         for (m in if (captures) captureMethods else emptyList()) {
             val r = JSONObject().put("name", "capture:$m")
+            var c: Capture? = null
             try {
-                val c = openCapture(m, rate)
+                val opened = openCapture(m, rate)
+                c = opened
                 val buf = ShortArray(frame); var e = 0.0; var nz = 0; var got = 0
-                repeat(25) { val n = c.read(buf); if (n > 0) { e += rms(buf, n); nz += nonZero(buf, n); got += n } }
-                c.stop()
+                repeat(25) { val n = opened.read(buf); if (n > 0) { e += rms(buf, n); nz += nonZero(buf, n); got += n } }
                 r.put("ok", e / 25 > 1.0).put("note", "rms=%.1f%s".format(e / 25, when {
                     got == 0 -> ": delivered nothing"
                     nz == 0 -> ": only zeros (this phone gives this method no call audio)"
@@ -410,7 +428,7 @@ object CallAudio {
                 }))
             } catch (t: Throwable) {
                 r.put("ok", false).put("note", describe(t))
-            }
+            } finally { c?.stop() }
             res.put(r)
         }
         return JSONObject().put("methods", res).apply { chosen?.let { put("chosen", it) } }

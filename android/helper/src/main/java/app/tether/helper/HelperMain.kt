@@ -404,6 +404,11 @@ object HelperMain {
                     cap?.drain(rate)
                     startStreams(rate, gen)
                     pathsOpen = true
+                    if (cap == null || inj == null) {
+                        // A partial/failed bridge must not leave the cellular handset silent.
+                        val restored = CallAudio.localCallAudio(muted = false, mic = false, errors = errors)
+                        localNote = restored.note; localOk = false; localMuted = !restored.ok
+                    }
                     applyMic(rate)
                     val routedCall = inj?.let { CallAudio.routedToCall(it.routedType(), testLine) }
                     info(JSONObject().put("id", startId).put("capture", cap?.name ?: JSONObject.NULL).put("inject", inj?.name ?: JSONObject.NULL)
@@ -637,7 +642,10 @@ object HelperMain {
             redirectGen++; releaseMode(); guard = null
             fallbackPending = false; autoNote = null; keptBlind = false
             val errs = JSONArray()
-            val next = when (mic) {
+            val next = if (capture == null || inject == null) {
+                autoNote = "call audio incomplete; handset microphone kept on"
+                LocalMutes.Plan.NONE
+            } else when (mic) {
                 MicPath.Setting.OPEN -> LocalMutes.Plan.NONE
                 MicPath.Setting.MUTE -> if (legacyNoMute) LocalMutes.Plan.NONE else LocalMutes.manualPlan(CallAudio.silence, muteMemory)
                 MicPath.Setting.AUTO -> {
@@ -821,6 +829,20 @@ object HelperMain {
             val errs = JSONArray()
             if (mic) CallAudio.vendorMicMute(true, errs)
             val r = try { CallAudio.selfTest(methods = methods, captures = !mic) } finally { if (mic) CallAudio.vendorMicMute(false, errs) }
+            if (!mic && ExynosDiagnostics.enabled()) {
+                // Read-only ALSA/policy inventory; never reopen a busy modem PCM or write mixer controls.
+                val extra = ExynosDiagnostics.rows()
+                for (i in 0 until extra.length()) r.getJSONArray("methods").put(extra.get(i))
+                // The modem was observed at 8 kHz; compare the API paths at that rate without changing the live codec.
+                val narrow = CallAudio.selfTest(rate = 8000, methods = methods, captures = true)
+                narrow.optJSONArray("methods")?.let { rows ->
+                    for (i in 0 until rows.length()) {
+                        val row = rows.getJSONObject(i)
+                        row.put("name", "8k:" + row.optString("name"))
+                        r.getJSONArray("methods").put(row)
+                    }
+                }
+            }
             // The redirect modes (MicPath): which one takes this phone's mic out of the call without silencing anything.
             if (!mic && req.optBoolean("redirect", true)) {
                 val red = runCatching { CallAudio.redirectSelfTest() }.getOrElse { JSONObject().put("methods", JSONArray().put(JSONObject().put("name", "mic:redirect").put("ok", false).put("note", CallAudio.describe(it)))) }

@@ -797,7 +797,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
                 val path = audio.pathRow()
                 audio.pause()
                 try {
-                    val r = helper.request("selftest", 50) ?: JSONObject().put("methods", JSONArray())
+                    val r = helper.request("selftest", 80) ?: JSONObject().put("methods", JSONArray())
                     val chosen = r.optString("chosen").takeIf { it.isNotEmpty() }
                     // The redirect modes' answers (MicPath), remembered for this phone model like the in-call check's.
                     if (!audio.onlyTestLine()) MicPath.memoryOf(r.optJSONObject("redirect")).forEach { (mode, v) -> audio.rememberRedirect(mode, v, "self-test") }
@@ -1015,7 +1015,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
             val info = helper.lastInfo
             val inject = info?.optString("inject")?.takeIf { it.isNotEmpty() && it != "null" }
             val capture = info?.optString("capture")?.takeIf { it.isNotEmpty() && it != "null" }
-            return JSONObject().put("name", "call-audio").put("ok", running && inject != null).put("note",
+            return JSONObject().put("name", "call-audio").put("ok", running && inject != null && capture != null).put("note",
                 if (!running || info == null) "this call's audio was not bridged" else
                     "inject=${inject ?: "NONE"} capture=${capture ?: "NONE"}; ${CallAudioReport.micLine(helper.lastUplink, micSetting, memory(), helper.lastMic, LocalMutes.canMute(CallAudio.silence))}; " +
                         "the tests below run with the phone's mic unmuted and the call in its own mode, except the mic rows")
@@ -1025,6 +1025,13 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         fun onHelperInfo(o: JSONObject) {
             infoAt = SystemClock.elapsedRealtime()
             if (running) LinkLog.add(CallAudioReport.pathLine(o, micSetting, memory(), LocalMutes.canMute(CallAudio.silence)))
+            if (o.isNull("capture") || o.isNull("inject")) audioCtl.execute {
+                if (running && helper.lastInfo === o) {
+                    telecomWanted = false
+                    muteLocalMic(false)
+                    quietLocalEarpiece(false)
+                }
+            }
         }
 
         /** A path-watch finding (the downlink delivering nothing, the injection not taken): straight into the link log. */
