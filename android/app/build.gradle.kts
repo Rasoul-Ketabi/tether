@@ -23,6 +23,13 @@ val tetherVersionCode = Regex("""(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]+\.?(\d+)?)?""")
 android {
     namespace = "app.tether"
     compileSdk = 36
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     defaultConfig {
         applicationId = "app.tether.android"
@@ -30,6 +37,9 @@ android {
         targetSdk = 36
         versionCode = tetherVersionCode
         versionName = tetherVersion
+        externalNativeBuild {
+            cmake { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
+        }
     }
 
     signingConfigs {
@@ -54,6 +64,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
+        // Root app_process is separate from the app classloader; use installed, verified native library files.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/DEPENDENCIES")
     }
     testOptions { unitTests.isReturnDefaultValues = true }

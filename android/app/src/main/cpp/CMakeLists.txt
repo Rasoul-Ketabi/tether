@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(tether_exynos C)
+add_library(tether_exynos SHARED exynos_probe.c)
+target_compile_options(tether_exynos PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
+target_link_libraries(tether_exynos dl)

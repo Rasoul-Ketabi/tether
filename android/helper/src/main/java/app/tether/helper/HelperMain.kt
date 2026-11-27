@@ -833,6 +833,9 @@ object HelperMain {
                 // Read-only ALSA/policy inventory; never reopen a busy modem PCM or write mixer controls.
                 val extra = ExynosDiagnostics.rows()
                 for (i in 0 until extra.length()) r.getJSONArray("methods").put(extra.get(i))
+                // Real native capability checks; no modem PCM takeover or mixer changes.
+                val native = ExynosNative.rows()
+                for (i in 0 until native.length()) r.getJSONArray("methods").put(native.get(i))
                 // The modem was observed at 8 kHz; compare the API paths at that rate without changing the live codec.
                 val narrow = CallAudio.selfTest(rate = 8000, methods = methods, captures = true)
                 narrow.optJSONArray("methods")?.let { rows ->
