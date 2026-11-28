@@ -64,6 +64,26 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
 
     val enabled get() = adapter?.isEnabled == true
 
+    private val prefs get() = (ctx.applicationContext as app.tether.TetherApp).prefs
+    private val mode get() = prefs.getString("ble_transport", "auto") ?: "auto"
+    private val stable get() = prefs.getBoolean("ble_stable", android.os.Build.DEVICE.equals("j7velte", true))
+    private val policy = BleStabilityPolicy()
+    private val appliedPriority = ConcurrentHashMap<String, Int>()
+    fun recordSessionStart(address: String, label: String) = policy.started(address, label, android.os.SystemClock.elapsedRealtime())
+    fun recordSessionEnd(address: String, label: String) {
+        if (policy.ended(address, label, android.os.SystemClock.elapsedRealtime()) && mode == "auto")
+            LinkLog.add("Repeated short L2CAP sessions; GATT preferred for 5 minutes")
+    }
+    private fun gattPreferred(address: String) = mode == "gatt" ||
+        (mode == "auto" && policy.preferGatt(address, android.os.SystemClock.elapsedRealtime()))
+    private fun priority(address: String, g: BluetoothGatt, requested: Int) {
+        val p = if (stable) BluetoothGatt.CONNECTION_PRIORITY_HIGH else requested
+        if (appliedPriority[address] == p) return
+        val ok = runCatching { g.requestConnectionPriority(p) }.getOrDefault(false)
+        if (ok) appliedPriority[address] = p
+        LinkLog.add("BLE priority request " + (if (p == BluetoothGatt.CONNECTION_PRIORITY_HIGH) "high" else "balanced") + " accepted=$ok (actual parameters negotiated)")
+    }
+
     @Synchronized fun start() {
         if (running || !enabled) return
         running = true
@@ -104,7 +124,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                 try {
                     val sock = ss.accept()
                     Log.i(TAG, "l2cap accepted from ${sock.remoteDevice.address}")
-                    onTransport(L2capTransport(sock))
+                    if (gattPreferred(sock.remoteDevice.address)) sock.close() else onTransport(L2capTransport(sock))
                 } catch (e: IOException) {
                     if (running) {
                         // The listener died while we still run (Bluetooth hiccup): open a new one, or every later
@@ -297,6 +317,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                 override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
                     if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) { keeperUp.add(address); onUp(g) }
                     else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                        appliedPriority.remove(address)
                         keeperUp.remove(address)
                         if (keepers[address] === g) keepers.remove(address)
                         runCatching { g.close() }
@@ -310,18 +331,18 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
     fun holdLe(address: String) {
         held.add(address)
         if (address in keeperUp) {
-            keepers[address]?.let { runCatching { it.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED) } }
+            keepers[address]?.let { priority(address, it, wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED) }
             return
         }
         openLe(address) { g ->
-            g.requestConnectionPriority(wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+            priority(address, g, wantedPriority[address] ?: BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
             LinkLog.add("LE link held to ${LinkLog.short(address)}")
         }
     }
 
     /** The session ended: let the link go at once (a held link blocks the app's next connect). */
     fun releaseLe(address: String) {
-        held.remove(address); wantedPriority.remove(address)
+        held.remove(address); wantedPriority.remove(address); appliedPriority.remove(address)
         keepers.remove(address)?.let { g -> keeperUp.remove(address); runCatching { g.disconnect(); g.close() } }
     }
 
@@ -359,8 +380,8 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         val prio = if (high) BluetoothGatt.CONNECTION_PRIORITY_HIGH else BluetoothGatt.CONNECTION_PRIORITY_BALANCED
         wantedPriority[address] = prio
         val g = keepers[address]?.takeIf { address in keeperUp && address in held } ?: return
-        runCatching { g.requestConnectionPriority(prio) }
-        Log.i(TAG, "link priority ${if (high) "high" else "balanced"} requested")
+        priority(address, g, prio)
+
     }
 
     fun untune(address: String) = tune(address, high = false)
@@ -407,10 +428,13 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
             if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
                 devices[device.address] = device
                 // 2M PHY roughly halves air time per packet (lower latency, more headroom for audio).
-                runCatching { server?.setPreferredPhy(device, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED) }
+                val phy = if (stable || adapter?.isLe2MPhySupported != true) BluetoothDevice.PHY_LE_1M_MASK else BluetoothDevice.PHY_LE_2M_MASK
+                runCatching { server?.setPreferredPhy(device, phy, phy, BluetoothDevice.PHY_OPTION_NO_PREFERRED) }
                 runCatching { server?.readPhy(device) }
             }
             if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                LinkLog.add("GATT disconnect status=$status from ${LinkLog.short(device.address)}")
+                appliedPriority.remove(device.address)
                 gattPipes.remove(device.address)?.close()
                 txSubscribers.remove(device.address)
                 mtus.remove(device.address)
@@ -428,6 +452,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
         fun onConnectionUpdated(device: BluetoothDevice, interval: Int, latency: Int, timeout: Int, status: Int) {
             linkParams[device.address] = "interval %.2f ms, latency %d, timeout %d ms".format(interval * 1.25, latency, timeout * 10)
             Log.i(TAG, "link ${device.address}: ${linkParams[device.address]}")
+            LinkLog.add("BLE parameters ${LinkLog.short(device.address)}: ${linkParams[device.address]} status=$status")
         }
 
         override fun onPhyUpdate(device: BluetoothDevice, txPhy: Int, rxPhy: Int, status: Int) = phy(device, txPhy, rxPhy, status)
@@ -450,7 +475,7 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
                                                  characteristic: BluetoothGattCharacteristic) {
             val s = server ?: return
             if (characteristic.uuid == PSM_CHAR) {
-                s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, OldAndroid.psmValue(psm, offset))
+                s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, OldAndroid.psmValue(if (gattPreferred(device.address)) 0 else psm, offset))
             } else {
                 s.sendResponse(device, requestId, BluetoothGatt.GATT_READ_NOT_PERMITTED, 0, null)
             }
@@ -467,6 +492,10 @@ class BlePeripheral(private val ctx: Context, private val onTransport: (Transpor
             } else if (descriptor.uuid == CCCD && descriptor.characteristic.uuid == TX_CHAR) {
                 val on = value != null && value.isNotEmpty() && value[0].toInt() and 1 == 1
                 // A (re)subscription always starts a fresh pipe: the central is setting up a new session.
+                if (on && mode == "l2cap") {
+                    if (responseNeeded) s.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
+                    return
+                }
                 if (on) { txSubscribers.add(device.address); openPipe(s, device) }
                 else { txSubscribers.remove(device.address); gattPipes.remove(device.address)?.close() }
             }

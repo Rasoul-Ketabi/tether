@@ -187,6 +187,36 @@ class MainActivity : Activity() {
         })
         if (!app.keys.isPaired && qrUntil == 0L) setup.addView(label(getString(R.string.help_pair_next), R.color.accent, 14f))
 
+        val transportCard = card("Connection transport")
+        val modes = arrayOf("Automatic (L2CAP / GATT)", "L2CAP only", "GATT only")
+        val values = arrayOf("auto", "l2cap", "gatt")
+        val selected = app.prefs.getString("ble_transport", "auto") ?: "auto"
+        transportCard.addView(button("BLE: " + modes[values.indexOf(selected).coerceAtLeast(0)], secondary = true) {
+            if (CallRegistry.active().isNotEmpty()) Toast.makeText(this, R.string.helper_switch_during_call, Toast.LENGTH_SHORT).show()
+            else AlertDialog.Builder(this).setTitle("BLE transport").setSingleChoiceItems(modes, values.indexOf(selected).coerceAtLeast(0)) { dialog, which ->
+                app.prefs.edit().putString("ble_transport", values[which]).apply()
+                dialog.dismiss()
+                Toast.makeText(this, "Reconnect iPhone to apply transport", Toast.LENGTH_LONG).show()
+                render()
+            }.setNegativeButton(android.R.string.cancel, null).show()
+        })
+        val stable = app.prefs.getBoolean("ble_stable", android.os.Build.DEVICE.equals("j7velte", true))
+        transportCard.addView(button("BLE stability profile: " + if (stable) "On" else "Off", secondary = true) {
+            if (CallRegistry.active().isEmpty()) {
+                app.prefs.edit().putBoolean("ble_stable", !stable).apply()
+                Toast.makeText(this, "Reconnect iPhone to apply profile", Toast.LENGTH_LONG).show()
+                render()
+            }
+        })
+        val wifi = app.prefs.getBoolean("hybrid_wifi", false)
+        transportCard.addView(button("Wi-Fi audio + BLE wake: " + if (wifi) "On" else "Off", secondary = true) {
+            if (CallRegistry.active().isEmpty()) {
+                app.prefs.edit().putBoolean("hybrid_wifi", !wifi).apply()
+                Toast.makeText(this, "Reconnect both updated apps on the same Wi-Fi", Toast.LENGTH_LONG).show()
+                render()
+            }
+        })
+
         // Audio
         val audio = card(getString(R.string.section_audio))
         // Call audio: interception API on Android 13+, voice-call capture on 11-12, nothing on 10.

@@ -63,6 +63,10 @@ public final class TetherLink: NSObject {
     private let ids = RequestIds()
     private var keepalive: DispatchSourceTimer?
     private var l2capTimer: DispatchWorkItem?
+    #if os(iOS)
+    private var wifiLane: HybridWifiClient?
+    private var wifiRetry: DispatchWorkItem?
+    #endif
     private var audioBacklog = 0
     /// Round trip of the last keep-alive ping over the link, in ms (nil until one came back).
     public private(set) var lastRoundTripMs: Int?
@@ -127,6 +131,9 @@ public final class TetherLink: NSObject {
     public func sendAudio(_ frame: AudioFrame) {
         queue.async {
             guard self.state.isConnected, let session = self.session else { return }
+            #if os(iOS)
+            if self.wifiLane?.sendAudio(frame.encoded()) == true { return }
+            #endif
             // Drop-late: if the transport is backed up by more than ~100 ms of audio, skip this frame.
             if self.outBuffer.count > 4096 || self.audioBacklog > 5 { return }
             guard let r = try? session.seal(channel: Proto.channelAudio, frame.encoded()) else { return }
@@ -255,6 +262,10 @@ public final class TetherLink: NSObject {
             log("session over \(transport) ended after \(Int(Date().timeIntervalSince(since))) s: \(reason)")
             sessionSince = nil
         }
+        #if os(iOS)
+        wifiRetry?.cancel(); wifiRetry = nil
+        let lane = wifiLane; wifiLane = nil; lane?.stop()
+        #endif
         partialSince = nil
         keepalive?.cancel(); keepalive = nil
         setupWatchdog?.cancel(); setupWatchdog = nil
@@ -273,6 +284,32 @@ public final class TetherLink: NSObject {
         transport = "none"
         settingUp = false
     }
+
+    #if os(iOS)
+    private func startWifi(_ offer: HybridWifiOffer) {
+        guard state.isConnected, wifiLane == nil, let lane = HybridWifiClient(offer: offer, queue: queue) else { return }
+        wifiRetry?.cancel(); wifiRetry = nil
+        wifiLane = lane
+        lane.onAudio = { [weak self, weak lane] payload in
+            guard let self, let lane, self.wifiLane === lane, self.state.isConnected else { return }
+            if let frame = AudioFrame.parse(payload) { self.delegate?.link(self, didReceiveAudio: frame) }
+        }
+        lane.onState = { [weak self, weak lane] ready in
+            guard let self, let lane, self.wifiLane === lane else { return }
+            self.log(ready ? "Wi-Fi audio lane authenticated" : "Wi-Fi audio lane ended; BLE fallback")
+            if !ready {
+                self.wifiLane = nil
+                let retry = DispatchWorkItem { [weak self] in
+                    guard let self, self.state.isConnected, self.wifiLane == nil else { return }
+                    self.sendNow("wifi.probe", Empty())
+                }
+                self.wifiRetry = retry
+                self.queue.asyncAfter(deadline: .now() + 15, execute: retry)
+            }
+        }
+        lane.start()
+    }
+    #endif
 
     /// Sessions restarted in a row on a connection that stayed up (reset when a session comes up).
     private var restartsOnOpenConnection = 0
@@ -465,12 +502,21 @@ public final class TetherLink: NSObject {
             failures.removeAll()
             retryItem?.cancel(); retryItem = nil
             startKeepalive()
+            #if os(iOS)
+            sendNow("wifi.probe", Empty())
+            #endif
             return
         }
         let (ch, payload) = try session.open(r)
         switch ch {
         case Proto.channelControl:
             let h = try Control.header(payload)
+            #if os(iOS)
+            if h.t == "wifi.offer" {
+                if let offer = try? Control.body(HybridWifiOffer.self, from: payload) { startWifi(offer) }
+                return
+            }
+            #endif
             if h.t == MsgType.ping {
                 if let b = try? Control.body(PingBody.self, from: payload) { sendNow(MsgType.pong, b, re: h.id) }
             } else if h.t == MsgType.pong, let b = try? Control.body(PingBody.self, from: payload) {
@@ -522,6 +568,9 @@ public final class TetherLink: NSObject {
             guard let self else { return }
             if let p = self.partialSince, Date().timeIntervalSince(p) > 10 { self.failAndRetry("stream stalled mid-record"); return }
             self.sendNow(MsgType.ping, PingBody(ts: Int64(Date().timeIntervalSince1970 * 1000)))
+            #if os(iOS)
+            if self.wifiLane == nil { self.sendNow("wifi.probe", Empty()) }
+            #endif
         }
         t.resume()
         keepalive = t
@@ -622,13 +671,15 @@ extension TetherLink: CBPeripheralDelegate {
         for c in s.characteristics ?? [] {
             switch c.uuid {
             // Nothing here needs link encryption: Tether's own pairing secures the link, never a Bluetooth bond.
-            case TetherUUID.psm: p.readValue(for: c)
+            case TetherUUID.psm: break
             case TetherUUID.rx: rxChar = c
             case TetherUUID.tx: txChar = c
             case TetherUUID.wake: p.setNotifyValue(true, for: c) // notifications wake us when suspended
             default: break
             }
         }
+        if let psm = s.characteristics?.first(where: { $0.uuid == TetherUUID.psm }) { p.readValue(for: psm) }
+        else { startGattFallback("PSM missing") }
     }
 
     public func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic, error: Error?) {

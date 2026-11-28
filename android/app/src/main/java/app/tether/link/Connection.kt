@@ -60,6 +60,16 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     /** Audio records: queue → written delay, and frames dropped late or for overflow (call statistics). */
     val audioDelay = app.tether.audio.QueueDelay()
 
+    @Volatile private var wifi: HybridWifiServer? = null
+    @Volatile private var wifiEnabled = false
+    @Synchronized fun offerWifi() {
+        if (!isUp || transport.dry || transport.label !in listOf("l2cap", "gatt")) return
+        val lane = wifi ?: HybridWifiServer { data -> if (isUp && wifiEnabled) listener.onAudio(this, data) }.also { wifi = it }
+        wifiEnabled = true
+        lane.offer()?.let { sendUrgent(Message("wifi.offer", it)) }
+    }
+    @Synchronized fun disableWifi() { wifiEnabled = false; wifi?.close(); wifi = null }
+
     val isUp get() = state == State.UP
 
     fun start() {
@@ -95,6 +105,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
     /** Audio is dropped when the link is backed up (> 60 ms old at send time). */
     fun sendAudio(frame: ByteArray) {
         if (state != State.UP) return
+        if (wifiEnabled && wifi?.send(Proto.CH_AUDIO, frame) == true) return
         // Never let audio pile up: drop the oldest audio frame (it is the stalest), never a call event or record.
         if (prio.size > 25) prio.firstOrNull { it.audio }?.let { if (prio.remove(it)) audioDelay.droppedOverflow() }
         prio.put(Item(Proto.CH_AUDIO, frame, true))
@@ -206,6 +217,7 @@ class Connection(val transport: Transport, private val keys: Keys, private val l
             if (state == State.CLOSED) return
             val wasUp = state == State.UP
             state = State.CLOSED
+            disableWifi()
             Log.i(TAG, "link closed (${transport.label}): $reason")
             val lasted = if (upAt > 0) " after ${(SystemClock.elapsedRealtime() - upAt) / 1000} s" else ""
             LinkLog.add("link down ($name, ${transport.label})$lasted: $reason")

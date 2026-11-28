@@ -220,6 +220,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         lastClientSeen = SystemClock.elapsedRealtime()
         LinkService.running?.peripheral?.setLinked(true)
         LinkLog.add("link up (${c.name}, ${c.transport.label}) from ${LinkLog.short(c.transport.address)}")
+        LinkService.running?.peripheral?.recordSessionStart(c.transport.address, c.transport.label)
         refresh()
         c.send(Message(T.CALL_LIST, JSONObject().put("calls", JSONArray(CallRegistry.list().map { callJson(it, c) }))))
         // A client paired just now has no kind yet (iPhone or Android phone): it says so in its first sync.
@@ -250,6 +251,7 @@ class Hub(private val app: TetherApp) : ConnectionListener {
         extLinks.remove(c)?.let(extensions::linkDown)
         lastClientSeen = SystemClock.elapsedRealtime()
         if (conns.remove(c)) {
+            if (conns.none { it.transport.address == c.transport.address }) LinkService.running?.peripheral?.recordSessionEnd(c.transport.address, c.transport.label)
             if (conns.none { it.isUp }) LinkService.running?.peripheral?.setLinked(false)
             // A reconnect replaces a link from the same address: its tuning belongs to the new link now.
             if (conns.none { it.transport.address == c.transport.address }) {
@@ -277,6 +279,10 @@ class Hub(private val app: TetherApp) : ConnectionListener {
     override fun onAudio(c: Connection, payload: ByteArray) { if (c === audio.target) audio.onUplink(payload) }
 
     override fun onMessage(c: Connection, m: Message) {
+        if (m.t == "wifi.probe") {
+            if (app.prefs.getBoolean("hybrid_wifi", false)) c.offerWifi() else c.disableWifi()
+            return
+        }
         // A test client (dry transport) may only touch calls on Tether's own test line, never a real call.
         // Taking the audio (answer, take) or a self-test needs every live call to be on the test line.
         if (c.transport.dry && m.t in TestGuards.callControls) {

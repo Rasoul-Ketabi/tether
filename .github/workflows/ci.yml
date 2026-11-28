@@ -109,6 +109,21 @@ jobs:
         run: >
           xcodebuild -project Tether.xcodeproj -scheme Tether -configuration Release -destination 'generic/platform=iOS'
           -derivedDataPath build-gen -skipMacroValidation CODE_SIGNING_ALLOWED=NO build -quiet
+      - name: Package unsigned iPhone IPA
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ios
+        run: |
+          mkdir -p ipa-stage/Payload
+          cp -R build-gen/Build/Products/Release-iphoneos/Tether.app ipa-stage/Payload/
+          (cd ipa-stage && zip -qr ../Tether-iOS-UNSIGNED.ipa Payload)
+      - name: IPA for testers (requires signing)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tether-ios-unsigned
+          path: ios/Tether-iOS-UNSIGNED.ipa
+          if-no-files-found: error
+          retention-days: 30
       - name: iPhone app unit tests
         working-directory: ios
         run: |
